@@ -1,0 +1,8 @@
+[package]
+name = "bloop-plugin-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bloop-core = { workspace = true }
+bloop-events = { workspace = true }
