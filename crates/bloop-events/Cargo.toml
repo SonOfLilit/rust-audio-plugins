@@ -8,3 +8,4 @@ bloop-core = { workspace = true }
 
 [dev-dependencies]
 expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
