@@ -73,6 +73,8 @@ mod tests {
     use super::*;
     use alloc::{format, string::String, vec::Vec};
     use expect_test::{expect, Expect};
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::*;
 
     fn parse_event(time: u32, desc: &str) -> NoteEvent {
         if let Some(note) = desc.strip_prefix("on:") {
@@ -99,6 +101,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn event_buffer_sorting() {
         check_buffer(&[
             (64, "on:60"),
@@ -111,11 +114,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn empty_buffer() {
         check_buffer(&[], expect![[""]]);
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn overflow_returns_false() {
         let mut buf = EventBuffer::new();
         for i in 0..EventBuffer::CAPACITY {
