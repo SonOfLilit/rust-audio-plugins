@@ -37,6 +37,12 @@ pub struct EventBuffer {
     len: usize,
 }
 
+impl Default for EventBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventBuffer {
     pub const CAPACITY: usize = 256;
 
