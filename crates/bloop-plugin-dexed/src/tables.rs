@@ -116,7 +116,9 @@ impl Tables {
         let dy = i64::from(self.exp2tab[x_int]);
         let y0 = self.exp2tab[x_int + 1];
         let y = y0.wrapping_add(((dy * i64::from(lowbits)) >> SHIFT) as i32);
-        y >> (6 - (x >> 24))
+        // Envelope levels keep the shift in 0..=20 in practice; clamp like
+        // `freq_lookup` so no input can panic (C++ shifts unchecked).
+        y >> (6 - (x >> 24)).clamp(0, 31)
     }
 
     /// Log-frequency (Q24, 1.0 = one octave, 0 = 1 Hz at `MAX_LOGFREQ_INT`

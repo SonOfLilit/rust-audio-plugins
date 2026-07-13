@@ -35,11 +35,14 @@ pub struct PitchEnv {
 }
 
 impl PitchEnv {
-    /// `rates`/`levels` are DX7 parameters (0..99).
+    /// `rates`/`levels` are DX7 parameters (0..99). Values from corrupted
+    /// cartridges clamp to 99 — the raw sysex bytes reach here, and the
+    /// C++ reads its 100-entry tables out of bounds where Rust would
+    /// panic on the audio thread.
     pub fn set(&mut self, t: &Tables, rates: [i32; 4], levels: [i32; 4]) {
-        self.rates = rates;
-        self.levels = levels;
-        self.level = i32::from(PITCHENV_TAB[levels[3] as usize]) << 19;
+        self.rates = rates.map(|r| r.clamp(0, 99));
+        self.levels = levels.map(|l| l.clamp(0, 99));
+        self.level = i32::from(PITCHENV_TAB[self.levels[3] as usize]) << 19;
         self.down = true;
         self.advance(t, 0);
     }

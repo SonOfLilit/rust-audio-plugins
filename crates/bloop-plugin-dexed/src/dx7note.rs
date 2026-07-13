@@ -112,8 +112,10 @@ fn osc_freq(midinote: i32, mode: i32, coarse: i32, fine: i32, detune: i32) -> i3
             logfreq += (24204406.323123 * (1.0 + 0.01 * f64::from(fine)).ln() + 0.5).floor() as i32;
         }
     } else {
-        // Fixed frequency: ((1 << 24) * log(10) / log(2) * .01) << 3
-        logfreq = (4458616 * ((coarse & 3) * 100 + fine)) >> 3;
+        // Fixed frequency: ((1 << 24) * log(10) / log(2) * .01) << 3.
+        // Widened to i64: a corrupted patch's fine byte (up to 255)
+        // overflows the i32 multiply the C++ performs.
+        logfreq = ((4458616i64 * i64::from((coarse & 3) * 100 + fine)) >> 3) as i32;
         logfreq += if detune > 7 { 13457 * (detune - 7) } else { 0 };
     }
     logfreq
