@@ -1,0 +1,22 @@
+[package]
+name = "bloop-plugin-dexed"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# 6-operator FM synth: a Rust port of the MSFA engine (Apache-2.0).
+# Ported from Dexed's maintained msfa fork (Source/msfa, rev
+# 2e182b3db85c09083ab13c8b9b00565ce7d9ff85) with the packed-voice unpacker
+# from Google's original repo (rev f67d41d313b7dc85f6fb99e79e515cc9d208cfff).
+# The manual's License page cites these exact revisions — keep them in sync
+# (see the `license_page_cites_the_pinned_msfa_revisions` test in
+# bloop-menu-pages).
+
+[dependencies]
+bloop-core = { workspace = true }
+bloop-events = { workspace = true }
+bloop-plugin-api = { workspace = true }
+
+[dev-dependencies]
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
