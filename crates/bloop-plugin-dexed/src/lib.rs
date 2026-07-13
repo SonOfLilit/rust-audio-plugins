@@ -121,11 +121,6 @@ impl DexedPlugin {
         plugin
     }
 
-    /// Names of the built-in bank's 32 presets, in order.
-    pub fn preset_names(&self) -> Vec<String> {
-        (0..patch::BANK_SIZE).map(|i| self.bank.name(i)).collect()
-    }
-
     fn load_preset(&mut self, index: usize) {
         self.patch = self.bank.voice(index);
         let mut lfo_params = [0u8; 6];
@@ -839,46 +834,6 @@ mod tests {
         assert_eq!(a.len(), b.len());
         let identical = a == b;
         expect!["identical=true"].assert_eq(&format!("identical={identical}"));
-    }
-
-    #[test]
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
-    fn preset_names_are_rom1a() {
-        let synth = DexedPlugin::new();
-        expect![[r#"
-            BRASS   1
-            BRASS   2
-            BRASS   3
-            STRINGS 1
-            STRINGS 2
-            STRINGS 3
-            ORCHESTRA
-            PIANO   1
-            PIANO   2
-            PIANO   3
-            E.PIANO 1
-            GUITAR  1
-            GUITAR  2
-            SYN-LEAD 1
-            BASS    1
-            BASS    2
-            E.ORGAN 1
-            PIPES   1
-            HARPSICH 1
-            CLAV    1
-            VIBE    1
-            MARIMBA
-            KOTO
-            FLUTE   1
-            ORCH-CHIME
-            TUB BELLS
-            STEEL DRUM
-            TIMPANI
-            REFS WHISL
-            VOICE   1
-            TRAIN
-            TAKE OFF"#]]
-        .assert_eq(&synth.preset_names().join("\n"));
     }
 
     /// The Cargo.toml provenance comment must cite the same pinned
