@@ -121,7 +121,12 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn neutral_stays_at_zero() {
         // All levels 50 = no pitch modulation, ever.
-        check_pitchenv([99; 4], [50; 4], 40, 80, 20, expect![[""]]);
+        check_pitchenv([99; 4], [50; 4], 40, 80, 20, expect![[r#"
+            chunk    0: +0.00 semitones
+            chunk   20: +0.00 semitones
+            chunk   40: keyup
+            chunk   40: +0.00 semitones
+            chunk   60: +0.00 semitones"#]]);
     }
 
     #[test]
@@ -130,6 +135,19 @@ mod tests {
         // Start an octave down (L4=38 wait, L1 target 50): classic scoop —
         // rises from below to neutral, then returns to the L4 start point
         // on release.
-        check_pitchenv([70, 99, 99, 70], [50, 50, 50, 26], 60, 120, 10, expect![[""]]);
+        check_pitchenv([70, 99, 99, 70], [50, 50, 50, 26], 60, 120, 10, expect![[r#"
+            chunk    0: -8.94 semitones
+            chunk   10: -8.29 semitones
+            chunk   20: -7.64 semitones
+            chunk   30: -7.00 semitones
+            chunk   40: -6.35 semitones
+            chunk   50: -5.71 semitones
+            chunk   60: keyup
+            chunk   60: -5.19 semitones
+            chunk   70: -5.84 semitones
+            chunk   80: -6.48 semitones
+            chunk   90: -7.13 semitones
+            chunk  100: -7.77 semitones
+            chunk  110: -8.42 semitones"#]]);
     }
 }

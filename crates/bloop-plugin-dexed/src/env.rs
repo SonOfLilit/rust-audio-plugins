@@ -218,7 +218,20 @@ mod tests {
             120,
             240,
             30,
-            expect![[""]],
+            expect![[r#"
+                chunk    0: -> stage 1 level=3840
+                chunk    0: level=3840
+                chunk    1: -> stage 2 level=3840
+                chunk    2: -> stage 3 level=3840
+                chunk   30: level=3840
+                chunk   60: level=3840
+                chunk   90: level=3840
+                chunk  120: keyup
+                chunk  120: level=3836
+                chunk  150: level=3716
+                chunk  180: level=3596
+                chunk  210: level=3476
+                active=true"#]],
         );
     }
 
@@ -234,7 +247,24 @@ mod tests {
             400,
             420,
             40,
-            expect![[""]],
+            expect![[r#"
+                chunk    0: level=1728
+                chunk   40: level=2171
+                chunk   80: level=2538
+                chunk  120: level=2838
+                chunk  160: level=3086
+                chunk  200: level=3286
+                chunk  240: level=3447
+                chunk  280: level=3593
+                chunk  320: level=3693
+                chunk  360: level=3793
+                chunk  379: -> stage 1 level=3840
+                chunk  380: -> stage 2 level=3840
+                chunk  381: -> stage 3 level=3840
+                chunk  400: keyup
+                chunk  400: level=2944
+                chunk  404: -> stage 4 level=16
+                active=false"#]],
         );
     }
 
@@ -251,7 +281,22 @@ mod tests {
             2000,
             2100,
             250,
-            expect![[""]],
+            expect![[r#"
+                chunk    0: -> stage 1 level=3840
+                chunk    0: level=3840
+                chunk  250: level=840
+                chunk  319: -> stage 2 level=16
+                chunk  320: -> stage 3 level=16
+                chunk  500: level=16
+                chunk  750: level=16
+                chunk 1000: level=16
+                chunk 1250: level=16
+                chunk 1500: level=16
+                chunk 1750: level=16
+                chunk 2000: keyup
+                chunk 2000: -> stage 4 level=16
+                chunk 2000: level=16
+                active=false"#]],
         );
     }
 
@@ -267,7 +312,22 @@ mod tests {
             2000,
             2100,
             250,
-            expect![[""]],
+            expect![[r#"
+                chunk    0: -> stage 1 level=3840
+                chunk    0: level=3840
+                chunk    5: -> stage 2 level=16
+                chunk    6: -> stage 3 level=16
+                chunk  250: level=16
+                chunk  500: level=16
+                chunk  750: level=16
+                chunk 1000: level=16
+                chunk 1250: level=16
+                chunk 1500: level=16
+                chunk 1750: level=16
+                chunk 2000: keyup
+                chunk 2000: -> stage 4 level=16
+                chunk 2000: level=16
+                active=false"#]],
         );
     }
 
@@ -278,6 +338,16 @@ mod tests {
             .step_by(11)
             .map(|l| format!("{l} -> {}", Env::scaleoutlevel(l)))
             .collect();
-        expect![[""]].assert_eq(&levels.join("\n"));
+        expect![[r#"
+            0 -> 0
+            11 -> 33
+            22 -> 50
+            33 -> 61
+            44 -> 72
+            55 -> 83
+            66 -> 94
+            77 -> 105
+            88 -> 116
+            99 -> 127"#]].assert_eq(&levels.join("\n"));
     }
 }

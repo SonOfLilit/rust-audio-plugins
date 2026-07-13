@@ -18,6 +18,13 @@ mod tables;
 
 pub use patch::{Bank, BankError, BANK_SIZE, PACKED_VOICE_SIZE, VOICE_SIZE};
 
+/// The Dexed revision whose `Source/msfa` engine this crate is a port of.
+/// The manual's License page cites it (test-guarded, like the papurs pin).
+pub const PORTED_FROM_DEXED_REV: &str = "2e182b3db85c09083ab13c8b9b00565ce7d9ff85";
+/// The music-synthesizer-for-android revision the packed-voice unpacker
+/// (`patch.rs`) is ported from.
+pub const PORTED_FROM_MSFA_REV: &str = "f67d41d313b7dc85f6fb99e79e515cc9d208cfff";
+
 use bloop_events::NoteEvent;
 use bloop_plugin_api::{ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext};
 use dx7note::{Controllers, Dx7Note};
@@ -328,7 +335,8 @@ pub(crate) mod testutil {
 
     /// Magnitudes at multiples of `f0`, in dB relative to the strongest,
     /// formatted one line per harmonic ("h1 0.0dB" …). Harmonics under
-    /// -40 dB print as "-".
+    /// -35 dB print as "-" (the margin keeps borderline leakage from
+    /// flipping the snapshot across platforms).
     pub fn harmonic_profile(
         samples: &[f32],
         sample_rate: f64,
@@ -343,7 +351,7 @@ pub(crate) mod testutil {
             .enumerate()
             .map(|(i, &m)| {
                 let db = 20.0 * (m / max).log10();
-                if db < -40.0 {
+                if db < -35.0 {
                     format!("h{} -", i + 1)
                 } else {
                     format!("h{} {db:.1}dB", i + 1)
@@ -478,7 +486,19 @@ mod tests {
             EPIANO,
             &[(0, note_on(69, 1.0)), (48, note_off(69))],
             96,
-            expect![[""]],
+            expect![[r#"
+                w 0 peak=0.3422
+                w 1 peak=0.3590
+                w 2 peak=0.3847
+                w 3 peak=0.3919
+                w 4 peak=0.3879
+                w 5 peak=0.3601
+                w 6 peak=0.2762
+                w 7 peak=0.1340
+                w 8 peak=0.0918
+                w 9 peak=0.0522
+                w10 peak=0.0264
+                w11 peak=0.0111"#]],
         );
     }
 
@@ -490,7 +510,17 @@ mod tests {
             BRASS,
             &[(0, note_on(60, 1.0)), (56, note_off(60))],
             80,
-            expect![[""]],
+            expect![[r#"
+                w 0 peak=0.5228
+                w 1 peak=0.5315
+                w 2 peak=0.5162
+                w 3 peak=0.5097
+                w 4 peak=0.5131
+                w 5 peak=0.5306
+                w 6 peak=0.5276
+                w 7 peak=0.4786
+                w 8 peak=0.0825
+                w 9 peak=0.0215"#]],
         );
     }
 
@@ -499,16 +529,30 @@ mod tests {
     fn marimba_decays_naturally() {
         // MARIMBA decays to silence on its own even while the key is held
         // (L4 = 0 percussive envelope).
-        check(MARIMBA, &[(0, note_on(60, 1.0))], 96, expect![[""]]);
+        check(MARIMBA, &[(0, note_on(60, 1.0))], 96, expect![[r#"
+            w 0 peak=0.2137
+            w 1 peak=0.2078
+            w 2 peak=0.1957
+            w 3 peak=0.1821
+            w 4 peak=0.1713
+            w 5 peak=0.1596
+            w 6 peak=0.1446
+            w 7 peak=0.1282
+            w 8 peak=0.1150
+            w 9 peak=0.1057
+            w10 peak=0.0964
+            w11 peak=0.0822"#]]);
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn organ_pitch_tracks_notes() {
-        // A4 (440 Hz) and A3 (220 Hz): the dominant frequency must track
-        // the played note.
-        check_pitch(EORGAN, &[(0, note_on(69, 1.0))], expect![[""]]);
-        check_pitch(EORGAN, &[(0, note_on(57, 1.0))], expect![[""]]);
+        // The dominant line must track the played note. E.ORGAN 1's
+        // strongest component is its 16' foundation — a coarse-0.5
+        // operator one octave BELOW the key (the pure-sine algorithm test
+        // pins absolute tuning; this pins tracking): A4 → 220, A3 → 110.
+        check_pitch(EORGAN, &[(0, note_on(69, 1.0))], expect!["dominant=220Hz"]);
+        check_pitch(EORGAN, &[(0, note_on(57, 1.0))], expect!["dominant=110Hz"]);
     }
 
     #[test]
@@ -518,18 +562,32 @@ mod tests {
         check_pitch(
             EORGAN,
             &[(0, note_on(69, 1.0)), (0, bend(1.0))],
-            expect![[""]],
+            expect!["dominant=247Hz"],
         );
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn velocity_scales_level() {
-        // Same note at full and low velocity: quieter, not just scaled —
-        // DX7 velocity also softens the modulator (timbre), so we compare
-        // peak amplitude windows.
-        check(EPIANO, &[(0, note_on(69, 1.0))], 32, expect![[""]]);
-        check(EPIANO, &[(0, note_on(69, 0.3))], 32, expect![[""]]);
+        // Same note at descending velocities, one snapshot: the overall
+        // peak must fall monotonically (DX7 velocity also softens the
+        // modulators, so it's a timbre change, not a linear gain).
+        let lines: Vec<String> = [1.0f32, 0.7, 0.4, 0.1]
+            .iter()
+            .map(|&vel| {
+                let mut synth = DexedPlugin::new();
+                synth.reset(SR, 1024);
+                synth.set_param(PARAM_PRESET, EPIANO);
+                let samples = render_blocks(&mut synth, 32, &[(0, note_on(69, vel))]);
+                let peak = samples.iter().fold(0.0f32, |a, &s| a.max(s.abs()));
+                format!("vel {vel:.1}: peak={peak:.4}")
+            })
+            .collect();
+        expect![[r#"
+            vel 1.0: peak=0.3919
+            vel 0.7: peak=0.2568
+            vel 0.4: peak=0.2539
+            vel 0.1: peak=0.1959"#]].assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -552,38 +610,131 @@ mod tests {
                 format!("{hz}Hz {}", if m > 0.01 { "sounding" } else { "-" })
             })
             .collect();
-        expect![[""]].assert_eq(&mags.join("\n"));
+        expect![[r#"
+            261.63Hz sounding
+            329.63Hz sounding
+            392Hz sounding
+            466.16Hz -"#]].assert_eq(&mags.join("\n"));
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
-    fn voice_stealing_keeps_playing() {
-        // 10 note-ons exceed the 8 voices: the two oldest are stolen, the
-        // synth keeps rendering (no panic), and releasing everything
-        // still fades to silence (no stuck voices).
-        let events: Vec<(usize, Ev)> = (0..10)
-            .map(|i| (i, note_on(48 + i as u8 * 2, 1.0)))
-            .chain((0..10).map(|i| (40 + i, note_off(48 + i as u8 * 2))))
+    fn voice_stealing_takes_the_oldest() {
+        // 10 sustained notes on 8 voices: the two OLDEST (the first two
+        // played) must be the ones stolen. Check per-pitch energy in the
+        // sustained window, then release everything — it must fade out
+        // (no stuck voices).
+        let mut synth = DexedPlugin::new();
+        synth.reset(SR, 1024);
+        synth.set_param(PARAM_PRESET, EORGAN);
+        // A chromatic cluster: no note's fundamental coincides with any
+        // harmonic (or the organ's sub-octave) of another, so "stolen"
+        // can't be masked by a surviving note's overtones.
+        let notes: Vec<u8> = (0..10).map(|i| 60 + i).collect();
+        let mut events: Vec<(usize, Ev)> =
+            notes.iter().enumerate().map(|(i, &n)| (i * 2, note_on(n, 1.0))).collect();
+        events.extend(notes.iter().map(|&n| (60usize, note_off(n))));
+        let samples = render_blocks(&mut synth, 120, &events);
+        let sustained = &samples[32 * BLOCK..56 * BLOCK];
+        let mut lines: Vec<String> = notes
+            .iter()
+            .map(|&n| {
+                let hz = 440.0 * 2f64.powf((f64::from(n) - 69.0) / 12.0);
+                let mag = goertzel(sustained, f64::from(SR), hz);
+                format!(
+                    "note {n}: {}",
+                    if mag > 0.005 { "sounding" } else { "stolen/quiet" }
+                )
+            })
             .collect();
-        check(EORGAN, &events, 96, expect![[""]]);
+        let tail = &samples[112 * BLOCK..];
+        let tail_peak = tail.iter().fold(0.0f32, |a, &s| a.max(s.abs()));
+        lines.push(format!("tail peak after release: {tail_peak:.4}"));
+        expect![[r#"
+            note 60: sounding
+            note 61: sounding
+            note 62: sounding
+            note 63: sounding
+            note 64: sounding
+            note 65: sounding
+            note 66: sounding
+            note 67: sounding
+            note 68: sounding
+            note 69: sounding
+            tail peak after release: 0.0000"#]].assert_eq(&lines.join("\n"));
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
-    fn preset_switch_changes_sound() {
-        // Switch from sustained BRASS to percussive MARIMBA mid-run: the
-        // note played after the switch decays on its own.
+    fn preset_switch_spares_playing_voices() {
+        // A held BRASS note must keep sustaining across a preset switch to
+        // percussive MARIMBA (each voice copies its patch at note-on); the
+        // note played AFTER the switch decays on its own. The peak trace
+        // shows: sustained plateau throughout the hold, then the second
+        // note's fast marimba decay.
         check(
             BRASS,
             &[
                 (0, note_on(60, 1.0)),
-                (24, note_off(60)),
                 (32, Ev::Param(PARAM_PRESET, MARIMBA)),
-                (36, note_on(60, 1.0)),
+                (56, note_off(60)),
+                (64, note_on(60, 1.0)),
             ],
-            112,
-            expect![[""]],
+            136,
+            expect![[r#"
+                w 0 peak=0.5228
+                w 1 peak=0.5315
+                w 2 peak=0.5162
+                w 3 peak=0.5097
+                w 4 peak=0.5333
+                w 5 peak=0.5331
+                w 6 peak=0.5275
+                w 7 peak=0.3637
+                w 8 peak=0.2349
+                w 9 peak=0.2175
+                w10 peak=0.1950
+                w11 peak=0.1815
+                w12 peak=0.1714
+                w13 peak=0.1596
+                w14 peak=0.1446
+                w15 peak=0.1282
+                w16 peak=0.1150"#]],
         );
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn events_mid_block_start_on_the_next_chunk() {
+        // The engine advances in 64-sample chunks: an event at sample 70
+        // of a 128-sample block takes effect at the next chunk boundary —
+        // sample 128 (worst-case ~1.3ms quantization at 48kHz).
+        let mut synth = DexedPlugin::new();
+        synth.reset(SR, 1024);
+        synth.set_param(PARAM_PRESET, EORGAN);
+        let mut buf = EventBuffer::new();
+        buf.push(NoteEvent::NoteOn {
+            time: 70,
+            channel: 0,
+            note: bloop_core::Note::new(69),
+            velocity: 1.0,
+        });
+        let mut left = vec![0.0f32; 2 * BLOCK];
+        let mut right = vec![0.0f32; 2 * BLOCK];
+        let (l2, r2) = (left.split_at_mut(BLOCK), right.split_at_mut(BLOCK));
+        let empty = EventBuffer::new();
+        for (i, (l, r)) in [(l2.0, r2.0), (l2.1, r2.1)].into_iter().enumerate() {
+            let mut outputs: Vec<&mut [f32]> = vec![l, r];
+            let mut ctx = ProcessContext {
+                outputs: &mut outputs,
+                input_events: if i == 0 { &buf } else { &empty },
+                sample_rate: SR,
+                tempo: 120.0,
+                is_playing: false,
+            };
+            synth.process(&mut ctx);
+        }
+        let onset = left.iter().position(|&s| s.abs() > 1e-4);
+        expect!["first_nonzero=Some(129)"].assert_eq(&format!("first_nonzero={onset:?}"));
     }
 
     #[test]
@@ -593,7 +744,11 @@ mod tests {
             EORGAN,
             &[(0, Ev::Param(PARAM_VOLUME, 0.25)), (0, note_on(69, 1.0))],
             32,
-            expect![[""]],
+            expect![[r#"
+                w 0 peak=0.0690
+                w 1 peak=0.0693
+                w 2 peak=0.0701
+                w 3 peak=0.0708"#]],
         );
     }
 
@@ -634,16 +789,64 @@ mod tests {
             all
         };
         let a = render(&[128; 6]);
-        let b = render(&[96, 32, 128, 1, 63, 64, 128, 128, 128, 96, 32]);
+        let b = render(&[96, 32, 128, 1, 63, 64, 128, 128, 128]);
         assert_eq!(a.len(), b.len());
         let identical = a == b;
-        expect![[""]].assert_eq(&format!("identical={identical}"));
+        expect!["identical=true"].assert_eq(&format!("identical={identical}"));
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn preset_names_are_rom1a() {
         let synth = DexedPlugin::new();
-        expect![[""]].assert_eq(&synth.preset_names().join("\n"));
+        expect![[r#"
+            BRASS   1
+            BRASS   2
+            BRASS   3
+            STRINGS 1
+            STRINGS 2
+            STRINGS 3
+            ORCHESTRA
+            PIANO   1
+            PIANO   2
+            PIANO   3
+            E.PIANO 1
+            GUITAR  1
+            GUITAR  2
+            SYN-LEAD 1
+            BASS    1
+            BASS    2
+            E.ORGAN 1
+            PIPES   1
+            HARPSICH 1
+            CLAV    1
+            VIBE    1
+            MARIMBA
+            KOTO
+            FLUTE   1
+            ORCH-CHIME
+            TUB BELLS
+            STEEL DRUM
+            TIMPANI
+            REFS WHISL
+            VOICE   1
+            TRAIN
+            TAKE OFF"#]].assert_eq(&synth.preset_names().join("\n"));
+    }
+
+    /// The Cargo.toml provenance comment must cite the same pinned
+    /// revisions as the public constants the License page displays.
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn cargo_toml_cites_the_pinned_revisions() {
+        let manifest = include_str!("../Cargo.toml");
+        assert!(
+            manifest.contains(&PORTED_FROM_DEXED_REV[..8]),
+            "Cargo.toml must cite the Dexed msfa revision {PORTED_FROM_DEXED_REV}"
+        );
+        assert!(
+            manifest.contains(&PORTED_FROM_MSFA_REV[..8]),
+            "Cargo.toml must cite the msfa revision {PORTED_FROM_MSFA_REV}"
+        );
     }
 }

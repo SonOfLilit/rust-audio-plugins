@@ -262,6 +262,38 @@ mod tests {
                 format!("alg {:>2}: {ops}", alg + 1)
             })
             .collect();
-        expect![[""]].assert_eq(&lines.join("\n"));
+        expect![[r#"
+            alg  1: ...C.C
+            alg  2: ...C.C
+            alg  3: ..C..C
+            alg  4: ..C..C
+            alg  5: .C.C.C
+            alg  6: .C.C.C
+            alg  7: ..CC.C
+            alg  8: ..CC.C
+            alg  9: ..CC.C
+            alg 10: .CC..C
+            alg 11: .CC..C
+            alg 12: .CCC.C
+            alg 13: .CCC.C
+            alg 14: .C.C.C
+            alg 15: .C.C.C
+            alg 16: ...CCC
+            alg 17: ...CCC
+            alg 18: ...CCC
+            alg 19: .CC..C
+            alg 20: .CC.CC
+            alg 21: .CC.CC
+            alg 22: .CCC.C
+            alg 23: .CC.CC
+            alg 24: .CCCCC
+            alg 25: .CCCCC
+            alg 26: .CC.CC
+            alg 27: .CC.CC
+            alg 28: C..C.C
+            alg 29: .C.CCC
+            alg 30: C..CCC
+            alg 31: .CCCCC
+            alg 32: CCCCCC"#]].assert_eq(&lines.join("\n"));
     }
 }

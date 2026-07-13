@@ -155,19 +155,70 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn triangle_at_rate_70() {
         // Rate 70 ≈ 16.37Hz per the hardware-measured table.
-        check_lfo([70, 0, 0, 0, 1, 0], 128, 8, expect![[""]]);
+        check_lfo([70, 0, 0, 0, 1, 0], 128, 8, expect![[r#"
+            chunk    0: 0.951
+            chunk    8: 0.558
+            chunk   16: 0.166
+            chunk   24: 0.227
+            chunk   32: 0.620
+            chunk   40: 0.988
+            chunk   48: 0.595
+            chunk   56: 0.202
+            chunk   64: 0.190
+            chunk   72: 0.583
+            chunk   80: 0.976
+            chunk   88: 0.632
+            chunk   96: 0.239
+            chunk  104: 0.153
+            chunk  112: 0.546
+            chunk  120: 0.939
+            period=41 chunks (~16.81Hz)"#]]);
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn square_at_rate_70() {
-        check_lfo([70, 0, 0, 0, 1, 3], 128, 8, expect![[""]]);
+        check_lfo([70, 0, 0, 0, 1, 3], 128, 8, expect![[r#"
+            chunk    0: 0.000
+            chunk    8: 0.000
+            chunk   16: 0.000
+            chunk   24: 1.000
+            chunk   32: 1.000
+            chunk   40: 0.000
+            chunk   48: 0.000
+            chunk   56: 0.000
+            chunk   64: 1.000
+            chunk   72: 1.000
+            chunk   80: 1.000
+            chunk   88: 0.000
+            chunk   96: 0.000
+            chunk  104: 1.000
+            chunk  112: 1.000
+            chunk  120: 1.000
+            period=41 chunks (~16.81Hz)"#]]);
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn sine_at_rate_70() {
-        check_lfo([70, 0, 0, 0, 1, 4], 128, 8, expect![[""]]);
+        check_lfo([70, 0, 0, 0, 1, 4], 128, 8, expect![[r#"
+            chunk    0: 0.423
+            chunk    8: 0.008
+            chunk   16: 0.251
+            chunk   24: 0.827
+            chunk   32: 0.965
+            chunk   40: 0.481
+            chunk   48: 0.022
+            chunk   56: 0.203
+            chunk   64: 0.781
+            chunk   72: 0.983
+            chunk   80: 0.538
+            chunk   88: 0.042
+            chunk   96: 0.159
+            chunk  104: 0.732
+            chunk  112: 0.995
+            chunk  120: 0.596
+            period=41 chunks (~16.81Hz)"#]]);
     }
 
     #[test]
@@ -184,6 +235,16 @@ mod tests {
                 lines.push(format!("chunk {chunk:>4}: delay={d:.3}"));
             }
         }
-        expect![[""]].assert_eq(&lines.join("\n"));
+        expect![[r#"
+            chunk    0: delay=0.000
+            chunk   40: delay=0.000
+            chunk   80: delay=0.000
+            chunk  120: delay=0.000
+            chunk  160: delay=0.000
+            chunk  200: delay=0.000
+            chunk  240: delay=0.000
+            chunk  280: delay=0.000
+            chunk  320: delay=0.005
+            chunk  360: delay=0.092"#]].assert_eq(&lines.join("\n"));
     }
 }

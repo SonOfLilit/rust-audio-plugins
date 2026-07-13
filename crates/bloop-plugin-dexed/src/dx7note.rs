@@ -313,6 +313,7 @@ impl Dx7Note {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lfo::Lfo;
     use crate::testutil::harmonic_profile;
     use expect_test::{expect, Expect};
     #[cfg(target_arch = "wasm32")]
@@ -327,7 +328,9 @@ mod tests {
         for op in 0..6 {
             let off = op * 21;
             patch[off..off + 4].copy_from_slice(&[99, 99, 99, 99]); // rates
-            patch[off + 4..off + 8].copy_from_slice(&[99, 99, 99, 99]); // levels
+            // L4=0: a DX7 envelope with L4>0 sustains FOREVER after keyup
+            // (that's hardware behavior, see the release test).
+            patch[off + 4..off + 8].copy_from_slice(&[99, 99, 99, 0]); // levels
             patch[off + 16] = 0; // output level: off unless listed
             patch[off + 18] = 1; // coarse = 1x
         }
@@ -350,7 +353,9 @@ mod tests {
     /// Render a note through the full voice path and snapshot which
     /// harmonics of the note's fundamental carry energy. This is the
     /// algorithm-routing proof: carriers-only patches give a bare h1,
-    /// modulator stacks spread energy across the series.
+    /// modulator stacks spread energy across the series. (Amplitudes here
+    /// are pre-output-stage — the `>>4` scaling is pinned by the plugin
+    /// peak tests in lib.rs, not by this harness.)
     fn check_spectrum(patch: &[u8; 156], midinote: i32, expect: Expect) {
         let t = Tables::new(48000.0);
         let mut core = FmCore::default();
@@ -377,7 +382,16 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn algorithm_32_single_carrier_is_pure_sine() {
         // Alg 32: six parallel carriers; only op1 on → one spectral line.
-        check_spectrum(&synth_patch(32, 0, &[(1, 1, 99)]), 69, expect![[""]]);
+        check_spectrum(&synth_patch(32, 0, &[(1, 1, 99)]), 69, expect![[r#"
+            f0=440.0Hz
+            h1 0.0dB
+            h2 -
+            h3 -
+            h4 -
+            h5 -
+            h6 -
+            h7 -
+            h8 -"#]]);
     }
 
     #[test]
@@ -385,7 +399,16 @@ mod tests {
     fn algorithm_1_modulator_creates_sidebands() {
         // Alg 1: op2 (ratio 2) modulates carrier op1 (ratio 1) → energy
         // appears at h1±2k: odd harmonics 1, 3, 5…
-        check_spectrum(&synth_patch(1, 0, &[(1, 1, 99), (2, 2, 75)]), 69, expect![[""]]);
+        check_spectrum(&synth_patch(1, 0, &[(1, 1, 99), (2, 2, 75)]), 69, expect![[r#"
+            f0=440.0Hz
+            h1 0.0dB
+            h2 -
+            h3 -13.2dB
+            h4 -
+            h5 -20.5dB
+            h6 -
+            h7 -
+            h8 -"#]]);
     }
 
     #[test]
@@ -393,14 +416,306 @@ mod tests {
     fn feedback_widens_the_spectrum() {
         // Alg 32 with feedback 7 on operator 6 (the feedback op of alg
         // 32): self-modulation approaches a sawtooth — all harmonics.
-        check_spectrum(&synth_patch(32, 7, &[(6, 1, 99)]), 69, expect![[""]]);
+        check_spectrum(&synth_patch(32, 7, &[(6, 1, 99)]), 69, expect![[r#"
+            f0=440.0Hz
+            h1 0.0dB
+            h2 -6.4dB
+            h3 -24.1dB
+            h4 -13.2dB
+            h5 -
+            h6 -16.7dB
+            h7 -19.2dB
+            h8 -14.7dB"#]]);
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn coarse_2_doubles_pitch() {
         // Single carrier at coarse 2: all energy at h2 of the note's f0.
-        check_spectrum(&synth_patch(32, 0, &[(1, 2, 99)]), 69, expect![[""]]);
+        check_spectrum(&synth_patch(32, 0, &[(1, 2, 99)]), 69, expect![[r#"
+            f0=440.0Hz
+            h1 -
+            h2 0.0dB
+            h3 -
+            h4 -
+            h5 -
+            h6 -
+            h7 -
+            h8 -"#]]);
+    }
+
+    /// Render with a real LFO and snapshot the modulation it produces, in
+    /// physical units: the instantaneous-frequency range from rising
+    /// zero-crossing periods (vibrato depth) and the per-46ms-window peak
+    /// range (tremolo depth). `mods` = (LFO speed, PMD, AMD, pitch mod
+    /// sens 0-7, per-op amp mod sens 0-3), sine LFO, no delay.
+    fn check_modulation(mods: (u8, u8, u8, u8, u8), expect: Expect) {
+        let (speed, pmd, amd, pitchsens, ampsens) = mods;
+        let t = Tables::new(48000.0);
+        let mut patch = synth_patch(32, 0, &[(1, 1, 99)]);
+        patch[137] = speed;
+        patch[138] = 0; // no delay
+        patch[139] = pmd;
+        patch[140] = amd;
+        patch[141] = 1; // sync
+        patch[142] = 4; // sine
+        patch[143] = pitchsens;
+        patch[(6 - 1) * 21 + 14] = ampsens; // op1 amp mod sensitivity
+        let mut lfo = Lfo::default();
+        let mut lfo_params = [0u8; 6];
+        lfo_params.copy_from_slice(&patch[137..143]);
+        lfo.reset(&t, &lfo_params);
+        lfo.keydown();
+
+        let mut core = FmCore::default();
+        let mut note = Dx7Note::default();
+        note.init(&t, &patch, 69, 100);
+        let ctrls = Controllers::default();
+        let mut samples: Vec<f32> = Vec::new();
+        for _ in 0..750 {
+            let mut buf = [0i32; N];
+            let lfo_val = lfo.getsample(&t);
+            let lfo_delay = lfo.getdelay();
+            note.compute(&t, &mut core, &mut buf, lfo_val, lfo_delay, &ctrls);
+            samples.extend(buf.iter().map(|&v| v as f32 / 16_777_216.0));
+        }
+        let sustained = &samples[8000..];
+
+        // Vibrato: instantaneous frequency from rising zero crossings.
+        let mut crossings = Vec::new();
+        for (i, w) in sustained.windows(2).enumerate() {
+            if w[0] < 0.0 && w[1] >= 0.0 {
+                crossings.push(i);
+            }
+        }
+        let (mut fmin, mut fmax) = (f64::MAX, f64::MIN);
+        for w in crossings.windows(2) {
+            let hz = 48000.0 / (w[1] - w[0]) as f64;
+            fmin = fmin.min(hz);
+            fmax = fmax.max(hz);
+        }
+        // Tremolo: peak per 2048-sample window.
+        let (mut pmin, mut pmax) = (f32::MAX, f32::MIN);
+        for w in sustained.chunks(2048) {
+            let peak = w.iter().fold(0.0f32, |a, &s| a.max(s.abs()));
+            pmin = pmin.min(peak);
+            pmax = pmax.max(peak);
+        }
+        expect.assert_eq(&format!(
+            "freq {fmin:.0}..{fmax:.0}Hz\npeak {pmin:.3}..{pmax:.3}"
+        ));
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn no_modulation_is_steady() {
+        // PMD/AMD zero: constant pitch, flat amplitude — the baseline the
+        // modulated variants are read against.
+        check_modulation((35, 0, 0, 7, 3), expect![[r#"
+            freq 436..440Hz
+            peak 1.768..1.768"#]]);
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn lfo_pitch_modulation_is_vibrato() {
+        // PMD 99 at sensitivity 3 vs 7: the frequency range widens with
+        // sensitivity, centred on A4; amplitude stays flat.
+        check_modulation((35, 99, 0, 3, 0), expect![[r#"
+            freq 400..480Hz
+            peak 2.000..2.000"#]]);
+        check_modulation((35, 99, 0, 7, 0), expect![[r#"
+            freq 221..873Hz
+            peak 2.000..2.000"#]]);
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn lfo_amp_modulation_is_tremolo() {
+        // AMD 99 at op sensitivity 1 vs 3: the peak range widens with
+        // sensitivity. (At sensitivity 3 the signal dips to near-silence,
+        // where zero-crossing pitch estimates degenerate — the freq line
+        // is meaningless noise there; read the peak line.)
+        check_modulation((35, 0, 99, 0, 1), expect![[r#"
+            freq 436..440Hz
+            peak 1.496..1.768"#]]);
+        check_modulation((35, 0, 99, 0, 3), expect![[r#"
+            freq 88..649Hz
+            peak 0.069..1.768"#]]);
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn fixed_frequency_mode_ignores_the_note() {
+        // Op1 in fixed mode, coarse 2 = 100Hz: the fundamental is 100Hz
+        // whether we play A4 or A2.
+        let mut patch = synth_patch(32, 0, &[(1, 2, 99)]);
+        patch[(6 - 1) * 21 + 17] = 1; // op1 fixed mode
+        for midinote in [69, 45] {
+            let t = Tables::new(48000.0);
+            let mut core = FmCore::default();
+            let mut note = Dx7Note::default();
+            note.init(&t, &patch, midinote, 100);
+            let ctrls = Controllers::default();
+            let mut samples: Vec<f32> = Vec::new();
+            for _ in 0..200 {
+                let mut buf = [0i32; N];
+                note.compute(&t, &mut core, &mut buf, 1 << 23, 1 << 24, &ctrls);
+                samples.extend(buf.iter().map(|&v| v as f32 / 16_777_216.0));
+            }
+            let hz = crate::testutil::dominant_freq(&samples[4000..], 48000.0);
+            if midinote == 69 {
+                expect!["A4 -> 100Hz"].assert_eq(&format!("A4 -> {hz}Hz"));
+            } else {
+                expect!["A2 -> 100Hz"].assert_eq(&format!("A2 -> {hz}Hz"));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn all_32_algorithms_render() {
+        // Every algorithm with the same uniform patch (all ops on, coarse
+        // 1..3 spread, feedback 4): snapshot an energy + brightness
+        // fingerprint per algorithm. Pins the whole routing table — bus
+        // selection, add-vs-replace, feedback op — in one place. RMS is
+        // pre-output-stage; `top` is the strongest of 8 harmonics.
+        let t = Tables::new(48000.0);
+        let ctrls = Controllers::default();
+        let lines: Vec<String> = (1..=32u8)
+            .map(|alg| {
+                let patch = synth_patch(
+                    alg,
+                    4,
+                    &[(1, 1, 99), (2, 2, 80), (3, 1, 85), (4, 3, 70), (5, 1, 80), (6, 2, 60)],
+                );
+                let mut core = FmCore::default();
+                let mut note = Dx7Note::default();
+                note.init(&t, &patch, 60, 100);
+                let mut samples: Vec<f32> = Vec::new();
+                for _ in 0..400 {
+                    let mut buf = [0i32; N];
+                    note.compute(&t, &mut core, &mut buf, 1 << 23, 1 << 24, &ctrls);
+                    samples.extend(buf.iter().map(|&v| v as f32 / 16_777_216.0));
+                }
+                let sustained = &samples[8000..];
+                let rms = (sustained.iter().map(|&s| f64::from(s) * f64::from(s)).sum::<f64>()
+                    / sustained.len() as f64)
+                    .sqrt();
+                let f0 = 440.0 * 2f64.powf((60.0 - 69.0) / 12.0);
+                let top = (1..=8)
+                    .max_by(|&a, &b| {
+                        crate::testutil::goertzel(sustained, 48000.0, f0 * f64::from(a))
+                            .total_cmp(&crate::testutil::goertzel(
+                                sustained,
+                                48000.0,
+                                f0 * f64::from(b),
+                            ))
+                    })
+                    .unwrap_or(1);
+                format!("alg {alg:>2}: rms={rms:.3} top=h{top}")
+            })
+            .collect();
+        expect![[r#"
+            alg  1: rms=1.482 top=h1
+            alg  2: rms=1.504 top=h1
+            alg  3: rms=1.555 top=h1
+            alg  4: rms=1.555 top=h1
+            alg  5: rms=1.653 top=h1
+            alg  6: rms=1.653 top=h1
+            alg  7: rms=1.193 top=h1
+            alg  8: rms=1.191 top=h1
+            alg  9: rms=1.199 top=h1
+            alg 10: rms=1.303 top=h1
+            alg 11: rms=1.516 top=h1
+            alg 12: rms=1.233 top=h1
+            alg 13: rms=1.223 top=h1
+            alg 14: rms=1.408 top=h1
+            alg 15: rms=1.435 top=h1
+            alg 16: rms=1.272 top=h1
+            alg 17: rms=1.245 top=h1
+            alg 18: rms=1.402 top=h1
+            alg 19: rms=1.407 top=h1
+            alg 20: rms=1.598 top=h1
+            alg 21: rms=1.434 top=h1
+            alg 22: rms=1.819 top=h1
+            alg 23: rms=1.837 top=h1
+            alg 24: rms=2.225 top=h1
+            alg 25: rms=2.149 top=h1
+            alg 26: rms=1.609 top=h1
+            alg 27: rms=1.567 top=h1
+            alg 28: rms=1.431 top=h1
+            alg 29: rms=2.110 top=h1
+            alg 30: rms=1.675 top=h1
+            alg 31: rms=2.175 top=h1
+            alg 32: rms=2.134 top=h1"#]].assert_eq(&lines.join("\n"));
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn velocity_curve_table() {
+        // scale_velocity in microsteps: monotonic in velocity, spread
+        // grows with sensitivity, ~0 at velocity 100-ish for low sens.
+        let lines: Vec<String> = [0, 2, 4, 7]
+            .iter()
+            .map(|&sens| {
+                let row: Vec<String> = (0..=127)
+                    .step_by(21)
+                    .map(|vel| format!("{:>6}", scale_velocity(vel, sens)))
+                    .collect();
+                format!("sens {sens}: {}", row.join(" "))
+            })
+            .collect();
+        expect![[r#"
+            sens 0:      0      0      0      0      0      0      0
+            sens 2:   -944   -384   -224   -128    -48     16     64
+            sens 4:  -1904   -768   -464   -272    -96     32    128
+            sens 7:  -3344  -1344   -800   -464   -160     48    224"#]].assert_eq(&lines.join("\n"));
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn rate_scaling_table() {
+        // scale_rate: qRate delta grows with note and sensitivity — high
+        // keys decay faster, zero below the knee (note 21).
+        let lines: Vec<String> = [0, 3, 7]
+            .iter()
+            .map(|&sens| {
+                let row: Vec<String> = [0, 21, 36, 60, 84, 108, 127]
+                    .iter()
+                    .map(|&note| format!("{:>3}", scale_rate(note, sens)))
+                    .collect();
+                format!("sens {sens}: {}", row.join(" "))
+            })
+            .collect();
+        expect![[r#"
+            sens 0:   0   0   0   0   0   0   0
+            sens 3:   0   0   1   4   7  10  11
+            sens 7:   0   0   4  11  18  25  27"#]].assert_eq(&lines.join("\n"));
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn level_scaling_curves() {
+        // scale_level across the keyboard for each curve shape, breakpoint
+        // C3 (39), depth 50. -LIN/-EXP fall away from the breakpoint;
+        // +LIN/+EXP rise; the exponential curves accelerate.
+        let notes = [0, 20, 39, 60, 80, 100, 127];
+        let lines: Vec<String> = [(0, "-LIN"), (1, "-EXP"), (2, "+EXP"), (3, "+LIN")]
+            .iter()
+            .map(|&(curve, name)| {
+                let row: Vec<String> = notes
+                    .iter()
+                    .map(|&n| format!("{:>5}", scale_level(n, 39, 50, 50, curve, curve)))
+                    .collect();
+                format!("{name}: {}", row.join(" "))
+            })
+            .collect();
+        expect![[r#"
+            -LIN:   -76   -48   -24    -4   -32   -60   -96
+            -EXP:   -28    -8    -3     0    -4   -13   -63
+            +EXP:    28     8     3     0     4    13    63
+            +LIN:    76    48    24     4    32    60    96"#]].assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -433,6 +748,8 @@ mod tests {
             note.compute(&t, &mut core, &mut buf, 1 << 23, 1 << 24, &ctrls);
         }
         probe("after release", &note, &buf);
-        expect![[""]].assert_eq(&lines.join("\n"));
+        expect![[r#"
+            held: playing=true peak=1.9995
+            after release: playing=false peak=0.0000"#]].assert_eq(&lines.join("\n"));
     }
 }

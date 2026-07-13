@@ -140,20 +140,84 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn rom1a_names() {
-        check_bank(ROM1A, expect![[""]]);
+        check_bank(ROM1A, expect![[r#"
+             0: BRASS   1
+             1: BRASS   2
+             2: BRASS   3
+             3: STRINGS 1
+             4: STRINGS 2
+             5: STRINGS 3
+             6: ORCHESTRA
+             7: PIANO   1
+             8: PIANO   2
+             9: PIANO   3
+            10: E.PIANO 1
+            11: GUITAR  1
+            12: GUITAR  2
+            13: SYN-LEAD 1
+            14: BASS    1
+            15: BASS    2
+            16: E.ORGAN 1
+            17: PIPES   1
+            18: HARPSICH 1
+            19: CLAV    1
+            20: VIBE    1
+            21: MARIMBA
+            22: KOTO
+            23: FLUTE   1
+            24: ORCH-CHIME
+            25: TUB BELLS
+            26: STEEL DRUM
+            27: TIMPANI
+            28: REFS WHISL
+            29: VOICE   1
+            30: TRAIN
+            31: TAKE OFF"#]]);
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn raw_4096_bytes_accepted() {
         // The same cartridge without the sysex frame parses identically.
-        check_bank(&ROM1A[6..6 + BULK_DATA_SIZE], expect![[""]]);
+        check_bank(&ROM1A[6..6 + BULK_DATA_SIZE], expect![[r#"
+             0: BRASS   1
+             1: BRASS   2
+             2: BRASS   3
+             3: STRINGS 1
+             4: STRINGS 2
+             5: STRINGS 3
+             6: ORCHESTRA
+             7: PIANO   1
+             8: PIANO   2
+             9: PIANO   3
+            10: E.PIANO 1
+            11: GUITAR  1
+            12: GUITAR  2
+            13: SYN-LEAD 1
+            14: BASS    1
+            15: BASS    2
+            16: E.ORGAN 1
+            17: PIPES   1
+            18: HARPSICH 1
+            19: CLAV    1
+            20: VIBE    1
+            21: MARIMBA
+            22: KOTO
+            23: FLUTE   1
+            24: ORCH-CHIME
+            25: TUB BELLS
+            26: STEEL DRUM
+            27: TIMPANI
+            28: REFS WHISL
+            29: VOICE   1
+            30: TRAIN
+            31: TAKE OFF"#]]);
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn wrong_size_rejected() {
-        check_bank(&ROM1A[..100], expect![[""]]);
+        check_bank(&ROM1A[..100], expect!["BadSize(100)"]);
     }
 
     #[test]
@@ -185,6 +249,15 @@ mod tests {
                 &v[off + 4..off + 8],
             ));
         }
-        expect![[""]].assert_eq(&lines.join("\n"));
+        expect![[r#"
+            name: E.PIANO 1
+            algorithm: 5 feedback: 6
+            transpose: +0
+            op6: mode=0 coarse=1 fine=0 detune=+7 outlevel=79 rates=[95, 29, 20, 50] levels=[99, 95, 0, 0]
+            op5: mode=0 coarse=1 fine=0 detune=-7 outlevel=99 rates=[95, 20, 20, 50] levels=[99, 95, 0, 0]
+            op4: mode=0 coarse=1 fine=0 detune=+0 outlevel=89 rates=[95, 29, 20, 50] levels=[99, 95, 0, 0]
+            op3: mode=0 coarse=1 fine=0 detune=+0 outlevel=99 rates=[95, 20, 20, 50] levels=[99, 95, 0, 0]
+            op2: mode=0 coarse=14 fine=0 detune=+0 outlevel=58 rates=[95, 50, 35, 78] levels=[99, 75, 0, 0]
+            op1: mode=0 coarse=1 fine=0 detune=+3 outlevel=99 rates=[96, 25, 25, 67] levels=[99, 75, 0, 0]"#]].assert_eq(&lines.join("\n"));
     }
 }
