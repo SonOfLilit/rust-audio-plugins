@@ -182,7 +182,9 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn landmarks_48k() {
-        check_tables(48000.0, expect![[r#"
+        check_tables(
+            48000.0,
+            expect![[r#"
             sin(0) = +0.000000
             sin(1/4) = +1.000000
             sin(1/2) = +0.000000
@@ -196,7 +198,8 @@ mod tests {
             A4 = 440.00Hz
             A3 = 220.00Hz
             A1 = 55.00Hz
-            C4 = 261.62Hz"#]]);
+            C4 = 261.62Hz"#]],
+        );
     }
 
     #[test]
@@ -204,7 +207,9 @@ mod tests {
     fn landmarks_44k1() {
         // The frequency table depends on the sample rate; pitches must
         // come out identical in Hz.
-        check_tables(44100.0, expect![[r#"
+        check_tables(
+            44100.0,
+            expect![[r#"
             sin(0) = +0.000000
             sin(1/4) = +1.000000
             sin(1/2) = +0.000000
@@ -218,6 +223,7 @@ mod tests {
             A4 = 440.00Hz
             A3 = 220.00Hz
             A1 = 55.00Hz
-            C4 = 261.62Hz"#]]);
+            C4 = 261.62Hz"#]],
+        );
     }
 }

@@ -102,7 +102,8 @@ fn osc_freq(midinote: i32, mode: i32, coarse: i32, fine: i32, detune: i32) -> i3
         logfreq = midinote_to_logfreq(midinote);
 
         // Measured from a real DX7 by the Dexed project.
-        let detune_ratio = 0.0209 * (-0.396 * (f64::from(logfreq) / f64::from(1 << 24))).exp() / 7.0;
+        let detune_ratio =
+            0.0209 * (-0.396 * (f64::from(logfreq) / f64::from(1 << 24))).exp() / 7.0;
         logfreq += (detune_ratio * f64::from(logfreq) * f64::from(detune - 7)) as i32;
 
         logfreq += COARSEMUL[(coarse & 31) as usize];
@@ -217,7 +218,11 @@ impl Dx7Note {
         self.pitchenv.set(t, rates, levels);
         self.algorithm = usize::from(patch[134]);
         let feedback = i32::from(patch[135]);
-        self.fb_shift = if feedback == 0 { 16 } else { FEEDBACK_BITDEPTH - feedback };
+        self.fb_shift = if feedback == 0 {
+            16
+        } else {
+            FEEDBACK_BITDEPTH - feedback
+        };
         self.pitchmoddepth = (i32::from(patch[139]) * 165) >> 6;
         self.pitchmodsens = i32::from(PITCHMODSENSTAB[(patch[143] & 7) as usize]);
         self.ampmoddepth = (i32::from(patch[140]) * 165) >> 6;
@@ -248,7 +253,11 @@ impl Dx7Note {
         let mut pb = ctrls.pitch_bend - 0x2000;
         if pb != 0 {
             if ctrls.pitch_step == 0 {
-                let range = if pb >= 0 { ctrls.pitch_range_up } else { ctrls.pitch_range_dn };
+                let range = if pb >= 0 {
+                    ctrls.pitch_range_up
+                } else {
+                    ctrls.pitch_range_dn
+                };
                 pb = ((f64::from(pb << 11)) * f64::from(range) / 12.0) as i32;
             } else {
                 let stp = 12 / ctrls.pitch_step;
@@ -282,8 +291,7 @@ impl Dx7Note {
 
             let mut level = self.env[op].getsample(t);
             if self.ampmodsens[op] != 0 {
-                let sensamp =
-                    ((u64::from(amd_mod) * (self.ampmodsens[op] as u64)) >> 24) as u32;
+                let sensamp = ((u64::from(amd_mod) * (self.ampmodsens[op] as u64)) >> 24) as u32;
 
                 // The original notes this needs real tuning ("TODO: mehhh").
                 let pt = ((f64::from(sensamp) / 262144.0) * 0.07 + 12.2).exp() as u64;
@@ -292,7 +300,14 @@ impl Dx7Note {
             }
             self.params[op].level_in = level;
         }
-        core.render(t, buf, &mut self.params, self.algorithm, &mut self.fb_buf, self.fb_shift);
+        core.render(
+            t,
+            buf,
+            &mut self.params,
+            self.algorithm,
+            &mut self.fb_buf,
+            self.fb_shift,
+        );
     }
 
     pub fn keyup(&mut self, t: &Tables) {
@@ -328,8 +343,8 @@ mod tests {
         for op in 0..6 {
             let off = op * 21;
             patch[off..off + 4].copy_from_slice(&[99, 99, 99, 99]); // rates
-            // L4=0: a DX7 envelope with L4>0 sustains FOREVER after keyup
-            // (that's hardware behavior, see the release test).
+                                                                    // L4=0: a DX7 envelope with L4>0 sustains FOREVER after keyup
+                                                                    // (that's hardware behavior, see the release test).
             patch[off + 4..off + 8].copy_from_slice(&[99, 99, 99, 0]); // levels
             patch[off + 16] = 0; // output level: off unless listed
             patch[off + 18] = 1; // coarse = 1x
@@ -382,7 +397,10 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn algorithm_32_single_carrier_is_pure_sine() {
         // Alg 32: six parallel carriers; only op1 on → one spectral line.
-        check_spectrum(&synth_patch(32, 0, &[(1, 1, 99)]), 69, expect![[r#"
+        check_spectrum(
+            &synth_patch(32, 0, &[(1, 1, 99)]),
+            69,
+            expect![[r#"
             f0=440.0Hz
             h1 0.0dB
             h2 -
@@ -391,7 +409,8 @@ mod tests {
             h5 -
             h6 -
             h7 -
-            h8 -"#]]);
+            h8 -"#]],
+        );
     }
 
     #[test]
@@ -399,7 +418,10 @@ mod tests {
     fn algorithm_1_modulator_creates_sidebands() {
         // Alg 1: op2 (ratio 2) modulates carrier op1 (ratio 1) → energy
         // appears at h1±2k: odd harmonics 1, 3, 5…
-        check_spectrum(&synth_patch(1, 0, &[(1, 1, 99), (2, 2, 75)]), 69, expect![[r#"
+        check_spectrum(
+            &synth_patch(1, 0, &[(1, 1, 99), (2, 2, 75)]),
+            69,
+            expect![[r#"
             f0=440.0Hz
             h1 0.0dB
             h2 -
@@ -408,7 +430,8 @@ mod tests {
             h5 -20.5dB
             h6 -
             h7 -
-            h8 -"#]]);
+            h8 -"#]],
+        );
     }
 
     #[test]
@@ -416,7 +439,10 @@ mod tests {
     fn feedback_widens_the_spectrum() {
         // Alg 32 with feedback 7 on operator 6 (the feedback op of alg
         // 32): self-modulation approaches a sawtooth — all harmonics.
-        check_spectrum(&synth_patch(32, 7, &[(6, 1, 99)]), 69, expect![[r#"
+        check_spectrum(
+            &synth_patch(32, 7, &[(6, 1, 99)]),
+            69,
+            expect![[r#"
             f0=440.0Hz
             h1 0.0dB
             h2 -6.4dB
@@ -425,14 +451,18 @@ mod tests {
             h5 -
             h6 -16.7dB
             h7 -19.2dB
-            h8 -14.7dB"#]]);
+            h8 -14.7dB"#]],
+        );
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn coarse_2_doubles_pitch() {
         // Single carrier at coarse 2: all energy at h2 of the note's f0.
-        check_spectrum(&synth_patch(32, 0, &[(1, 2, 99)]), 69, expect![[r#"
+        check_spectrum(
+            &synth_patch(32, 0, &[(1, 2, 99)]),
+            69,
+            expect![[r#"
             f0=440.0Hz
             h1 -
             h2 0.0dB
@@ -441,7 +471,8 @@ mod tests {
             h5 -
             h6 -
             h7 -
-            h8 -"#]]);
+            h8 -"#]],
+        );
     }
 
     /// Render with a real LFO and snapshot the modulation it produces, in
@@ -511,9 +542,12 @@ mod tests {
     fn no_modulation_is_steady() {
         // PMD/AMD zero: constant pitch, flat amplitude — the baseline the
         // modulated variants are read against.
-        check_modulation((35, 0, 0, 7, 3), expect![[r#"
+        check_modulation(
+            (35, 0, 0, 7, 3),
+            expect![[r#"
             freq 436..440Hz
-            peak 1.768..1.768"#]]);
+            peak 1.768..1.768"#]],
+        );
     }
 
     #[test]
@@ -521,12 +555,18 @@ mod tests {
     fn lfo_pitch_modulation_is_vibrato() {
         // PMD 99 at sensitivity 3 vs 7: the frequency range widens with
         // sensitivity, centred on A4; amplitude stays flat.
-        check_modulation((35, 99, 0, 3, 0), expect![[r#"
+        check_modulation(
+            (35, 99, 0, 3, 0),
+            expect![[r#"
             freq 400..480Hz
-            peak 2.000..2.000"#]]);
-        check_modulation((35, 99, 0, 7, 0), expect![[r#"
+            peak 2.000..2.000"#]],
+        );
+        check_modulation(
+            (35, 99, 0, 7, 0),
+            expect![[r#"
             freq 221..873Hz
-            peak 2.000..2.000"#]]);
+            peak 2.000..2.000"#]],
+        );
     }
 
     #[test]
@@ -536,12 +576,18 @@ mod tests {
         // sensitivity. (At sensitivity 3 the signal dips to near-silence,
         // where zero-crossing pitch estimates degenerate — the freq line
         // is meaningless noise there; read the peak line.)
-        check_modulation((35, 0, 99, 0, 1), expect![[r#"
+        check_modulation(
+            (35, 0, 99, 0, 1),
+            expect![[r#"
             freq 436..440Hz
-            peak 1.496..1.768"#]]);
-        check_modulation((35, 0, 99, 0, 3), expect![[r#"
+            peak 1.496..1.768"#]],
+        );
+        check_modulation(
+            (35, 0, 99, 0, 3),
+            expect![[r#"
             freq 88..649Hz
-            peak 0.069..1.768"#]]);
+            peak 0.069..1.768"#]],
+        );
     }
 
     #[test]
@@ -587,7 +633,14 @@ mod tests {
                 let patch = synth_patch(
                     alg,
                     4,
-                    &[(1, 1, 99), (2, 2, 80), (3, 1, 85), (4, 3, 70), (5, 1, 80), (6, 2, 60)],
+                    &[
+                        (1, 1, 99),
+                        (2, 2, 80),
+                        (3, 1, 85),
+                        (4, 3, 70),
+                        (5, 1, 80),
+                        (6, 2, 60),
+                    ],
                 );
                 let mut core = FmCore::default();
                 let mut note = Dx7Note::default();
@@ -599,18 +652,18 @@ mod tests {
                     samples.extend(buf.iter().map(|&v| v as f32 / 16_777_216.0));
                 }
                 let sustained = &samples[8000..];
-                let rms = (sustained.iter().map(|&s| f64::from(s) * f64::from(s)).sum::<f64>()
+                let rms = (sustained
+                    .iter()
+                    .map(|&s| f64::from(s) * f64::from(s))
+                    .sum::<f64>()
                     / sustained.len() as f64)
                     .sqrt();
                 let f0 = 440.0 * 2f64.powf((60.0 - 69.0) / 12.0);
                 let top = (1..=8)
                     .max_by(|&a, &b| {
-                        crate::testutil::goertzel(sustained, 48000.0, f0 * f64::from(a))
-                            .total_cmp(&crate::testutil::goertzel(
-                                sustained,
-                                48000.0,
-                                f0 * f64::from(b),
-                            ))
+                        crate::testutil::goertzel(sustained, 48000.0, f0 * f64::from(a)).total_cmp(
+                            &crate::testutil::goertzel(sustained, 48000.0, f0 * f64::from(b)),
+                        )
                     })
                     .unwrap_or(1);
                 format!("alg {alg:>2}: rms={rms:.3} top=h{top}")
@@ -648,7 +701,8 @@ mod tests {
             alg 29: rms=2.110 top=h1
             alg 30: rms=1.675 top=h1
             alg 31: rms=2.175 top=h1
-            alg 32: rms=2.134 top=h1"#]].assert_eq(&lines.join("\n"));
+            alg 32: rms=2.134 top=h1"#]]
+        .assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -670,7 +724,8 @@ mod tests {
             sens 0:      0      0      0      0      0      0      0
             sens 2:   -944   -384   -224   -128    -48     16     64
             sens 4:  -1904   -768   -464   -272    -96     32    128
-            sens 7:  -3344  -1344   -800   -464   -160     48    224"#]].assert_eq(&lines.join("\n"));
+            sens 7:  -3344  -1344   -800   -464   -160     48    224"#]]
+        .assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -691,7 +746,8 @@ mod tests {
         expect![[r#"
             sens 0:   0   0   0   0   0   0   0
             sens 3:   0   0   1   4   7  10  11
-            sens 7:   0   0   4  11  18  25  27"#]].assert_eq(&lines.join("\n"));
+            sens 7:   0   0   4  11  18  25  27"#]]
+        .assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -715,7 +771,8 @@ mod tests {
             -LIN:   -76   -48   -24    -4   -32   -60   -96
             -EXP:   -28    -8    -3     0    -4   -13   -63
             +EXP:    28     8     3     0     4    13    63
-            +LIN:    76    48    24     4    32    60    96"#]].assert_eq(&lines.join("\n"));
+            +LIN:    76    48    24     4    32    60    96"#]]
+        .assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -750,6 +807,7 @@ mod tests {
         probe("after release", &note, &buf);
         expect![[r#"
             held: playing=true peak=1.9995
-            after release: playing=false peak=0.0000"#]].assert_eq(&lines.join("\n"));
+            after release: playing=false peak=0.0000"#]]
+        .assert_eq(&lines.join("\n"));
     }
 }

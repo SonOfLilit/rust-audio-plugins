@@ -140,7 +140,9 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn rom1a_names() {
-        check_bank(ROM1A, expect![[r#"
+        check_bank(
+            ROM1A,
+            expect![[r#"
              0: BRASS   1
              1: BRASS   2
              2: BRASS   3
@@ -172,14 +174,17 @@ mod tests {
             28: REFS WHISL
             29: VOICE   1
             30: TRAIN
-            31: TAKE OFF"#]]);
+            31: TAKE OFF"#]],
+        );
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn raw_4096_bytes_accepted() {
         // The same cartridge without the sysex frame parses identically.
-        check_bank(&ROM1A[6..6 + BULK_DATA_SIZE], expect![[r#"
+        check_bank(
+            &ROM1A[6..6 + BULK_DATA_SIZE],
+            expect![[r#"
              0: BRASS   1
              1: BRASS   2
              2: BRASS   3
@@ -211,7 +216,8 @@ mod tests {
             28: REFS WHISL
             29: VOICE   1
             30: TRAIN
-            31: TAKE OFF"#]]);
+            31: TAKE OFF"#]],
+        );
     }
 
     #[test]

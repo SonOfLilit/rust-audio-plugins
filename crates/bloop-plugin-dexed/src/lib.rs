@@ -48,8 +48,18 @@ struct ParamDef {
 }
 
 static PARAM_DEFS: [ParamDef; PARAM_COUNT] = [
-    ParamDef { name: "Volume", min: 0.0, max: 1.0, default: 1.0 },
-    ParamDef { name: "Preset", min: 0.0, max: 31.0, default: 0.0 },
+    ParamDef {
+        name: "Volume",
+        min: 0.0,
+        max: 1.0,
+        default: 1.0,
+    },
+    ParamDef {
+        name: "Preset",
+        min: 0.0,
+        max: 31.0,
+        default: 0.0,
+    },
 ];
 
 #[derive(Clone, Copy, Default)]
@@ -213,9 +223,19 @@ impl Plugin for DexedPlugin {
     fn param_info(&self, index: usize) -> ParamInfo {
         if index < PARAM_COUNT {
             let d = &PARAM_DEFS[index];
-            ParamInfo { name: d.name, default: d.default, min: d.min, max: d.max }
+            ParamInfo {
+                name: d.name,
+                default: d.default,
+                min: d.min,
+                max: d.max,
+            }
         } else {
-            ParamInfo { name: "?", default: 0.0, min: 0.0, max: 1.0 }
+            ParamInfo {
+                name: "?",
+                default: 0.0,
+                min: 0.0,
+                max: 1.0,
+            }
         }
     }
 
@@ -398,7 +418,11 @@ mod tests {
     }
 
     fn bend(value: f32) -> Ev {
-        Ev::Note(NoteEvent::PitchBend { time: 0, channel: 0, value })
+        Ev::Note(NoteEvent::PitchBend {
+            time: 0,
+            channel: 0,
+            value,
+        })
     }
 
     /// Render `num_blocks` 128-sample blocks with scheduled events;
@@ -469,7 +493,10 @@ mod tests {
         let samples = render_blocks(&mut synth, 64, events);
         // Skip the attack (first 16 blocks), analyze the rest.
         let sustained = &samples[16 * BLOCK..];
-        expect.assert_eq(&format!("dominant={}Hz", dominant_freq(sustained, f64::from(SR))));
+        expect.assert_eq(&format!(
+            "dominant={}Hz",
+            dominant_freq(sustained, f64::from(SR))
+        ));
     }
 
     const EPIANO: f32 = 10.0; // ROM1A "E.PIANO 1"
@@ -529,7 +556,11 @@ mod tests {
     fn marimba_decays_naturally() {
         // MARIMBA decays to silence on its own even while the key is held
         // (L4 = 0 percussive envelope).
-        check(MARIMBA, &[(0, note_on(60, 1.0))], 96, expect![[r#"
+        check(
+            MARIMBA,
+            &[(0, note_on(60, 1.0))],
+            96,
+            expect![[r#"
             w 0 peak=0.2137
             w 1 peak=0.2078
             w 2 peak=0.1957
@@ -541,7 +572,8 @@ mod tests {
             w 8 peak=0.1150
             w 9 peak=0.1057
             w10 peak=0.0964
-            w11 peak=0.0822"#]]);
+            w11 peak=0.0822"#]],
+        );
     }
 
     #[test]
@@ -587,7 +619,8 @@ mod tests {
             vel 1.0: peak=0.3919
             vel 0.7: peak=0.2568
             vel 0.4: peak=0.2539
-            vel 0.1: peak=0.1959"#]].assert_eq(&lines.join("\n"));
+            vel 0.1: peak=0.1959"#]]
+        .assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -600,7 +633,11 @@ mod tests {
         let samples = render_blocks(
             &mut synth,
             64,
-            &[(0, note_on(60, 1.0)), (0, note_on(64, 1.0)), (0, note_on(67, 1.0))],
+            &[
+                (0, note_on(60, 1.0)),
+                (0, note_on(64, 1.0)),
+                (0, note_on(67, 1.0)),
+            ],
         );
         let sustained = &samples[16 * BLOCK..];
         let mags: Vec<String> = [261.63, 329.63, 392.0, 466.16]
@@ -614,7 +651,8 @@ mod tests {
             261.63Hz sounding
             329.63Hz sounding
             392Hz sounding
-            466.16Hz -"#]].assert_eq(&mags.join("\n"));
+            466.16Hz -"#]]
+        .assert_eq(&mags.join("\n"));
     }
 
     #[test]
@@ -631,8 +669,11 @@ mod tests {
         // harmonic (or the organ's sub-octave) of another, so "stolen"
         // can't be masked by a surviving note's overtones.
         let notes: Vec<u8> = (0..10).map(|i| 60 + i).collect();
-        let mut events: Vec<(usize, Ev)> =
-            notes.iter().enumerate().map(|(i, &n)| (i * 2, note_on(n, 1.0))).collect();
+        let mut events: Vec<(usize, Ev)> = notes
+            .iter()
+            .enumerate()
+            .map(|(i, &n)| (i * 2, note_on(n, 1.0)))
+            .collect();
         events.extend(notes.iter().map(|&n| (60usize, note_off(n))));
         let samples = render_blocks(&mut synth, 120, &events);
         let sustained = &samples[32 * BLOCK..56 * BLOCK];
@@ -643,7 +684,11 @@ mod tests {
                 let mag = goertzel(sustained, f64::from(SR), hz);
                 format!(
                     "note {n}: {}",
-                    if mag > 0.005 { "sounding" } else { "stolen/quiet" }
+                    if mag > 0.005 {
+                        "sounding"
+                    } else {
+                        "stolen/quiet"
+                    }
                 )
             })
             .collect();
@@ -661,7 +706,8 @@ mod tests {
             note 67: sounding
             note 68: sounding
             note 69: sounding
-            tail peak after release: 0.0000"#]].assert_eq(&lines.join("\n"));
+            tail peak after release: 0.0000"#]]
+        .assert_eq(&lines.join("\n"));
     }
 
     #[test]
@@ -831,7 +877,8 @@ mod tests {
             REFS WHISL
             VOICE   1
             TRAIN
-            TAKE OFF"#]].assert_eq(&synth.preset_names().join("\n"));
+            TAKE OFF"#]]
+        .assert_eq(&synth.preset_names().join("\n"));
     }
 
     /// The Cargo.toml provenance comment must cite the same pinned

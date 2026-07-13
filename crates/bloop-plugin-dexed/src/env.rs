@@ -46,7 +46,14 @@ impl Env {
     /// `rates`/`levels` are DX7 parameters (0..99). `outlevel` is in
     /// microsteps (~0.023 dB, 99*32 nominal full scale); `rate_scaling` is
     /// in qRate units (0..63).
-    pub fn init(&mut self, t: &Tables, rates: [i32; 4], levels: [i32; 4], outlevel: i32, rate_scaling: i32) {
+    pub fn init(
+        &mut self,
+        t: &Tables,
+        rates: [i32; 4],
+        levels: [i32; 4],
+        outlevel: i32,
+        rate_scaling: i32,
+    ) {
         self.initialised = true;
         self.rates = rates;
         self.levels = levels;
@@ -348,6 +355,7 @@ mod tests {
             66 -> 94
             77 -> 105
             88 -> 116
-            99 -> 127"#]].assert_eq(&levels.join("\n"));
+            99 -> 127"#]]
+        .assert_eq(&levels.join("\n"));
     }
 }

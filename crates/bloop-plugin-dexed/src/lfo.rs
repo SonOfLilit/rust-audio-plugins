@@ -155,7 +155,11 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn triangle_at_rate_70() {
         // Rate 70 ≈ 16.37Hz per the hardware-measured table.
-        check_lfo([70, 0, 0, 0, 1, 0], 128, 8, expect![[r#"
+        check_lfo(
+            [70, 0, 0, 0, 1, 0],
+            128,
+            8,
+            expect![[r#"
             chunk    0: 0.951
             chunk    8: 0.558
             chunk   16: 0.166
@@ -172,13 +176,18 @@ mod tests {
             chunk  104: 0.153
             chunk  112: 0.546
             chunk  120: 0.939
-            period=41 chunks (~16.81Hz)"#]]);
+            period=41 chunks (~16.81Hz)"#]],
+        );
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn square_at_rate_70() {
-        check_lfo([70, 0, 0, 0, 1, 3], 128, 8, expect![[r#"
+        check_lfo(
+            [70, 0, 0, 0, 1, 3],
+            128,
+            8,
+            expect![[r#"
             chunk    0: 0.000
             chunk    8: 0.000
             chunk   16: 0.000
@@ -195,13 +204,18 @@ mod tests {
             chunk  104: 1.000
             chunk  112: 1.000
             chunk  120: 1.000
-            period=41 chunks (~16.81Hz)"#]]);
+            period=41 chunks (~16.81Hz)"#]],
+        );
     }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn sine_at_rate_70() {
-        check_lfo([70, 0, 0, 0, 1, 4], 128, 8, expect![[r#"
+        check_lfo(
+            [70, 0, 0, 0, 1, 4],
+            128,
+            8,
+            expect![[r#"
             chunk    0: 0.423
             chunk    8: 0.008
             chunk   16: 0.251
@@ -218,7 +232,8 @@ mod tests {
             chunk  104: 0.732
             chunk  112: 0.995
             chunk  120: 0.596
-            period=41 chunks (~16.81Hz)"#]]);
+            period=41 chunks (~16.81Hz)"#]],
+        );
     }
 
     #[test]
@@ -245,6 +260,7 @@ mod tests {
             chunk  240: delay=0.000
             chunk  280: delay=0.000
             chunk  320: delay=0.005
-            chunk  360: delay=0.092"#]].assert_eq(&lines.join("\n"));
+            chunk  360: delay=0.092"#]]
+        .assert_eq(&lines.join("\n"));
     }
 }

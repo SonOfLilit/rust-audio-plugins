@@ -208,9 +208,29 @@ impl FmCore {
                     if (flags & (FB_IN | FB_OUT)) == (FB_IN | FB_OUT) && feedback_shift < 16 {
                         // The self-modulating operator of the algorithm.
                         if outbus == 0 {
-                            compute_fb(t, output, phase, freq, gain1, gain2, fb_buf, feedback_shift, add);
+                            compute_fb(
+                                t,
+                                output,
+                                phase,
+                                freq,
+                                gain1,
+                                gain2,
+                                fb_buf,
+                                feedback_shift,
+                                add,
+                            );
                         } else {
-                            compute_fb(t, &mut self.buf[outbus - 1], phase, freq, gain1, gain2, fb_buf, feedback_shift, add);
+                            compute_fb(
+                                t,
+                                &mut self.buf[outbus - 1],
+                                phase,
+                                freq,
+                                gain1,
+                                gain2,
+                                fb_buf,
+                                feedback_shift,
+                                add,
+                            );
                         }
                     } else if outbus == 0 {
                         compute_pure(t, output, phase, freq, gain1, gain2, add);
@@ -226,7 +246,16 @@ impl FmCore {
                     if outbus == 0 {
                         compute(t, output, &input, phase, freq, gain1, gain2, add);
                     } else {
-                        compute(t, &mut self.buf[outbus - 1], &input, phase, freq, gain1, gain2, add);
+                        compute(
+                            t,
+                            &mut self.buf[outbus - 1],
+                            &input,
+                            phase,
+                            freq,
+                            gain1,
+                            gain2,
+                            add,
+                        );
                     }
                 }
                 has_contents[outbus] = true;
@@ -257,7 +286,13 @@ mod tests {
         let lines: Vec<String> = (0..32)
             .map(|alg| {
                 let ops: String = (0..6)
-                    .map(|op| if FmCore::is_carrier(alg, op) { 'C' } else { '.' })
+                    .map(|op| {
+                        if FmCore::is_carrier(alg, op) {
+                            'C'
+                        } else {
+                            '.'
+                        }
+                    })
                     .collect();
                 format!("alg {:>2}: {ops}", alg + 1)
             })
@@ -294,6 +329,7 @@ mod tests {
             alg 29: .C.CCC
             alg 30: C..CCC
             alg 31: .CCCCC
-            alg 32: CCCCCC"#]].assert_eq(&lines.join("\n"));
+            alg 32: CCCCCC"#]]
+        .assert_eq(&lines.join("\n"));
     }
 }
