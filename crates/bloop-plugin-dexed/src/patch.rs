@@ -61,6 +61,35 @@ pub fn unpack_patch(bulk: &[u8; PACKED_VOICE_SIZE]) -> [u8; VOICE_SIZE] {
     patch
 }
 
+/// The classic DX7 "INIT VOICE", in the unpacked engine layout: algorithm
+/// 1, no feedback, OP1 the sole carrier at ratio 1.0 / level 99, square
+/// envelopes (rates 99, levels 99/99/99/0), breakpoint C3, pitch EG flat
+/// at center, LFO at panel defaults, transpose 0. Every host param's
+/// declared default is this voice's byte — "Init" and "all defaults" are
+/// the same thing by construction.
+pub fn init_voice() -> [u8; VOICE_SIZE] {
+    let mut v = [0u8; VOICE_SIZE];
+    for op in 0..6 {
+        let p = op * 21;
+        v[p..p + 4].copy_from_slice(&[99, 99, 99, 99]); // EG rates
+        v[p + 4..p + 8].copy_from_slice(&[99, 99, 99, 0]); // EG levels
+        v[p + 8] = 39; // keyboard scale breakpoint (C3)
+        v[p + 18] = 1; // frequency coarse: ratio 1.0
+        v[p + 20] = 7; // detune center
+    }
+    v[5 * 21 + 16] = 99; // OP1 (last op slot) is the carrier, full level
+    v[126..130].copy_from_slice(&[99, 99, 99, 99]); // pitch EG rates
+    v[130..134].copy_from_slice(&[50, 50, 50, 50]); // pitch EG levels (flat)
+    v[136] = 1; // osc key sync
+    v[137] = 35; // LFO speed
+    v[141] = 1; // LFO key sync
+    v[143] = 3; // pitch mod sensitivity
+    v[144] = 24; // transpose center
+    v[145..155].copy_from_slice(b"INIT VOICE");
+    v[155] = 0x3f; // all six operators on
+    v
+}
+
 /// A 32-voice cartridge, stored packed.
 pub struct Bank {
     voices: [[u8; PACKED_VOICE_SIZE]; BANK_SIZE],
@@ -224,6 +253,57 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn wrong_size_rejected() {
         check_bank(&ROM1A[..100], expect!["BadSize(100)"]);
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn init_voice_interpretation() {
+        // The classic DX7 INIT VOICE: algorithm 1, no feedback, OP1 the
+        // sole carrier at ratio 1.0 / level 99, square envelopes
+        // (instant attack, full sustain, instant release), pitch EG flat
+        // at center, transpose 0. Same interpretation format as
+        // `unpack_epiano` so the two snapshots read side by side.
+        let v = init_voice();
+        let mut lines = vec![
+            format!("algorithm: {} feedback: {}", v[134] + 1, v[135]),
+            format!("transpose: {:+}", i32::from(v[144]) - 24),
+            format!(
+                "pitch eg: rates={:?} levels={:?}",
+                &v[126..130],
+                &v[130..134]
+            ),
+            format!(
+                "name: {}",
+                v[145..155].iter().map(|&b| b as char).collect::<String>()
+            ),
+            format!("op enable: {:#04x}", v[155]),
+        ];
+        for op in 0..6 {
+            let off = op * 21;
+            lines.push(format!(
+                "op{}: mode={} coarse={} fine={} detune={:+} outlevel={} rates={:?} levels={:?}",
+                6 - op,
+                v[off + 17],
+                v[off + 18],
+                v[off + 19],
+                i32::from(v[off + 20]) - 7,
+                v[off + 16],
+                &v[off..off + 4],
+                &v[off + 4..off + 8],
+            ));
+        }
+        expect![[r#"
+            algorithm: 1 feedback: 0
+            transpose: +0
+            pitch eg: rates=[99, 99, 99, 99] levels=[50, 50, 50, 50]
+            name: INIT VOICE
+            op enable: 0x3f
+            op6: mode=0 coarse=1 fine=0 detune=+0 outlevel=0 rates=[99, 99, 99, 99] levels=[99, 99, 99, 0]
+            op5: mode=0 coarse=1 fine=0 detune=+0 outlevel=0 rates=[99, 99, 99, 99] levels=[99, 99, 99, 0]
+            op4: mode=0 coarse=1 fine=0 detune=+0 outlevel=0 rates=[99, 99, 99, 99] levels=[99, 99, 99, 0]
+            op3: mode=0 coarse=1 fine=0 detune=+0 outlevel=0 rates=[99, 99, 99, 99] levels=[99, 99, 99, 0]
+            op2: mode=0 coarse=1 fine=0 detune=+0 outlevel=0 rates=[99, 99, 99, 99] levels=[99, 99, 99, 0]
+            op1: mode=0 coarse=1 fine=0 detune=+0 outlevel=99 rates=[99, 99, 99, 99] levels=[99, 99, 99, 0]"#]].assert_eq(&lines.join("\n"));
     }
 
     #[test]

@@ -200,6 +200,12 @@ impl Dx7Note {
             outlevel <<= 5;
             outlevel += scale_velocity(velocity, i32::from(patch[off + 15]));
             outlevel = outlevel.max(0);
+            // Operator switch (byte 155, bit per op slot): a disabled
+            // operator contributes nothing — carrier or modulator — so its
+            // envelope drives to the floor regardless of level scaling.
+            if patch[155] >> op & 1 == 0 {
+                outlevel = 0;
+            }
             let rate_scaling = scale_rate(midinote, i32::from(patch[off + 13]));
             self.env[op].init(t, rates, levels, outlevel, rate_scaling);
 
