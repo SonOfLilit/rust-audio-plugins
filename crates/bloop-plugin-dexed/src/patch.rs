@@ -20,13 +20,24 @@ const BULK_DATA_SIZE: usize = PACKED_VOICE_SIZE * BANK_SIZE; // 4096
 const SYSEX_SIZE: usize = BULK_DATA_SIZE + 8; // F0 43 00 09 20 00 …data… checksum F7
 
 /// Number of built-in cartridges.
-pub const NUM_BANKS: usize = 11;
+pub const NUM_BANKS: usize = 12;
+
+/// Voices in the drum kit — the only partial bank (its remaining slots
+/// are INIT VOICE padding, hidden by `voices`).
+const DRUMS_VOICES: usize = 7;
+
+/// Total real voices across all built-in cartridges. Only the LAST bank
+/// may be partial — preset index math (bank = preset / [`BANK_SIZE`])
+/// relies on every earlier bank being full (test-guarded).
+pub const NUM_LIBRARY_VOICES: usize = (NUM_BANKS - 1) * BANK_SIZE + DRUMS_VOICES;
 
 /// One built-in cartridge: display name, short tag (used in browser
-/// filter labels and composite voice names), and the raw sysex dump.
+/// filter labels and composite voice names), how many of its 32 slots
+/// hold real voices, and the raw sysex dump.
 pub struct BankInfo {
     pub name: &'static str,
     pub short: &'static str,
+    pub voices: usize,
     pub data: &'static [u8],
 }
 
@@ -34,62 +45,85 @@ pub struct BankInfo {
 /// [`BANK_SIZE`] + voice): the eight original Yamaha DX7 factory ROMs
 /// (ROM1A "BRASS 1" … ROM4B), from the original-cartridge collection at
 /// yamahablackboxes.com, followed by the three Finetales curated banks
-/// (EPs & bells / plucks, basses & brass / strings, pads etc.).
+/// (EPs & bells / plucks, basses & brass / strings, pads etc.) and a
+/// curated drum kit.
 pub static BANKS: [BankInfo; NUM_BANKS] = [
     BankInfo {
         name: "ROM1A",
         short: "1A",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM1A.syx"),
     },
     BankInfo {
         name: "ROM1B",
         short: "1B",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM1B.syx"),
     },
     BankInfo {
         name: "ROM2A",
         short: "2A",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM2A.syx"),
     },
     BankInfo {
         name: "ROM2B",
         short: "2B",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM2B.syx"),
     },
     BankInfo {
         name: "ROM3A",
         short: "3A",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM3A.syx"),
     },
     BankInfo {
         name: "ROM3B",
         short: "3B",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM3B.syx"),
     },
     BankInfo {
         name: "ROM4A",
         short: "4A",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM4A.syx"),
     },
     BankInfo {
         name: "ROM4B",
         short: "4B",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/ROM4B.syx"),
     },
     BankInfo {
         name: "Finetales 1",
         short: "FT1",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/Finetales1.syx"),
     },
     BankInfo {
         name: "Finetales 2",
         short: "FT2",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/Finetales2.syx"),
     },
     BankInfo {
         name: "Finetales 3",
         short: "FT3",
+        voices: BANK_SIZE,
         data: include_bytes!("../assets/Finetales3.syx"),
+    },
+    // A curated drum kit, voices extracted from the Dexed cartridge
+    // collection (hsjp.eu/downloads/Dexed/Dexed_cart_1.0.zip): KICK DRUM
+    // (Yamaha DX5A2), Swissnare (Yamaha DX7IIFD 32B), SYNT TOM 1 (Yamaha
+    // YAMAHA05), DMX TOMS 1 + HANDCLAPS5 (CASTLE1), **tom 2** (drums CW),
+    // Hi-Hat 1 (DRUMS04).
+    BankInfo {
+        name: "Drums",
+        short: "DRM",
+        voices: DRUMS_VOICES,
+        data: include_bytes!("../assets/Drums.syx"),
     },
 ];
 
@@ -248,7 +282,7 @@ mod tests {
             .enumerate()
             .map(|(b, info)| {
                 let bank = Bank::builtin(b);
-                let names: Vec<String> = (0..BANK_SIZE).map(|i| bank.name(i)).collect();
+                let names: Vec<String> = (0..info.voices).map(|i| bank.name(i)).collect();
                 let rows: Vec<String> = names
                     .chunks(8)
                     .map(|row| {
@@ -318,7 +352,9 @@ mod tests {
               Airblower  Sukiyaki   HarvestFLT Low Strgs  High Strgs SloSwell   Clouds Pad Ice Pad
               Cascade    Sensitar   Curved Air Soft Pond  Hi Lyz     AnaAtkStr  Jarre Pad  Ondes Pad
               Vollenweid PPG PadFX  Ana Pad    Thin Atmos Soft Space Ens Pad    Warm Pad   Phaze Pad
-              Chip Pizz  12 String  Muted Gtr  PipeOrgan1 PipeOrgan2 Hrpsichord Rigel EP/B BakketDrum"#]].assert_eq(&text);
+              Chip Pizz  12 String  Muted Gtr  PipeOrgan1 PipeOrgan2 Hrpsichord Rigel EP/B BakketDrum
+            Drums (DRM)
+              KICK DRUM  Swissnare  SYNT TOM 1 DMX TOMS 1 HANDCLAPS5 **tom 2**  Hi-Hat 1"#]].assert_eq(&text);
     }
 
     #[test]

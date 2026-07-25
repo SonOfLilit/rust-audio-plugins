@@ -16,8 +16,8 @@ mod pitchenv;
 mod tables;
 
 pub use patch::{
-    init_voice, Bank, BankError, BankInfo, BANKS, BANK_SIZE, NUM_BANKS, PACKED_VOICE_SIZE,
-    VOICE_SIZE,
+    init_voice, Bank, BankError, BankInfo, BANKS, BANK_SIZE, NUM_BANKS, NUM_LIBRARY_VOICES,
+    PACKED_VOICE_SIZE, VOICE_SIZE,
 };
 
 /// The Dexed revision whose `Source/msfa` engine this crate is a port of.
@@ -55,10 +55,10 @@ pub const PARAM_COUNT: usize = PARAM_OP_ENABLE_BASE + 6;
 
 /// Library size: every voice of the built-in cartridges plus the Init
 /// voice. Presets are bank-major: preset = bank × 32 + voice, in
-/// [`BANKS`] order, with Init last.
-pub const PRESET_COUNT: usize = NUM_BANKS * BANK_SIZE + 1;
+/// [`BANKS`] order (the last bank is partial), with Init last.
+pub const PRESET_COUNT: usize = NUM_LIBRARY_VOICES + 1;
 /// The Init preset (all params at their defaults — the DX7 INIT VOICE).
-pub const PRESET_INIT: usize = NUM_BANKS * BANK_SIZE;
+pub const PRESET_INIT: usize = NUM_LIBRARY_VOICES;
 
 /// The unpacked voice a preset index selects (out-of-range clamps to
 /// Init). The single library lookup behind both preset loads and the UI
@@ -741,11 +741,11 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn preset_library_boundaries() {
         // The preset index is bank * 32 + voice with Init last: 31→32
-        // crosses ROM1A→ROM1B, 256 starts Finetales 1, 351 is the last
-        // Finetales 3 voice, 352 is Init, and out-of-range clamps to
-        // Init. Names and algorithms come through `preset_voice`, the
-        // same lookup `load_preset` plays.
-        let text = [0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 400]
+        // crosses ROM1A→ROM1B, 256 starts Finetales 1, 352 starts the
+        // partial drum bank (7 voices, 352-358), 359 is Init, and
+        // out-of-range clamps to Init. Names and algorithms come through
+        // `preset_voice`, the same lookup `load_preset` plays.
+        let text = [0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 358, 359, 400]
             .iter()
             .map(|&p| {
                 let v = preset_voice(p);
@@ -754,7 +754,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         expect![[r#"
-            presets=353 init=352
+            presets=360 init=359
               0: 1A BRASS   1   alg=22
              10: 1A E.PIANO 1   alg= 5
              31: 1A TAKE OFF    alg=10
@@ -765,10 +765,46 @@ mod tests {
             256: FT1 EP 1       alg= 5
             320: FT3 Airblower  alg=16
             351: FT3 BakketDrum alg= 9
-            352: Init           alg= 1
+            352: DRM KICK DRUM  alg=16
+            358: DRM Hi-Hat 1   alg=11
+            359: Init           alg= 1
             400: Init           alg= 1"#]].assert_eq(&format!(
             "presets={PRESET_COUNT} init={PRESET_INIT}\n{text}"
         ));
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn library_stride_invariant() {
+        // Preset math (bank = preset / 32) requires every bank except the
+        // last to be full, and the totals to agree with the registry.
+        assert!(BANKS[..NUM_BANKS - 1].iter().all(|b| b.voices == BANK_SIZE));
+        assert_eq!(
+            BANKS.iter().map(|b| b.voices).sum::<usize>(),
+            PRESET_INIT
+        );
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn drum_bank_preset_renders() {
+        // The partial drum bank's first voice (KICK DRUM, preset 352)
+        // must sound: a fast percussive attack decaying on its own, gone
+        // after the note-off at block 48.
+        check(
+            352.0,
+            &[(0, note_on(60, 1.0)), (48, note_off(60))],
+            64,
+            expect![[r#"
+                w 0 peak=0.1619
+                w 1 peak=0.0892
+                w 2 peak=0.0625
+                w 3 peak=0.0469
+                w 4 peak=0.0323
+                w 5 peak=0.0227
+                w 6 peak=0.0141
+                w 7 peak=0.0044"#]],
+        );
     }
 
     #[test]
@@ -1150,7 +1186,7 @@ mod tests {
             .collect();
         expect![[r#"
               0 Volume         0..1   default 1
-              1 Preset         0..352 default 0
+              1 Preset         0..359 default 0
               2 OP6 EG R1      0..99  default 99
               3 OP6 EG R2      0..99  default 99
               4 OP6 EG R3      0..99  default 99
