@@ -1,5 +1,5 @@
 //! DX7 patch data: the packed 128-byte bulk voice format, 32-voice
-//! cartridges (sysex banks), and the built-in ROM bank.
+//! cartridges (sysex banks), and the built-in ROM banks.
 //!
 //! `unpack_patch` is a port of `patch.cc` from Google's
 //! music-synthesizer-for-android (Copyright 2013 Google Inc., Apache-2.0);
@@ -19,9 +19,79 @@ pub const BANK_SIZE: usize = 32;
 const BULK_DATA_SIZE: usize = PACKED_VOICE_SIZE * BANK_SIZE; // 4096
 const SYSEX_SIZE: usize = BULK_DATA_SIZE + 8; // F0 43 00 09 20 00 …data… checksum F7
 
-/// The DX7 ROM1A factory cartridge ("BRASS 1" … "TAKE OFF"), from the
-/// original-Yamaha-cartridge collection linked by the Dexed project.
-pub static ROM1A: &[u8] = include_bytes!("../assets/ROM1A.syx");
+/// Number of built-in cartridges.
+pub const NUM_BANKS: usize = 11;
+
+/// One built-in cartridge: display name, short tag (used in browser
+/// filter labels and composite voice names), and the raw sysex dump.
+pub struct BankInfo {
+    pub name: &'static str,
+    pub short: &'static str,
+    pub data: &'static [u8],
+}
+
+/// The built-in cartridges, in preset order (preset index = bank ×
+/// [`BANK_SIZE`] + voice): the eight original Yamaha DX7 factory ROMs
+/// (ROM1A "BRASS 1" … ROM4B), from the original-cartridge collection at
+/// yamahablackboxes.com, followed by the three Finetales curated banks
+/// (EPs & bells / plucks, basses & brass / strings, pads etc.).
+pub static BANKS: [BankInfo; NUM_BANKS] = [
+    BankInfo {
+        name: "ROM1A",
+        short: "1A",
+        data: include_bytes!("../assets/ROM1A.syx"),
+    },
+    BankInfo {
+        name: "ROM1B",
+        short: "1B",
+        data: include_bytes!("../assets/ROM1B.syx"),
+    },
+    BankInfo {
+        name: "ROM2A",
+        short: "2A",
+        data: include_bytes!("../assets/ROM2A.syx"),
+    },
+    BankInfo {
+        name: "ROM2B",
+        short: "2B",
+        data: include_bytes!("../assets/ROM2B.syx"),
+    },
+    BankInfo {
+        name: "ROM3A",
+        short: "3A",
+        data: include_bytes!("../assets/ROM3A.syx"),
+    },
+    BankInfo {
+        name: "ROM3B",
+        short: "3B",
+        data: include_bytes!("../assets/ROM3B.syx"),
+    },
+    BankInfo {
+        name: "ROM4A",
+        short: "4A",
+        data: include_bytes!("../assets/ROM4A.syx"),
+    },
+    BankInfo {
+        name: "ROM4B",
+        short: "4B",
+        data: include_bytes!("../assets/ROM4B.syx"),
+    },
+    BankInfo {
+        name: "Finetales 1",
+        short: "FT1",
+        data: include_bytes!("../assets/Finetales1.syx"),
+    },
+    BankInfo {
+        name: "Finetales 2",
+        short: "FT2",
+        data: include_bytes!("../assets/Finetales2.syx"),
+    },
+    BankInfo {
+        name: "Finetales 3",
+        short: "FT3",
+        data: include_bytes!("../assets/Finetales3.syx"),
+    },
+];
 
 /// Unpack a 128-byte packed bulk voice into the 156-byte layout the engine
 /// reads (21 bytes per operator, then pitch env, algorithm, feedback, LFO,
@@ -118,10 +188,11 @@ impl Bank {
         Ok(Self { voices })
     }
 
-    /// The built-in ROM1A bank. The embedded cartridge is validated by
-    /// tests, so parsing cannot fail at runtime.
-    pub fn rom1a() -> Self {
-        Self::from_sysex(ROM1A).unwrap_or(Self {
+    /// The built-in cartridge `index` (0..[`NUM_BANKS`], clamped). The
+    /// embedded data is validated by tests, so parsing cannot fail at
+    /// runtime. Allocation-free: the cartridge is copied onto the stack.
+    pub fn builtin(index: usize) -> Self {
+        Self::from_sysex(BANKS[index.min(NUM_BANKS - 1)].data).unwrap_or(Self {
             voices: [[0u8; PACKED_VOICE_SIZE]; BANK_SIZE],
         })
     }
@@ -168,43 +239,86 @@ mod tests {
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
-    fn rom1a_names() {
-        check_bank(
-            ROM1A,
-            expect![[r#"
-             0: BRASS   1
-             1: BRASS   2
-             2: BRASS   3
-             3: STRINGS 1
-             4: STRINGS 2
-             5: STRINGS 3
-             6: ORCHESTRA
-             7: PIANO   1
-             8: PIANO   2
-             9: PIANO   3
-            10: E.PIANO 1
-            11: GUITAR  1
-            12: GUITAR  2
-            13: SYN-LEAD 1
-            14: BASS    1
-            15: BASS    2
-            16: E.ORGAN 1
-            17: PIPES   1
-            18: HARPSICH 1
-            19: CLAV    1
-            20: VIBE    1
-            21: MARIMBA
-            22: KOTO
-            23: FLUTE   1
-            24: ORCH-CHIME
-            25: TUB BELLS
-            26: STEEL DRUM
-            27: TIMPANI
-            28: REFS WHISL
-            29: VOICE   1
-            30: TRAIN
-            31: TAKE OFF"#]],
-        );
+    fn builtin_bank_names() {
+        // Every embedded cartridge, all 32 voice names (8 per row). A bank
+        // that failed to parse would show as rows of "?" garbage here, so
+        // this snapshot is also the parse validation for the embedded data.
+        let text = BANKS
+            .iter()
+            .enumerate()
+            .map(|(b, info)| {
+                let bank = Bank::builtin(b);
+                let names: Vec<String> = (0..BANK_SIZE).map(|i| bank.name(i)).collect();
+                let rows: Vec<String> = names
+                    .chunks(8)
+                    .map(|row| {
+                        row.iter()
+                            .map(|n| format!("{n:<11}"))
+                            .collect::<String>()
+                            .trim_end()
+                            .to_string()
+                    })
+                    .collect();
+                format!("{} ({})\n  {}", info.name, info.short, rows.join("\n  "))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        expect![[r#"
+            ROM1A (1A)
+              BRASS   1  BRASS   2  BRASS   3  STRINGS 1  STRINGS 2  STRINGS 3  ORCHESTRA  PIANO   1
+              PIANO   2  PIANO   3  E.PIANO 1  GUITAR  1  GUITAR  2  SYN-LEAD 1 BASS    1  BASS    2
+              E.ORGAN 1  PIPES   1  HARPSICH 1 CLAV    1  VIBE    1  MARIMBA    KOTO       FLUTE   1
+              ORCH-CHIME TUB BELLS  STEEL DRUM TIMPANI    REFS WHISL VOICE   1  TRAIN      TAKE OFF
+            ROM1B (1B)
+              PIANO   4  PIANO   5  E.PIANO 2  E.PIANO 3  E.PIANO 4  PIANO 5THS CELESTE    TOY PIANO
+              HARPSICH 2 HARPSICH 3 CLAV    2  CLAV    3  E.ORGAN 2  E.ORGAN 3  E.ORGAN 4  E.ORGAN 5
+              PIPES   2  PIPES   3  PIPES   4  CALIOPE    ACCORDION  SITAR      GUITAR  3  GUITAR  4
+              GUITAR  5  GUITAR  6  LUTE       BANJO      HARP    1  HARP    2  BASS    3  BASS    4
+            ROM2A (2A)
+              PICCOLO    FLUTE   2  OBOE       CLARINET   SAX BC     BASSOON    STRINGS 4  STRINGS 5
+              STRINGS 6  STRINGS 7  STRINGS 8  BRASS   4  BRASS   5  BRASS 6 BC BRASS   7  BRASS   8
+              RECORDER   HARMONICA1 HRMNCA2 BC VOICE   2  VOICE   3  GLOKENSPL  VIBE    2  XYLOPHONE
+              CHIMES     GONG    1  GONG    2  BELLS      COW BELL   BLOCK      FLEXATONE  LOG DRUM
+            ROM2B (2B)
+              SYN-LEAD 2 SYN-LEAD 3 SYN-LEAD 4 SYN-LEAD 5 SYN-CLAV 1 SYN-CLAV 2 SYN-CLAV 3 SYN-PIANO
+              SYNBRASS 1 SYNBRASS 2 SYNORGAN 1 SYNORGAN 2 SYN-VOX    SYN-ORCH   SYN-BASS 1 SYN-BASS 2
+              HARP-FLUTE BELL-FLUTE E.P-BRS BC T.BL-EXPA  CHIME-STRG B.DRM-SNAR SHIMMER    EVOLUTION
+              WATER GDN  WASP STING LASER GUN  DESCENT    OCTAVE WAR GRAND PRIX ST.HELENS  EXPLOSION
+            ROM3A (3A)
+              FLUTE   1  HARPSICH 1 STRG ENS 1 BRIGHT BOW BRASSHORNS BR TRUMPET MARIMBA    E.PIANO 1
+              PIANO   1  PIPES   1  E.ORGAN 1  E.BASS  1  CLAV    1  HARMONICA1 JAZZ GUIT1 PRC SYNTH1
+              SAX BC     FRETLESS 1 HARP    1  TIMPANI    HEAVYMETAL STEEL DRUM SYN-LEAD 1 VOICES BC
+              CLAV ENS   LASERSWEEP TUB ERUPT  GRAND PRIX REFS WHISL TRAIN      BRASS S H  TAKE OFF
+            ROM3B (3B)
+              PIANO   2  E.GRAND 1  E.GRAND 2  HONKY TONK E.PIANO 2  E.PIANO 3  E.PIANO 4  CELESTE
+              FUNK CLAV  CLAV ENS 2 PERC CLAV  HARPSICH 2 E.ORGAN 2  E.ORGAN 3  60-S ORGAN PIPES   2
+              PIPES   3  CALIOPE    ACCORDION  TOY PIANO  SITAR      KOTO       JAZZ GUIT2 SPANISHGTR
+              FOLK GUIT  LUTE       BANJO      CLAS.GUIT  HARP    2  E.BASS  2  FRETLESS 2 PLUCK BASS
+            ROM4A (4A)
+              PICCOLO    FLUTE   2  OBOE       CLARINET   BASSOON    PAN FLUTE  LEAD BRASS HORNS
+              SOLO TBONE BRASS BC   BRASS 5THS SYNTHBRASS STRG QRT 1 STRG ENS 2 VIOLA SECN STRGS LOW
+              HIGH STRGS PIZZ STGS  STG CRSNDO STGS 5THS  BELLS      TUB BELLS  RECORDERS  CHIMES
+              VOICES     XYLOPHONE  COWBELL    WOOD BLOCK FLEXATONE  LOG DRUM   GLOKENSPL  VIBE
+            ROM4B (4B)
+              CLAV-E.PNO PERC BRASS PRC SYNTH2 HARPSI-STG CHIME-STRG HARP-FLUTE BELL-FLUTE STRG-CHIME
+              STRG-MARIM STRG-PIZZT ORCHESTRA  LEAD GUITR PIANO-BRS  BRS-CHIME  B.DRM-SNAR E.P-BRS BC
+              ORG-BRS BC CLV-BRS BC WHISTLES   FILTER SWP FUNKY RISE WILD BOAR  SHIMMER    EVOLUTION
+              WATER GDN  WASP STING MULTI NOTE DESCENT    OCTAVE WAR ..GOTCHA.. ST.HELENS  EXPLOSION
+            Finetales 1 (FT1)
+              EP 1       EP 2       EP 3       EP 4       EP 5       EP 6       EP 7       EP 8
+              EP 9       EP 10      EP 11      EP 12      EP Strings EP MkIII   EP Tremolo Tub Bells
+              Tub Erupt  Bass/Bell  Rode Bell  BELLashun  PrinkBell  Bell 1     Bell 2     76 Bells
+              Plick Bell GlitterBel Handbell   HllwnBell  KitaroPLK  MinelvaPLK PilgrimPLK Melo Pizz
+            Finetales 2 (FT2)
+              Celesta    CelestBox  Music Box  Kalimba 1  Kalimba 2  Dulcimer   Dulcibell  Glock 1
+              Glock 2    ApolloHarp Sarod      Guitarimba Toy Box    Zither     SanukaitBL Koto
+              Hard Xylo  Bass 1     Bass 4     Nice Bass  Superbass2 Superbass3 E Bass 2   Synth Bass
+              Pick Bass  FirenzeBSS Sting Bass AirhedBass 3J Brs/Bas PntrBrass  Hiep Brass Moog Brass
+            Finetales 3 (FT3)
+              Airblower  Sukiyaki   HarvestFLT Low Strgs  High Strgs SloSwell   Clouds Pad Ice Pad
+              Cascade    Sensitar   Curved Air Soft Pond  Hi Lyz     AnaAtkStr  Jarre Pad  Ondes Pad
+              Vollenweid PPG PadFX  Ana Pad    Thin Atmos Soft Space Ens Pad    Warm Pad   Phaze Pad
+              Chip Pizz  12 String  Muted Gtr  PipeOrgan1 PipeOrgan2 Hrpsichord Rigel EP/B BakketDrum"#]].assert_eq(&text);
     }
 
     #[test]
@@ -212,7 +326,7 @@ mod tests {
     fn raw_4096_bytes_accepted() {
         // The same cartridge without the sysex frame parses identically.
         check_bank(
-            &ROM1A[6..6 + BULK_DATA_SIZE],
+            &BANKS[0].data[6..6 + BULK_DATA_SIZE],
             expect![[r#"
              0: BRASS   1
              1: BRASS   2
@@ -252,7 +366,7 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn wrong_size_rejected() {
-        check_bank(&ROM1A[..100], expect!["BadSize(100)"]);
+        check_bank(&BANKS[0].data[..100], expect!["BadSize(100)"]);
     }
 
     #[test]
@@ -314,7 +428,7 @@ mod tests {
         // ratios and output levels. Verifiable against the published
         // DX7 patch sheet: algorithm 5, feedback 6; ops 2/4/6 are the
         // ratio-14 "tine" modulators.
-        let bank = Bank::rom1a();
+        let bank = Bank::builtin(0);
         let v = bank.voice(10);
         let mut lines = vec![
             format!("name: {}", bank.name(10)),

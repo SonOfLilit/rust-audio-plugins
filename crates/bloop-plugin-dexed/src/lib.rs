@@ -15,7 +15,10 @@ mod patch;
 mod pitchenv;
 mod tables;
 
-pub use patch::{init_voice, Bank, BankError, BANK_SIZE, PACKED_VOICE_SIZE, VOICE_SIZE};
+pub use patch::{
+    init_voice, Bank, BankError, BankInfo, BANKS, BANK_SIZE, NUM_BANKS, PACKED_VOICE_SIZE,
+    VOICE_SIZE,
+};
 
 /// The Dexed revision whose `Source/msfa` engine this crate is a port of.
 /// The manual's License page cites it (test-guarded, like the papurs pin).
@@ -50,10 +53,38 @@ pub const NUM_VOICE_PARAMS: usize = 145;
 pub const PARAM_OP_ENABLE_BASE: usize = PARAM_VOICE_BASE + NUM_VOICE_PARAMS;
 pub const PARAM_COUNT: usize = PARAM_OP_ENABLE_BASE + 6;
 
-/// Library size: the 32 ROM1A voices plus the Init voice.
-pub const PRESET_COUNT: usize = BANK_SIZE + 1;
+/// Library size: every voice of the built-in cartridges plus the Init
+/// voice. Presets are bank-major: preset = bank × 32 + voice, in
+/// [`BANKS`] order, with Init last.
+pub const PRESET_COUNT: usize = NUM_BANKS * BANK_SIZE + 1;
 /// The Init preset (all params at their defaults — the DX7 INIT VOICE).
-pub const PRESET_INIT: usize = BANK_SIZE;
+pub const PRESET_INIT: usize = NUM_BANKS * BANK_SIZE;
+
+/// The unpacked voice a preset index selects (out-of-range clamps to
+/// Init). The single library lookup behind both preset loads and the UI
+/// knob-mirror seed. Allocation-free.
+pub fn preset_voice(preset: usize) -> [u8; VOICE_SIZE] {
+    if preset >= PRESET_INIT {
+        patch::init_voice()
+    } else {
+        Bank::builtin(preset / BANK_SIZE).voice(preset % BANK_SIZE)
+    }
+}
+
+/// A preset's library name: bank short tag + voice name ("1A BRASS   1"),
+/// or "Init" for the blank-slate preset (and anything out of range).
+pub fn preset_name(preset: usize) -> String {
+    if preset >= PRESET_INIT {
+        "Init".to_string()
+    } else {
+        let bank = preset / BANK_SIZE;
+        format!(
+            "{} {}",
+            BANKS[bank].short,
+            Bank::builtin(bank).name(preset % BANK_SIZE)
+        )
+    }
+}
 
 /// Per-operator param names, `OP_PARAM_NAMES[slot][field]` with slot 0 =
 /// OP6 (patch order) and field = byte offset within the op block.
@@ -197,11 +228,7 @@ pub fn param_info(index: usize) -> ParamInfo {
 /// (the FM counterpart of `bloop_plugin_papurs::preset_positions`).
 pub fn preset_positions(preset: usize) -> [f32; PARAM_COUNT] {
     let preset = preset.min(PRESET_COUNT - 1);
-    let voice = if preset >= BANK_SIZE {
-        patch::init_voice()
-    } else {
-        Bank::rom1a().voice(preset)
-    };
+    let voice = preset_voice(preset);
     let mut positions = [0.0f32; PARAM_COUNT];
     positions[PARAM_VOLUME] = 1.0;
     positions[PARAM_PRESET] = preset as f32 / (PRESET_COUNT - 1) as f32;
@@ -235,7 +262,6 @@ pub struct DexedPlugin {
     /// The active unpacked patch — the live value store for every voice
     /// param (edits land here; presets overwrite it wholesale).
     patch: [u8; VOICE_SIZE],
-    bank: Bank,
     /// Host-side params that live outside the patch: volume and the
     /// last-loaded preset index.
     volume: f32,
@@ -255,7 +281,6 @@ impl Default for DexedPlugin {
 
 impl DexedPlugin {
     pub fn new() -> Self {
-        let bank = Bank::rom1a();
         let mut plugin = Self {
             tables: Box::new(Tables::new(48000.0)),
             sample_rate: 48000.0,
@@ -264,8 +289,7 @@ impl DexedPlugin {
             ctrls: Controllers::default(),
             voices: [Voice::default(); NUM_VOICES],
             serial: 0,
-            patch: bank.voice(0),
-            bank,
+            patch: preset_voice(0),
             volume: 1.0,
             preset: 0,
             extra: [0.0; N],
@@ -277,11 +301,7 @@ impl DexedPlugin {
     }
 
     fn load_preset(&mut self, index: usize) {
-        self.patch = if index >= BANK_SIZE {
-            patch::init_voice()
-        } else {
-            self.bank.voice(index)
-        };
+        self.patch = preset_voice(index);
         self.reset_lfo();
     }
 
@@ -719,6 +739,63 @@ mod tests {
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn preset_library_boundaries() {
+        // The preset index is bank * 32 + voice with Init last: 31→32
+        // crosses ROM1A→ROM1B, 256 starts Finetales 1, 351 is the last
+        // Finetales 3 voice, 352 is Init, and out-of-range clamps to
+        // Init. Names and algorithms come through `preset_voice`, the
+        // same lookup `load_preset` plays.
+        let text = [0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 400]
+            .iter()
+            .map(|&p| {
+                let v = preset_voice(p);
+                format!("{p:>3}: {:<14} alg={:>2}", preset_name(p), v[134] + 1)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        expect![[r#"
+            presets=353 init=352
+              0: 1A BRASS   1   alg=22
+             10: 1A E.PIANO 1   alg= 5
+             31: 1A TAKE OFF    alg=10
+             32: 1B PIANO   4   alg=18
+             63: 1B BASS    4   alg=17
+             64: 2A PICCOLO     alg= 5
+            255: 4B EXPLOSION   alg=16
+            256: FT1 EP 1       alg= 5
+            320: FT3 Airblower  alg=16
+            351: FT3 BakketDrum alg= 9
+            352: Init           alg= 1
+            400: Init           alg= 1"#]].assert_eq(&format!(
+            "presets={PRESET_COUNT} init={PRESET_INIT}\n{text}"
+        ));
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn cross_bank_preset_renders() {
+        // A voice from a non-ROM1A cartridge (Finetales 1 "EP 1",
+        // preset 256) must actually sound: the engine's preset load
+        // indexes past the first bank. Envelope shape: keyed attack,
+        // decay while held, release to silence after note-off.
+        check(
+            256.0,
+            &[(0, note_on(69, 1.0)), (48, note_off(69))],
+            64,
+            expect![[r#"
+                w 0 peak=0.3422
+                w 1 peak=0.3590
+                w 2 peak=0.3847
+                w 3 peak=0.3919
+                w 4 peak=0.3879
+                w 5 peak=0.3601
+                w 6 peak=0.2762
+                w 7 peak=0.1340"#]],
+        );
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn epiano_gate() {
         // E.PIANO 1, one A4: fast attack, decaying sustain while held,
         // release to silence after note-off at block 48.
@@ -1073,7 +1150,7 @@ mod tests {
             .collect();
         expect![[r#"
               0 Volume         0..1   default 1
-              1 Preset         0..32  default 0
+              1 Preset         0..352 default 0
               2 OP6 EG R1      0..99  default 99
               3 OP6 EG R2      0..99  default 99
               4 OP6 EG R3      0..99  default 99
@@ -1537,7 +1614,9 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn preset_positions_match_loaded_params() {
         let mut mismatches = Vec::new();
-        for preset in [0usize, 10, PRESET_INIT] {
+        // 200 = ROM4A voice 8, 256 = Finetales 1 voice 0: the knob-mirror
+        // seed must agree with the engine for cross-bank presets too.
+        for preset in [0usize, 10, 200, 256, PRESET_INIT] {
             let positions = preset_positions(preset);
             let mut synth = DexedPlugin::new();
             synth.set_param(PARAM_PRESET, preset as f32);
