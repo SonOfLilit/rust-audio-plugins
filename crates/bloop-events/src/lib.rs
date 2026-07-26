@@ -57,6 +57,16 @@ impl NoteEvent {
             | Self::CC { time, .. } => *time,
         }
     }
+
+    fn time_mut(&mut self) -> &mut u32 {
+        match self {
+            Self::NoteOn { time, .. }
+            | Self::NoteOff { time, .. }
+            | Self::Aftertouch { time, .. }
+            | Self::PitchBend { time, .. }
+            | Self::CC { time, .. } => time,
+        }
+    }
 }
 
 /// Fixed-capacity event buffer. No heap allocation during audio processing.
@@ -109,6 +119,15 @@ impl EventBuffer {
     /// Sort events by sample offset.
     pub fn sort_by_time(&mut self) {
         self.events[..self.len].sort_unstable_by_key(|e| e.time());
+    }
+
+    /// Add `offset` to the time of every event from index `from` on.
+    /// Song mode generates a block in segments; each segment's events are
+    /// produced segment-relative and shifted to their real block offset.
+    pub fn shift_times(&mut self, from: usize, offset: u32) {
+        for event in &mut self.events[from.min(self.len)..self.len] {
+            *event.time_mut() += offset;
+        }
     }
 }
 
