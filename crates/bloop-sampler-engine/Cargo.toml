@@ -1,0 +1,17 @@
+[package]
+name = "bloop-sampler-engine"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Sample playback voice: a 1:1 Rust port of Just-a-Sample's `CustomSamplerVoice`
+# in BASIC playback mode (github.com/BOBONA/Just-a-Sample, MIT, rev pinned in
+# `PORTED_FROM_JAS_REV`). The FX chain and the Bungee (ADVANCED) playback mode
+# are deliberately not ported — see the crate docs. The manual's License page
+# cites the pinned revision (test-guarded in bloop-menu-pages).
+
+[dependencies]
+
+[dev-dependencies]
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
