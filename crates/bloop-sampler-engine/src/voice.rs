@@ -17,6 +17,10 @@ const LANCZOS_WINDOW_SIZE: i32 = 5;
 const INVERSE_SIN_SQUARED: f32 = 1.0 / (PI_F * PI_F);
 const TAIL_OFF: usize = 50;
 
+/// Bloop is stereo end to end, so a voice never renders more than two
+/// channels; imported audio is folded to at most two on decode.
+pub const MAX_CHANNELS: usize = 2;
+
 /// The states a voice moves through, from the reference's `VoiceState`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VoiceState {
@@ -205,7 +209,7 @@ impl SamplerVoice {
     /// All buffers are allocated here so `render` never allocates.
     pub fn new(application_sample_rate: f64, max_block_size: usize, max_channels: usize) -> Self {
         let block = max_block_size.max(1) * 2;
-        let channels = max_channels.max(2);
+        let channels = max_channels.clamp(2, MAX_CHANNELS);
         Self {
             application_sample_rate,
             max_block_size: block,
@@ -432,7 +436,12 @@ impl SamplerVoice {
         for row in scratch.iter_mut().take(channels) {
             row.fill(0.0);
         }
-        self.render_into(sample, params, &mut scratch[..channels], 0, TAIL_OFF);
+        {
+            let (first, rest) = scratch.split_at_mut(1);
+            let mut views: [&mut [f32]; MAX_CHANNELS] =
+                [first[0].as_mut_slice(), rest[0].as_mut_slice()];
+            self.render_into(sample, params, &mut views[..channels], 0, TAIL_OFF);
+        }
         for (kept, rendered) in self.tail_off_buffer.iter_mut().zip(&scratch).take(channels) {
             kept.copy_from_slice(rendered);
         }
@@ -441,6 +450,23 @@ impl SamplerVoice {
 
         self.vc.state = VoiceState::Stopped;
         self.playing = false;
+    }
+
+    /// Point the voice at a new host sample rate and silence it.
+    ///
+    /// Allocation-free, so a host can call this on the audio thread when a
+    /// sampler is swapped onto a track. Buffers keep the size they were built
+    /// with, so construct the voice for the largest block the host will ask
+    /// for.
+    pub fn prepare(&mut self, application_sample_rate: f64) {
+        self.application_sample_rate = application_sample_rate;
+        self.immediate_halt();
+        self.tail_off = TAIL_OFF;
+        for set in &mut self.lowpass {
+            for stream in set.iter_mut() {
+                stream.reset_processing(0);
+            }
+        }
     }
 
     /// Stops the voice immediately, with no fade.
@@ -564,7 +590,7 @@ impl SamplerVoice {
         &mut self,
         sample: &SampleBuffer,
         params: &SamplerParams,
-        output: &mut [Vec<f32>],
+        output: &mut [&mut [f32]],
         start_sample: usize,
         num_samples: usize,
     ) {
@@ -575,7 +601,7 @@ impl SamplerVoice {
         &mut self,
         sample: &SampleBuffer,
         params: &SamplerParams,
-        output: &mut [Vec<f32>],
+        output: &mut [&mut [f32]],
         start_sample: usize,
         num_samples: usize,
     ) {
@@ -905,7 +931,7 @@ fn lanczos_window(x: f64) -> f32 {
 fn mix_to_buffer(
     src: &[Vec<f32>],
     src_channels: usize,
-    dest: &mut [Vec<f32>],
+    dest: &mut [&mut [f32]],
     start_sample: usize,
     num_samples: usize,
     mix_mono: bool,

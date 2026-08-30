@@ -397,6 +397,8 @@ fn run_rust(program: &Program, sample: &SampleBuffer) -> RustRun {
         program.channels,
     );
     let mut output = vec![vec![0.0f32; program.total_frames()]; 2];
+    let (left, right) = output.split_at_mut(1);
+    let mut out: [&mut [f32]; 2] = [&mut left[0], &mut right[0]];
 
     let mut trace = Vec::new();
     let mut position = 0usize;
@@ -405,16 +407,16 @@ fn run_rust(program: &Program, sample: &SampleBuffer) -> RustRun {
     for op in &program.ops {
         match *op {
             Op::Render(frames) => {
-                voice.render(sample, &params, &mut output, position, frames);
-                let peak = |ch: usize| {
-                    output[ch][position..position + frames]
+                voice.render(sample, &params, &mut out, position, frames);
+                let peak = |channel: &[f32]| {
+                    channel[position..position + frames]
                         .iter()
                         .fold(0.0f32, |acc, v| acc.max(v.abs()))
                 };
                 trace.push(format!(
                     "block {block_index:>2} @{position:<6} peak L {:>7.4} R {:>7.4}  pos {:>9.3}  {:?}{}",
-                    peak(0),
-                    peak(1),
+                    peak(out[0]),
+                    peak(out[1]),
                     voice.position(),
                     voice.state(),
                     if voice.is_antialiasing() { " [lpf]" } else { "" },

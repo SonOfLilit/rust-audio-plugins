@@ -23,16 +23,10 @@ fn ramp(frames: usize) -> SampleBuffer {
 /// Renders `frames` frames of one note and snapshots every output sample.
 fn check(params: SamplerParams, note: u8, frames: usize, expect: Expect) {
     let sample = ramp(4800);
-    let mut voice = SamplerVoice::new(48_000.0, frames, 1);
-    let mut output = vec![vec![0.0f32; frames]; 2];
-
-    assert!(
-        voice.note_on(&sample, &params, note, 1.0, 8192),
-        "note must start"
-    );
-    voice.render(&sample, &params, &mut output, 0, frames);
-
-    let rendered: Vec<String> = output[0].iter().map(|v| format!("{v:.6}")).collect();
+    let rendered: Vec<String> = render_once(&sample, &params, note, 1.0, frames)
+        .iter()
+        .map(|v| format!("{v:.6}"))
+        .collect();
     expect.assert_eq(&rendered.join(" "));
 }
 
@@ -139,7 +133,11 @@ fn render_once(
         voice.note_on(sample, params, note, velocity, 8192),
         "note must start"
     );
-    voice.render(sample, params, &mut output, 0, frames);
+    {
+        let (left, right) = output.split_at_mut(1);
+        let mut out: [&mut [f32]; 2] = [&mut left[0], &mut right[0]];
+        voice.render(sample, params, &mut out, 0, frames);
+    }
     output.swap_remove(0)
 }
 
