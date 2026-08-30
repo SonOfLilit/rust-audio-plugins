@@ -19,13 +19,15 @@
 //! MTS-ESP master is connected, which is the behaviour reproduced here.
 
 mod buffer;
+mod decode;
 mod juce;
 mod params;
 mod voice;
 
 pub use buffer::{SampleBuffer, SharedSample};
+pub use decode::{decode, ImportError, IMPORTABLE_EXTENSIONS};
 pub use params::{ranges, ParamRange, SamplerParams, WAVETABLE_CUTOFF_HZ};
-pub use voice::{SamplerVoice, VoiceState};
+pub use voice::{SamplerVoice, VoiceState, MAX_CHANNELS};
 
 /// The Just-a-Sample revision this crate's voice is a port of.
 ///
