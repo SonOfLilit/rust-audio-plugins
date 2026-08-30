@@ -745,14 +745,16 @@ mod tests {
         // partial drum bank (7 voices, 352-358), 359 is Init, and
         // out-of-range clamps to Init. Names and algorithms come through
         // `preset_voice`, the same lookup `load_preset` plays.
-        let text = [0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 358, 359, 400]
-            .iter()
-            .map(|&p| {
-                let v = preset_voice(p);
-                format!("{p:>3}: {:<14} alg={:>2}", preset_name(p), v[134] + 1)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let text = [
+            0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 358, 359, 400,
+        ]
+        .iter()
+        .map(|&p| {
+            let v = preset_voice(p);
+            format!("{p:>3}: {:<14} alg={:>2}", preset_name(p), v[134] + 1)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
         expect![[r#"
             presets=360 init=359
               0: 1A BRASS   1   alg=22
@@ -768,7 +770,8 @@ mod tests {
             352: DRM KICK DRUM  alg=16
             358: DRM Hi-Hat 1   alg=11
             359: Init           alg= 1
-            400: Init           alg= 1"#]].assert_eq(&format!(
+            400: Init           alg= 1"#]]
+        .assert_eq(&format!(
             "presets={PRESET_COUNT} init={PRESET_INIT}\n{text}"
         ));
     }
@@ -779,10 +782,7 @@ mod tests {
         // Preset math (bank = preset / 32) requires every bank except the
         // last to be full, and the totals to agree with the registry.
         assert!(BANKS[..NUM_BANKS - 1].iter().all(|b| b.voices == BANK_SIZE));
-        assert_eq!(
-            BANKS.iter().map(|b| b.voices).sum::<usize>(),
-            PRESET_INIT
-        );
+        assert_eq!(BANKS.iter().map(|b| b.voices).sum::<usize>(), PRESET_INIT);
     }
 
     #[test]
