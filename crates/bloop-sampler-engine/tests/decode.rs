@@ -5,7 +5,7 @@
 //! to be obvious); FLAC goes through `flacenc`, which is also what the sample
 //! pack will be transcoded with.
 
-use bloop_sampler_engine::{decode, SampleBuffer};
+use bloop_sampler_engine::{decode, SampleBuffer, SampleDecoder};
 use expect_test::{expect, Expect};
 
 #[cfg(target_arch = "wasm32")]
@@ -310,4 +310,44 @@ fn an_import_with_no_extension_probes_the_bytes() {
         1 ch, 8 frames @22050 Hz
         ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500"#]],
     );
+}
+
+/// Decoding a packet at a time must produce exactly what decoding all at once
+/// does — the resumable path exists so a long import does not stall the
+/// interface, not to be a second implementation.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_resumed_decode_matches_an_all_at_once_one() {
+    let source = signal(2, 4096);
+    let bytes = flac(&source, 44_100);
+
+    let at_once = decode(bytes.clone(), Some("flac")).expect("decodes");
+
+    let mut decoder = SampleDecoder::new(bytes, Some("flac")).expect("opens");
+    let mut steps = 0;
+    let resumed = loop {
+        steps += 1;
+        if let Some(buffer) = decoder.step(1).expect("decodes") {
+            break buffer;
+        }
+        assert!(steps < 10_000, "the decode never finished");
+    };
+
+    assert_eq!(at_once, resumed, "the two paths must agree");
+    expect!["17 steps, 4096 frames, progress ends at 1.0"].assert_eq(&format!(
+        "{steps} steps, {} frames, progress ends at {:.1}",
+        resumed.num_samples(),
+        decoder.progress(),
+    ));
+}
+
+/// A file that is not audio fails when it is opened, before any stepping —
+/// so a caller pumping across frames learns immediately.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_resumable_decode_rejects_rubbish_up_front() {
+    let error = SampleDecoder::new(b"not audio at all".to_vec(), Some("wav"))
+        .err()
+        .expect("must fail");
+    expect!["UnrecognisedFormat"].assert_eq(&format!("{error:?}"));
 }

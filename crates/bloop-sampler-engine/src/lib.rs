@@ -25,7 +25,7 @@ mod params;
 mod voice;
 
 pub use buffer::{SampleBuffer, SharedSample};
-pub use decode::{decode, ImportError, IMPORTABLE_EXTENSIONS};
+pub use decode::{decode, ImportError, SampleDecoder, IMPORTABLE_EXTENSIONS};
 pub use params::{ranges, ParamRange, SamplerParams, WAVETABLE_CUTOFF_HZ};
 pub use voice::{SamplerVoice, VoiceState, MAX_CHANNELS};
 
