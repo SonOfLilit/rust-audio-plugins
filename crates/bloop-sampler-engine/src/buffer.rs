@@ -55,6 +55,23 @@ impl SampleBuffer {
         &self.channels[channel]
     }
 
+    /// Apply `f` to every sample of every channel.
+    pub(crate) fn map_samples(&mut self, mut f: impl FnMut(f32) -> f32) {
+        for channel in &mut self.channels {
+            for value in channel.iter_mut() {
+                *value = f(*value);
+            }
+        }
+    }
+
+    /// Apply `f` to each channel's samples as a slice, for edits that need
+    /// to see a whole channel at once (reversing, fading).
+    pub(crate) fn map_channel_slices(&mut self, mut f: impl FnMut(&mut [f32])) {
+        for channel in &mut self.channels {
+            f(channel);
+        }
+    }
+
     /// `juce::AudioBuffer::getSample`. Out-of-range indices are a programming
     /// error, matching the reference's `jassert`-guarded accessor.
     pub fn sample(&self, channel: usize, index: usize) -> f32 {
