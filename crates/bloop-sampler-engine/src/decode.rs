@@ -49,8 +49,9 @@ impl core::fmt::Display for ImportError {
 impl std::error::Error for ImportError {}
 
 /// The formats an import can be, for the browser's file filter and for the
-/// decode hint. Bloop reads WAV, FLAC, Ogg Vorbis and MP3.
-pub const IMPORTABLE_EXTENSIONS: [&str; 6] = ["wav", "wave", "flac", "ogg", "oga", "mp3"];
+/// decode hint. Bloop reads WAV, AIFF, FLAC, Ogg Vorbis and MP3.
+pub const IMPORTABLE_EXTENSIONS: [&str; 8] =
+    ["wav", "wave", "aiff", "aif", "flac", "ogg", "oga", "mp3"];
 
 /// Decode `bytes` into a shareable buffer.
 ///
