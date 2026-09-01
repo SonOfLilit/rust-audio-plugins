@@ -3,7 +3,7 @@
 
     Reads a program written by `tests/gold.rs` (argv[1]), drives the reference
     voice through it, and writes the rendered stereo output (argv[2]). The Rust
-    port runs the same program, and the test compares the two bit for bit.
+    port runs the same program, and the test compares the two sample by sample.
 
     The program format is documented alongside `Program` in gold.rs; both sides
     must agree on the parameter ids in `ParamId` below.

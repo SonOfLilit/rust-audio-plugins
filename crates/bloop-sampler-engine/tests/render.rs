@@ -30,6 +30,50 @@ fn check(params: SamplerParams, note: u8, frames: usize, expect: Expect) {
     expect.assert_eq(&rendered.join(" "));
 }
 
+/// Renders a long run at a speed that never lands on a whole frame, and
+/// pins the exact bits of every sample.
+///
+/// The snapshots above format to six decimals, which cannot see a one-ulp
+/// difference — and one ulp is exactly what a differing `sin` or a fused
+/// multiply-add produces. The app's demo gold hashes rendered WAVs, so it
+/// does see it, but only as an unreadable hash mismatch in a suite that
+/// takes minutes. This fails in milliseconds and says which platform.
+fn check_exact(params: SamplerParams, note: u8, frames: usize, expect: Expect) {
+    let sample = ramp(4800);
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for value in render_once(&sample, &params, note, 1.0, frames) {
+        hash ^= u64::from(value.to_bits());
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    expect.assert_eq(&format!("{hash:016x}"));
+}
+
+/// Speed 2^(-7/12), an irrational ratio, so every output sample lands at a
+/// different fraction between frames and the whole phase table is swept.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn interpolated_output_is_identical_on_every_platform() {
+    check_exact(flat(2400, 4799), 62, 2000, expect!["7ec1fcee2f49dec0"]);
+}
+
+/// The envelope's shape curve is `(exp(a·x) - 1) / (exp(a) - 1)`, evaluated
+/// per sample. `exp` is the C library's natively and a Rust reimplementation
+/// on WASM, so a shaped envelope is where the two targets are most likely to
+/// part company — and a long one gives the difference the most chances to
+/// show.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_shaped_envelope_is_identical_on_every_platform() {
+    let shaped = SamplerParams {
+        attack_ms: 20.0,
+        attack_shape: 0.8,
+        release_ms: 20.0,
+        release_shape: 0.8,
+        ..flat(2400, 4799)
+    };
+    check_exact(shaped, 62, 2000, expect!["7ecafb06f42dad4f"]);
+}
+
 /// Envelope-free playback of `sample_start..=sample_end`.
 fn flat(sample_start: i32, sample_end: i32) -> SamplerParams {
     SamplerParams {

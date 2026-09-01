@@ -3,7 +3,12 @@
 //! Structure, naming and evaluation order follow `CustomSamplerVoice.cpp`
 //! closely so the two can be diffed side by side. Where the reference relies on
 //! C++ implicit conversions the port spells the conversion out, because the
-//! gold tests compare the two bit for bit.
+//! gold tests compare the two sample by sample.
+//!
+//! One deliberate departure: the Lanczos window is tabulated rather than
+//! evaluated per sample (see [`WINDOW_TABLE`]). That is the same window
+//! reassociated, so the output moves by f32 rounding — a few tenths of an
+//! ulp — and every gold scenario pins its own divergence.
 
 use crate::juce::{
     approximately_equal_absolute, decibels_to_gain, jmap, IirCoefficients, IirFilter,
@@ -115,7 +120,7 @@ impl LowpassStream {
         let order = 8.0f32;
         for (index, filter) in self.filters.iter_mut().enumerate() {
             let odd = (2 * index + 1) as f32;
-            let q = 1.0 / (2.0 * (odd * PI_F / (order * 2.0)).cos());
+            let q = 1.0 / (2.0 * libm::cosf(odd * PI_F / (order * 2.0)));
             filter.set_coefficients(IirCoefficients::make_low_pass(
                 f64::from(sample_rate),
                 f64::from(frequency),
@@ -206,8 +211,10 @@ impl SamplerVoice {
     /// blocks of at most `max_block_size` frames, playing samples of at most
     /// `max_channels` channels.
     ///
-    /// All buffers are allocated here so `render` never allocates.
+    /// All buffers are allocated here so `render` never allocates. The
+    /// interpolation table is built here too, for the same reason.
     pub fn new(application_sample_rate: f64, max_block_size: usize, max_channels: usize) -> Self {
+        warm_window_table();
         let block = max_block_size.max(1) * 2;
         let channels = max_channels.clamp(2, MAX_CHANNELS);
         Self {
@@ -311,7 +318,7 @@ impl SamplerVoice {
         if approximately_equal_absolute(a, 0.0, 0.001) {
             x
         } else {
-            ((a * x).exp() - 1.0) / (a.exp() - 1.0)
+            (libm::expf(a * x) - 1.0) / (libm::expf(a) - 1.0)
         }
     }
 
@@ -499,18 +506,22 @@ impl SamplerVoice {
         let mut tuning_ratio = 1.0f32;
 
         if self.wavetable_mode {
-            tuning_ratio *= 2.0f32.powf(
+            tuning_ratio *= libm::powf(
+                2.0,
                 (params.waveform_semitone_tuning as f32
                     + params.waveform_cent_tuning as f32 / 100.0)
                     / 12.0,
             );
         } else {
-            tuning_ratio *= 2.0f32
-                .powf((params.semitone_tuning as f32 + params.cent_tuning as f32 / 100.0) / 12.0);
+            tuning_ratio *= libm::powf(
+                2.0,
+                (params.semitone_tuning as f32 + params.cent_tuning as f32 / 100.0) / 12.0,
+            );
         }
 
         let wheel_range = params.pitch_wheel_range;
-        tuning_ratio *= 2.0f32.powf(
+        tuning_ratio *= libm::powf(
+            2.0,
             jmap(
                 pitch_wheel_position as f32,
                 0.0,
@@ -520,12 +531,12 @@ impl SamplerVoice {
             ) / 12.0,
         );
 
-        tuning_ratio *= 2.0f32.powf(params.wide_tuning / 12.0);
+        tuning_ratio *= libm::powf(2.0, params.wide_tuning / 12.0);
 
         // Account for the MIDI note.
         if params.follow_midi_pitch {
             let root_note = i32::from(params.midi_root);
-            tuning_ratio *= 2.0f32.powf((i32::from(current_note) - root_note) as f32 / 12.0);
+            tuning_ratio *= libm::powf(2.0, (i32::from(current_note) - root_note) as f32 / 12.0);
         }
 
         self.tuning = tuning_ratio;
@@ -762,7 +773,7 @@ impl SamplerVoice {
                 // in double and only then narrowed — the gold tests catch the
                 // one-ULP difference if this is done in f32.
                 value = (f64::from(value)
-                    * decibels_to_gain_f64(40.0 * f64::from(self.note_velocity).log10()))
+                    * decibels_to_gain_f64(40.0 * libm::log10(f64::from(self.note_velocity))))
                     as f32;
                 value *= decibels_to_gain(params.gain_db);
 
@@ -819,8 +830,8 @@ impl SamplerVoice {
     /// The power-preserving crossfade gain pair used for both crossfades.
     fn crossfade_gains(crossfade_position: f64, crossfade: f32) -> (f32, f32) {
         let phase = f64::from(PI_F) * crossfade_position / f64::from(crossfade);
-        let increase = (0.5 + 0.5 * (phase + f64::from(PI_F)).cos()).sqrt() as f32;
-        let decrease = (0.5 + 0.5 * phase.cos()).sqrt() as f32;
+        let increase = (0.5 + 0.5 * libm::cos(phase + f64::from(PI_F))).sqrt() as f32;
+        let decrease = (0.5 + 0.5 * libm::cos(phase)).sqrt() as f32;
         (increase, decrease)
     }
 
@@ -875,6 +886,8 @@ impl SamplerVoice {
         let floor_index = position.floor() as i32;
         let stream = &self.lowpass[set as usize][channel];
 
+        let window = lanczos_taps(position - f64::from(floor_index));
+
         let mut result = 0.0f32;
         for i in (-LANCZOS_WINDOW_SIZE + 1)..=LANCZOS_WINDOW_SIZE {
             let i_plus = i + floor_index;
@@ -890,8 +903,7 @@ impl SamplerVoice {
                 }
             }
 
-            let window = lanczos_window(position - f64::from(floor_index) - f64::from(i));
-            result += value * window;
+            result += value * window[(i + LANCZOS_WINDOW_SIZE - 1) as usize];
         }
         result
     }
@@ -900,7 +912,7 @@ impl SamplerVoice {
 /// `juce::Decibels::decibelsToGain<double>`.
 fn decibels_to_gain_f64(decibels: f64) -> f64 {
     if decibels > -100.0 {
-        10.0f64.powf(decibels * 0.05)
+        libm::pow(10.0, decibels * 0.05)
     } else {
         0.0
     }
@@ -912,11 +924,62 @@ fn lanczos_window(x: f64) -> f32 {
     } else {
         let pi = f64::from(PI_F);
         (f64::from(LANCZOS_WINDOW_SIZE)
-            * (pi * x).sin()
-            * (pi * x / f64::from(LANCZOS_WINDOW_SIZE)).sin()
+            * libm::sin(pi * x)
+            * libm::sin(pi * x / f64::from(LANCZOS_WINDOW_SIZE))
             * f64::from(INVERSE_SIN_SQUARED)
             / (x * x)) as f32
     }
+}
+
+/// How many source samples each output sample is built from.
+const TAPS: usize = (2 * LANCZOS_WINDOW_SIZE) as usize;
+
+/// Fractional positions the window is tabulated at. Values between rows are
+/// linearly interpolated; see `the_table_matches_the_analytic_window` for
+/// what that costs.
+const PHASES: usize = 1024;
+
+/// The Lanczos window, precomputed at every table phase.
+///
+/// The reference evaluates [`lanczos_window`] afresh for all ten taps of
+/// every output sample of every channel — twenty `sin` calls per sample —
+/// which measured as roughly 70% of Bloop's entire audio-thread cost with
+/// the default kit's five sample pads. That is affordable for a desktop
+/// plugin holding one or two voices and is not affordable on a phone.
+///
+/// The window depends only on the fractional part of the position, so it is
+/// tabulated once instead. This is the standard resampler construction
+/// (libsamplerate and r8brain both do it); the reference's per-sample
+/// evaluation is a direct transcription of the textbook formula rather than
+/// a considered choice — its own comment says as much.
+///
+/// Row `PHASES` is the window at a fraction of exactly 1, which no position
+/// reaches but which interpolation approaches from below.
+static WINDOW_TABLE: std::sync::LazyLock<[[f32; TAPS]; PHASES + 1]> =
+    std::sync::LazyLock::new(|| {
+        core::array::from_fn(|phase| {
+            let frac = phase as f64 / PHASES as f64;
+            core::array::from_fn(|k| {
+                let i = k as i32 - LANCZOS_WINDOW_SIZE + 1;
+                lanczos_window(frac - f64::from(i))
+            })
+        })
+    });
+
+/// Build the window table. Call once off the audio thread — the first
+/// [`lanczos_taps`] would otherwise pay for it inside a callback.
+fn warm_window_table() {
+    std::sync::LazyLock::force(&WINDOW_TABLE);
+}
+
+/// The ten window coefficients for a position `frac` of the way between two
+/// source samples.
+fn lanczos_taps(frac: f64) -> [f32; TAPS] {
+    let scaled = frac * PHASES as f64;
+    let row = (scaled as usize).min(PHASES - 1);
+    let blend = (scaled - row as f64) as f32;
+    let (low, high) = (&WINDOW_TABLE[row], &WINDOW_TABLE[row + 1]);
+    core::array::from_fn(|k| low[k] + blend * (high[k] - low[k]))
 }
 
 /// The reference's `mixToBuffer`: fan a voice's channels onto however many
@@ -973,5 +1036,125 @@ fn mix_to_buffer(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use expect_test::{expect, Expect};
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::*;
+
+    /// The analytic window, evaluated the way the reference evaluates it.
+    fn exact_taps(frac: f64) -> [f32; TAPS] {
+        core::array::from_fn(|k| {
+            let i = k as i32 - LANCZOS_WINDOW_SIZE + 1;
+            lanczos_window(frac - f64::from(i))
+        })
+    }
+
+    /// How far the table's window strays from the analytic one, sampled at
+    /// fractions that do not land on table rows.
+    ///
+    /// `worst_output` is the bound that matters: the sum of the per-tap
+    /// errors is the largest output error possible for a signal that never
+    /// leaves ±1, so it converts directly to a noise floor in dBFS.
+    fn check(phases_per_step: f64, expect: Expect) {
+        let (mut worst_tap, mut worst_output, mut at) = (0.0f32, 0.0f32, 0.0f64);
+        let mut frac = 0.0f64;
+        while frac < 1.0 {
+            let (table, exact) = (lanczos_taps(frac), exact_taps(frac));
+            let mut sum = 0.0f32;
+            for k in 0..TAPS {
+                let error = (table[k] - exact[k]).abs();
+                worst_tap = worst_tap.max(error);
+                sum += error;
+            }
+            if sum > worst_output {
+                (worst_output, at) = (sum, frac);
+            }
+            frac += phases_per_step / PHASES as f64;
+        }
+        expect.assert_eq(&format!(
+            "worst tap error   {worst_tap:.3e}\n\
+             worst output error {worst_output:.3e} at frac={at:.6} ({:.1} dBFS)",
+            20.0 * worst_output.log10()
+        ));
+    }
+
+    /// Halfway between rows is where linear interpolation is furthest from
+    /// the curve it is chasing, so this is the true worst case.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_table_matches_the_analytic_window() {
+        check(0.5, expect![[r#"
+            worst tap error   4.768e-7
+            worst output error 1.245e-6 at frac=0.005371 (-118.1 dBFS)"#]]);
+    }
+
+    /// An irrational-ish step visits phases with no relationship to the
+    /// table's spacing, in case the aligned sweep flatters it.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_table_matches_at_unaligned_fractions() {
+        check(core::f64::consts::E / 7.0, expect![[r#"
+            worst tap error   4.172e-7
+            worst output error 1.184e-6 at frac=0.010239 (-118.5 dBFS)"#]]);
+    }
+
+    /// Rows are hit exactly, so nothing is interpolated and the only error
+    /// is the f32 the table stores.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_table_is_exact_on_its_own_rows() {
+        check(1.0, expect![[r#"
+            worst tap error   0.000e0
+            worst output error 0.000e0 at frac=0.000000 (-inf dBFS)"#]]);
+    }
+
+    /// A fraction of exactly zero must reproduce the reference's special
+    /// case: the sample passes through untouched, no neighbours mixed in.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_whole_position_passes_the_sample_through() {
+        let taps = lanczos_taps(0.0);
+        let report: Vec<String> = taps.iter().map(|w| format!("{w:.6}")).collect();
+        expect!["0.000000 -0.000000 0.000000 -0.000000 1.000000 -0.000000 0.000000 -0.000000 0.000000 0.000000"].assert_eq(&report.join(" "));
+    }
+
+    /// The table must come out identical on every platform, or the same
+    /// project renders differently in the browser than on the desktop and
+    /// the shared demo gold hashes cannot hold. Native `sin` is the C
+    /// library's and WASM's is a Rust reimplementation, so this cannot be
+    /// taken on trust.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_table_is_identical_on_every_platform() {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for row in WINDOW_TABLE.iter() {
+            for coefficient in row {
+                hash ^= u64::from(coefficient.to_bits());
+                hash = hash.wrapping_mul(0x1000_0000_01b3);
+            }
+        }
+        expect!["ffa5fd68acba7e9b"].assert_eq(&format!("{hash:016x}"));
+    }
+
+    /// The window is symmetric about the midpoint: the taps at frac and at
+    /// 1-frac must be mirror images. A table built with an off-by-one in the
+    /// phase index would still be smooth, but would lose this.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_table_is_symmetric() {
+        let mut worst = 0.0f32;
+        for step in 1..PHASES {
+            let frac = step as f64 / PHASES as f64;
+            let (left, right) = (lanczos_taps(frac), lanczos_taps(1.0 - frac));
+            for k in 0..TAPS {
+                worst = worst.max((left[k] - right[TAPS - 1 - k]).abs());
+            }
+        }
+        expect!["worst asymmetry 0.000e0"].assert_eq(&format!("worst asymmetry {worst:.3e}"));
     }
 }

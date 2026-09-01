@@ -3,14 +3,14 @@
 //!
 //! Everything here mirrors JUCE 8 (`modules/juce_audio_basics`) line for line.
 //! The C++ gold harness in `tests/cpp_harness` reimplements the same pieces, so
-//! any drift shows up as a bit-exact comparison failure rather than silently
+//! any drift shows up as a gold comparison failure rather than silently
 //! detuning the port.
 
 /// `juce::Decibels::decibelsToGain`, with JUCE's default -100 dB floor.
 pub fn decibels_to_gain(decibels: f32) -> f32 {
     const DEFAULT_MINUS_INFINITY_DB: f32 = -100.0;
     if decibels > DEFAULT_MINUS_INFINITY_DB {
-        10.0f32.powf(decibels * 0.05)
+        libm::powf(10.0, decibels * 0.05)
     } else {
         0.0
     }
@@ -59,7 +59,7 @@ impl IirCoefficients {
 
     /// `juce::IIRCoefficients::makeLowPass(sampleRate, frequency, Q)`.
     pub fn make_low_pass(sample_rate: f64, frequency: f64, q: f64) -> Self {
-        let n = 1.0 / (core::f64::consts::PI * frequency / sample_rate).tan();
+        let n = 1.0 / libm::tan(core::f64::consts::PI * frequency / sample_rate);
         let n_squared = n * n;
         let c1 = 1.0 / (1.0 + 1.0 / q * n + n_squared);
 

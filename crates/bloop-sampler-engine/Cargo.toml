@@ -11,6 +11,13 @@ license = "MIT"
 # cites the pinned revision (test-guarded in bloop-menu-pages).
 
 [dependencies]
+# The voice's transcendentals go through libm rather than std so that the
+# same project renders identically in the browser and on the desktop: std's
+# `exp`, `powf` and friends are the C library's on native and a separate
+# Rust implementation on wasm32, and they disagree in the last ulp. The
+# demo gold hashes rendered audio, so that disagreement is a test failure —
+# see `a_shaped_envelope_is_identical_on_every_platform`.
+libm = "0.2"
 symphonia = { workspace = true }
 
 [dev-dependencies]
