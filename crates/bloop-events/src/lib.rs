@@ -39,6 +39,28 @@ pub enum NoteEvent {
         cc: u8,
         value: f32,
     },
+    /// Cut everything this track is sounding, now, without a release.
+    ///
+    /// Distinct from `NoteOff` because the two mean different things: a
+    /// note-off says the key came up, and a one-shot sampler pad ignores it
+    /// on purpose so that lifting a finger cannot truncate a drum hit.
+    /// Choking is the other thing — the closed hat stopping the open one —
+    /// and it has to land whatever the pad thinks about note-offs.
+    ///
+    /// This is the same concept as CLAP's `CLAP_EVENT_NOTE_CHOKE`, whose
+    /// documentation describes exactly this case, so a CLAP plugin hosted
+    /// later maps straight onto it. VST3 has no equivalent: its adapter has
+    /// to degrade this to a note-off, which is right for any instrument that
+    /// honours release and wrong only for a third-party one-shot player,
+    /// where MIDI CC 120 (All Sound Off) is the nearest thing.
+    ///
+    /// Bloop's is per TRACK where CLAP's is per note, because a Bloop track
+    /// is one instrument and choke groups run between tracks — so the
+    /// mapping is "choke every note this track is sounding", not one to one.
+    Choke {
+        time: u32,
+        channel: u8,
+    },
 }
 
 impl NoteEvent {
@@ -54,7 +76,8 @@ impl NoteEvent {
             | Self::NoteOff { time, .. }
             | Self::Aftertouch { time, .. }
             | Self::PitchBend { time, .. }
-            | Self::CC { time, .. } => *time,
+            | Self::CC { time, .. }
+            | Self::Choke { time, .. } => *time,
         }
     }
 
@@ -64,7 +87,8 @@ impl NoteEvent {
             | Self::NoteOff { time, .. }
             | Self::Aftertouch { time, .. }
             | Self::PitchBend { time, .. }
-            | Self::CC { time, .. } => time,
+            | Self::CC { time, .. }
+            | Self::Choke { time, .. } => time,
         }
     }
 }
