@@ -54,12 +54,16 @@ pub enum NoteEvent {
     /// honours release and wrong only for a third-party one-shot player,
     /// where MIDI CC 120 (All Sound Off) is the nearest thing.
     ///
-    /// Bloop's is per TRACK where CLAP's is per note, because a Bloop track
-    /// is one instrument and choke groups run between tracks — so the
-    /// mapping is "choke every note this track is sounding", not one to one.
+    /// Per note, like CLAP's, even though Bloop's choke groups run between
+    /// tracks and a track is one instrument today: the engine knows which
+    /// notes it started, so it can say. Naming the note is what lets a
+    /// drum-machine plugin fed by several pads choke one of them without
+    /// silencing the others — the case a per-track event could not express.
+    /// A choke for a note that has already finished is a no-op.
     Choke {
         time: u32,
         channel: u8,
+        note: Note,
     },
 }
 

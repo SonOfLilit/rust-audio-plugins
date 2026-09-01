@@ -345,26 +345,15 @@ impl DexedPlugin {
         }
     }
 
-    /// Release every sounding voice.
-    ///
-    /// A choke asks for no release at all, but this synth is never the
-    /// reason choke exists — it honours note-off, so it was already stopping
-    /// when the engine injected one. Releasing keeps that behaviour exactly
-    /// rather than introducing a click for a case nothing exercises.
-    fn choke(&mut self) {
-        for voice in &mut self.voices {
-            if voice.keydown {
-                voice.note.keyup(&self.tables);
-                voice.keydown = false;
-            }
-        }
-    }
-
     fn apply_event(&mut self, event: &NoteEvent) {
         match *event {
             NoteEvent::NoteOn { note, velocity, .. } => self.note_on(note.as_u8(), velocity),
             NoteEvent::NoteOff { note, .. } => self.note_off(note.as_u8()),
-            NoteEvent::Choke { .. } => self.choke(),
+            // A choke asks for no release, but this synth honours note-off
+            // and so was already stopping when the engine injected one.
+            // Releasing keeps that behaviour rather than introducing a click
+            // for a case nothing exercises; it has no hard-stop to reach for.
+            NoteEvent::Choke { note, .. } => self.note_off(note.as_u8()),
             NoteEvent::PitchBend { value, .. } => {
                 self.ctrls.pitch_bend = (value * 16383.0).round().clamp(0.0, 16383.0) as i32;
             }
