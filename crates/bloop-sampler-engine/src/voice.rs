@@ -638,145 +638,172 @@ impl SamplerVoice {
         self.update_speed_and_pitch(sample, params, note, wheel);
 
         // Main processing loop.
+        //
+        // The reference loops channels outermost and replays the whole state
+        // machine for each, because its `VoiceContext` is reset per channel.
+        // Nothing in that machine depends on the channel, so this runs it once
+        // with the channels innermost: the position walk, the envelope's two
+        // `exp` calls and the interpolation window are then computed once per
+        // frame rather than once per frame per channel. Only the fetch, the
+        // lowpass streams and the output rows are genuinely per-channel.
+        //
+        // Every channel is handed the same `con` at every step, so the output
+        // is bit-identical to the replayed version — which the gold snapshots
+        // and the demo audio hashes both check.
         let mut con = self.vc;
-        for ch in 0..num_channels {
-            // Each channel replays the same transitions from the entry state.
-            con = self.vc;
-            for i in 0..num_samples {
-                if con.state == VoiceState::Stopped {
-                    continue;
-                }
+        let velocity_gain =
+            decibels_to_gain_f64(40.0 * libm::log10(f64::from(self.note_velocity)));
+        let gain = decibels_to_gain(params.gain_db);
+        let mut values = [0.0f32; MAX_CHANNELS];
+        // A channel-less buffer left the reference's state machine untouched,
+        // since its loop was over channels. Keep that.
+        let frames = if num_channels == 0 { 0 } else { num_samples };
+        for i in 0..frames {
+            if con.state == VoiceState::Stopped {
+                continue;
+            }
 
-                let mut value =
-                    self.fetch_sample(sample, params, ch, con.current_position, StreamSet::Main);
+            let window = window_at(params, con.current_position);
+            for (ch, value) in values.iter_mut().enumerate().take(num_channels) {
+                *value = self.fetch_sample(
+                    sample,
+                    params,
+                    ch,
+                    con.current_position,
+                    StreamSet::Main,
+                    &window,
+                );
+            }
 
-                // Crossfading.
-                if con.is_crossfading_loop {
-                    let crossfade_position = con.current_position - f64::from(self.sample_start);
-                    if crossfade_position >= f64::from(self.crossfade) {
-                        con.is_crossfading_loop = false;
-                    } else {
-                        let (increase, decrease) =
-                            Self::crossfade_gains(crossfade_position, self.crossfade);
-                        let next = self.fetch_sample(
-                            sample,
-                            params,
-                            ch,
-                            con.current_position + f64::from(self.sample_end - self.sample_start)
-                                - f64::from(self.crossfade),
-                            StreamSet::Loop,
-                        );
-                        value = value * increase + next * decrease;
+            // Crossfading.
+            if con.is_crossfading_loop {
+                let crossfade_position = con.current_position - f64::from(self.sample_start);
+                if crossfade_position >= f64::from(self.crossfade) {
+                    con.is_crossfading_loop = false;
+                } else {
+                    let (increase, decrease) =
+                        Self::crossfade_gains(crossfade_position, self.crossfade);
+                    let position = con.current_position
+                        + f64::from(self.sample_end - self.sample_start)
+                        - f64::from(self.crossfade);
+                    let window = window_at(params, position);
+                    for (ch, value) in values.iter_mut().enumerate().take(num_channels) {
+                        let next = self
+                            .fetch_sample(sample, params, ch, position, StreamSet::Loop, &window);
+                        *value = *value * increase + next * decrease;
                     }
                 }
+            }
 
-                if con.is_crossfading_end {
-                    let crossfade_position = con.current_position - f64::from(self.sample_end);
-                    if crossfade_position >= f64::from(self.crossfade) {
-                        con.is_crossfading_end = false;
-                    } else {
-                        let (increase, decrease) =
-                            Self::crossfade_gains(crossfade_position, self.crossfade);
-                        let next = self.fetch_sample(
-                            sample,
-                            params,
-                            ch,
-                            con.crossfade_end_position,
-                            StreamSet::End,
-                        );
-                        value = value * increase + next * decrease;
-                        con.crossfade_end_position += f64::from(self.speed);
+            if con.is_crossfading_end {
+                let crossfade_position = con.current_position - f64::from(self.sample_end);
+                if crossfade_position >= f64::from(self.crossfade) {
+                    con.is_crossfading_end = false;
+                } else {
+                    let (increase, decrease) =
+                        Self::crossfade_gains(crossfade_position, self.crossfade);
+                    let position = con.crossfade_end_position;
+                    let window = window_at(params, position);
+                    for (ch, value) in values.iter_mut().enumerate().take(num_channels) {
+                        let next = self
+                            .fetch_sample(sample, params, ch, position, StreamSet::End, &window);
+                        *value = *value * increase + next * decrease;
                     }
+                    con.crossfade_end_position += f64::from(self.speed);
                 }
+            }
 
-                // Attack and release envelopes.
-                self.envelope[ch][i] = 1.0;
+            // Attack and release envelopes.
+            let mut envelope = 1.0f32;
 
-                if con.is_smoothing_attack {
-                    if con.speed_moved_since_start >= self.attack_smoothing {
-                        con.is_smoothing_attack = false;
-                    } else {
-                        self.envelope[ch][i] = Self::exponential_curve(
-                            self.attack_shape,
-                            con.speed_moved_since_start / self.attack_smoothing,
-                        );
-                    }
-                }
-
-                if con.is_releasing {
-                    self.envelope[ch][i] *= Self::exponential_curve(
-                        self.release_shape,
-                        1.0 - con.speed_moved_since_release / self.release_smoothing,
+            if con.is_smoothing_attack {
+                if con.speed_moved_since_start >= self.attack_smoothing {
+                    con.is_smoothing_attack = false;
+                } else {
+                    envelope = Self::exponential_curve(
+                        self.attack_shape,
+                        con.speed_moved_since_start / self.attack_smoothing,
                     );
                 }
+            }
 
-                // Update the position.
-                con.current_position += f64::from(self.speed);
-                con.speed_moved_since_start += 1.0;
-                if con.is_releasing {
-                    con.speed_moved_since_release += 1.0;
-                }
+            if con.is_releasing {
+                envelope *= Self::exponential_curve(
+                    self.release_shape,
+                    1.0 - con.speed_moved_since_release / self.release_smoothing,
+                );
+            }
 
-                // Handle transitions.
-                if con.state == VoiceState::Playing
-                    && self.is_looping
-                    && con.current_position >= f64::from(self.sample_end as f32 - self.crossfade)
-                {
-                    // Loop crossfade.
-                    con.current_position -= f64::from(
-                        (self.sample_end - self.sample_start + 1) as f32 - self.crossfade,
-                    );
-                    con.is_crossfading_loop = true;
+            // Update the position.
+            con.current_position += f64::from(self.speed);
+            con.speed_moved_since_start += 1.0;
+            if con.is_releasing {
+                con.speed_moved_since_release += 1.0;
+            }
 
+            // Handle transitions.
+            if con.state == VoiceState::Playing
+                && self.is_looping
+                && con.current_position >= f64::from(self.sample_end as f32 - self.crossfade)
+            {
+                // Loop crossfade.
+                con.current_position -=
+                    f64::from((self.sample_end - self.sample_start + 1) as f32 - self.crossfade);
+                con.is_crossfading_loop = true;
+
+                let position = con.current_position as i32;
+                for ch in 0..num_channels {
                     self.swap_streams(StreamSet::Loop, ch);
-                    let position = con.current_position as i32;
                     self.stream_mut(StreamSet::Main, ch)
                         .reset_processing(position);
                 }
+            }
 
-                if self.midi_released && !con.is_releasing && con.state == VoiceState::Playing {
-                    // MIDI release, end crossfade.
-                    if self.looping_has_end {
-                        con.crossfade_end_position = con.current_position;
-                        con.current_position = f64::from(self.sample_end + 1);
-                        con.state = VoiceState::PlayingEnd;
-                        con.is_crossfading_end = true;
+            if self.midi_released && !con.is_releasing && con.state == VoiceState::Playing {
+                // MIDI release, end crossfade.
+                if self.looping_has_end {
+                    con.crossfade_end_position = con.current_position;
+                    con.current_position = f64::from(self.sample_end + 1);
+                    con.state = VoiceState::PlayingEnd;
+                    con.is_crossfading_end = true;
 
+                    let position = con.current_position as i32;
+                    for ch in 0..num_channels {
                         self.swap_streams(StreamSet::End, ch);
-                        let position = con.current_position as i32;
                         self.stream_mut(StreamSet::Main, ch)
                             .reset_processing(position);
-                    } else {
-                        con.is_releasing = true;
                     }
-                }
-
-                if ((con.state == VoiceState::Playing && !self.is_looping)
-                    || con.state == VoiceState::PlayingEnd)
-                    && !con.is_releasing
-                    && con.current_position
-                        > f64::from(self.effective_end as f32 - self.release_smoothing * self.speed)
-                {
-                    // Release smoothing.
+                } else {
                     con.is_releasing = true;
                 }
+            }
 
-                if con.current_position > f64::from(self.effective_end)
-                    || (con.is_releasing && con.speed_moved_since_release >= self.release_smoothing)
-                {
-                    // End of playback reached.
-                    con.state = VoiceState::Stopped;
-                }
+            if ((con.state == VoiceState::Playing && !self.is_looping)
+                || con.state == VoiceState::PlayingEnd)
+                && !con.is_releasing
+                && con.current_position
+                    > f64::from(self.effective_end as f32 - self.release_smoothing * self.speed)
+            {
+                // Release smoothing.
+                con.is_releasing = true;
+            }
 
+            if con.current_position > f64::from(self.effective_end)
+                || (con.is_releasing && con.speed_moved_since_release >= self.release_smoothing)
+            {
+                // End of playback reached.
+                con.state = VoiceState::Stopped;
+            }
+
+            for (ch, &fetched) in values.iter().enumerate().take(num_channels) {
                 // Scale with the standard velocity curve. `40 * log10(v)` picks
                 // C++'s double `log10`, so the whole velocity gain is computed
                 // in double and only then narrowed — the gold tests catch the
                 // one-ULP difference if this is done in f32.
-                value = (f64::from(value)
-                    * decibels_to_gain_f64(40.0 * libm::log10(f64::from(self.note_velocity))))
-                    as f32;
-                value *= decibels_to_gain(params.gain_db);
+                let mut value = (f64::from(fetched) * velocity_gain) as f32;
+                value *= gain;
 
+                self.envelope[ch][i] = envelope;
                 self.temp_output[ch][i] = value;
             }
         }
@@ -843,6 +870,7 @@ impl SamplerVoice {
         channel: usize,
         position: f64,
         set: StreamSet,
+        window: &[f32; TAPS],
     ) -> f32 {
         if !(0.0..f64::from(sample.num_samples() as f32)).contains(&position) {
             return 0.0;
@@ -851,18 +879,22 @@ impl SamplerVoice {
         if params.skip_antialiasing {
             sample.sample(channel, position as usize)
         } else {
-            self.lanczos_interpolate(sample, channel, position, set)
+            self.lanczos_interpolate(sample, channel, position, set, window)
         }
     }
 
     /// Use a Lanczos kernel to calculate fractional sample indices, applying the
     /// lowpass filter beforehand if `do_lowpass`.
+    ///
+    /// `window` comes from the caller because it depends only on the position,
+    /// not the channel — see [`window_at`].
     fn lanczos_interpolate(
         &mut self,
         sample: &SampleBuffer,
         channel: usize,
         position: f64,
         set: StreamSet,
+        window: &[f32; TAPS],
     ) -> f32 {
         let num_samples = sample.num_samples() as i32;
 
@@ -885,8 +917,6 @@ impl SamplerVoice {
         // Then, interpolate.
         let floor_index = position.floor() as i32;
         let stream = &self.lowpass[set as usize][channel];
-
-        let window = lanczos_taps(position - f64::from(floor_index));
 
         let mut result = 0.0f32;
         for i in (-LANCZOS_WINDOW_SIZE + 1)..=LANCZOS_WINDOW_SIZE {
@@ -970,6 +1000,17 @@ static WINDOW_TABLE: std::sync::LazyLock<[[f32; TAPS]; PHASES + 1]> =
 /// [`lanczos_taps`] would otherwise pay for it inside a callback.
 fn warm_window_table() {
     std::sync::LazyLock::force(&WINDOW_TABLE);
+}
+
+/// The window for an absolute position, or zeros when the caller will not
+/// interpolate. Depends only on the position, so callers rendering several
+/// channels compute it once.
+fn window_at(params: &SamplerParams, position: f64) -> [f32; TAPS] {
+    if params.skip_antialiasing {
+        [0.0; TAPS]
+    } else {
+        lanczos_taps(position - position.floor())
+    }
 }
 
 /// The ten window coefficients for a position `frac` of the way between two
