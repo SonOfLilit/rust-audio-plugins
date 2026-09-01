@@ -30,10 +30,16 @@ const MEDIAN_RADIUS: usize = 24;
 ///
 /// This is what actually decides how many cuts a dense break yields: on real
 /// material almost every allowed slot contains something that clears an
-/// energy threshold, so separation, not loudness, is the useful control. A
-/// quarter of a second finds the downbeats; thirty milliseconds finds the
-/// ghost notes.
-const MIN_SEPARATION_RANGE: (f32, f32) = (0.25, 0.03);
+/// energy threshold, so separation, not loudness, is the useful control. Half
+/// a second finds the beats; thirty milliseconds finds the ghost notes.
+///
+/// The knob interpolates between them *geometrically*, because the number of
+/// cuts goes as one over the separation: stepping the separation linearly
+/// spends half the travel between twelve cuts and eighteen and then leaps to
+/// a hundred. Geometrically, equal turns multiply the density by equal
+/// factors, so the knob is about twice as fine every quarter turn all the way
+/// along.
+const MIN_SEPARATION_RANGE: (f32, f32) = (0.5, 0.03);
 
 /// Where the hits are in `range`, as absolute frame positions, ascending.
 ///
@@ -87,8 +93,8 @@ pub fn detect_onsets(sample: &SampleBuffer, range: (usize, usize), sensitivity: 
     // How far above the local median a rise must sit to count at all.
     let factor = 3.0 - 2.0 * sensitivity;
     let floor = peak * 0.02 * (1.0 - sensitivity);
-    let separation =
-        MIN_SEPARATION_RANGE.0 + (MIN_SEPARATION_RANGE.1 - MIN_SEPARATION_RANGE.0) * sensitivity;
+    let (coarse, fine) = MIN_SEPARATION_RANGE;
+    let separation = coarse * libm::powf(fine / coarse, sensitivity);
     let min_gap_steps = ((separation * sample.sample_rate() as f32) / HOP as f32)
         .ceil()
         .max(1.0) as usize;
@@ -132,6 +138,14 @@ pub fn detect_onsets(sample: &SampleBuffer, range: (usize, usize), sensitivity: 
     }
 
     kept.sort_unstable();
+    // The range's own edges are slice boundaries too, so a hit within the
+    // separation of one is not a new slice — it is the start (or the end) of
+    // the range arriving slightly late. Without this a break whose first
+    // transient sits a few milliseconds in gets a runt first slice: a sliver
+    // of pre-roll on its own pad, and the actual downbeat on the next.
+    let last_step = flux.len().saturating_sub(1);
+    kept.retain(|&step| step >= min_gap_steps && last_step.saturating_sub(step) >= min_gap_steps);
+
     // `flux[step]` is the rise *into* the next window, so that is where the
     // hit begins.
     kept.into_iter()
@@ -219,8 +233,7 @@ mod tests {
         let sample = hits(48_000, &at);
         let onsets = detect_onsets(&sample, (0, 48_000), 0.5);
         expect![[r#"
-            found 2 onsets
-                 512  (nearest hit    88 frames away)
+            found 1 onsets
                23936  (nearest hit    64 frames away)
         "#]]
         .assert_eq(&report(&onsets, &at));
@@ -243,11 +256,11 @@ mod tests {
             .map(|&s| format!("{s:.2} → {}", detect_onsets(&sample, (0, 48_000), s).len()))
             .collect();
         expect![[r#"
-            0.00 → 2
+            0.00 → 0
             0.25 → 2
             0.50 → 4
             0.75 → 4
-            1.00 → 5"#]]
+            1.00 → 4"#]]
         .assert_eq(&counts.join("\n"));
     }
 
@@ -276,8 +289,7 @@ mod tests {
         let sample = hits(48_000, &at);
         let onsets = detect_onsets(&sample, (20_000, 48_000), 0.5);
         expect![[r#"
-            found 2 onsets
-               23840  (nearest hit   160 frames away)
+            found 1 onsets
                35872  (nearest hit   128 frames away)
         "#]]
         .assert_eq(&report(&onsets, &at));
