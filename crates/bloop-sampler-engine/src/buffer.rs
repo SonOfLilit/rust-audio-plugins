@@ -7,10 +7,26 @@ use std::sync::Arc;
 /// Voices only ever borrow this, so one import can back any number of pads
 /// playing different slices of it: the pads share a single [`SharedSample`]
 /// and differ only in their start/end bounds.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct SampleBuffer {
     channels: Vec<Vec<f32>>,
     sample_rate: u32,
+}
+
+/// Its shape, not its contents.
+///
+/// The derived `Debug` printed every sample — several million floats for a
+/// loop — so anything that formatted a command carrying one appeared to
+/// hang. A test harness reaching for `{:?}` on an `AudioCommand` is the
+/// ordinary thing to do, and it should not be a trap.
+impl core::fmt::Debug for SampleBuffer {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SampleBuffer")
+            .field("channels", &self.channels.len())
+            .field("frames", &self.num_samples())
+            .field("sample_rate", &self.sample_rate)
+            .finish()
+    }
 }
 
 /// A [`SampleBuffer`] shared between pads. Cheap to clone.
