@@ -651,8 +651,7 @@ impl SamplerVoice {
         // is bit-identical to the replayed version — which the gold snapshots
         // and the demo audio hashes both check.
         let mut con = self.vc;
-        let velocity_gain =
-            decibels_to_gain_f64(40.0 * libm::log10(f64::from(self.note_velocity)));
+        let velocity_gain = decibels_to_gain_f64(40.0 * libm::log10(f64::from(self.note_velocity)));
         let gain = decibels_to_gain(params.gain_db);
         let mut values = [0.0f32; MAX_CHANNELS];
         // A channel-less buffer left the reference's state machine untouched,
@@ -688,8 +687,14 @@ impl SamplerVoice {
                         - f64::from(self.crossfade);
                     let window = window_at(params, position);
                     for (ch, value) in values.iter_mut().enumerate().take(num_channels) {
-                        let next = self
-                            .fetch_sample(sample, params, ch, position, StreamSet::Loop, &window);
+                        let next = self.fetch_sample(
+                            sample,
+                            params,
+                            ch,
+                            position,
+                            StreamSet::Loop,
+                            &window,
+                        );
                         *value = *value * increase + next * decrease;
                     }
                 }
@@ -705,8 +710,14 @@ impl SamplerVoice {
                     let position = con.crossfade_end_position;
                     let window = window_at(params, position);
                     for (ch, value) in values.iter_mut().enumerate().take(num_channels) {
-                        let next = self
-                            .fetch_sample(sample, params, ch, position, StreamSet::End, &window);
+                        let next = self.fetch_sample(
+                            sample,
+                            params,
+                            ch,
+                            position,
+                            StreamSet::End,
+                            &window,
+                        );
                         *value = *value * increase + next * decrease;
                     }
                     con.crossfade_end_position += f64::from(self.speed);
@@ -1129,9 +1140,12 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn the_table_matches_the_analytic_window() {
-        check(0.5, expect![[r#"
+        check(
+            0.5,
+            expect![[r#"
             worst tap error   4.768e-7
-            worst output error 1.245e-6 at frac=0.005371 (-118.1 dBFS)"#]]);
+            worst output error 1.245e-6 at frac=0.005371 (-118.1 dBFS)"#]],
+        );
     }
 
     /// An irrational-ish step visits phases with no relationship to the
@@ -1139,9 +1153,12 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn the_table_matches_at_unaligned_fractions() {
-        check(core::f64::consts::E / 7.0, expect![[r#"
+        check(
+            core::f64::consts::E / 7.0,
+            expect![[r#"
             worst tap error   4.172e-7
-            worst output error 1.184e-6 at frac=0.010239 (-118.5 dBFS)"#]]);
+            worst output error 1.184e-6 at frac=0.010239 (-118.5 dBFS)"#]],
+        );
     }
 
     /// Rows are hit exactly, so nothing is interpolated and the only error
@@ -1149,9 +1166,12 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn the_table_is_exact_on_its_own_rows() {
-        check(1.0, expect![[r#"
+        check(
+            1.0,
+            expect![[r#"
             worst tap error   0.000e0
-            worst output error 0.000e0 at frac=0.000000 (-inf dBFS)"#]]);
+            worst output error 0.000e0 at frac=0.000000 (-inf dBFS)"#]],
+        );
     }
 
     /// A fraction of exactly zero must reproduce the reference's special
