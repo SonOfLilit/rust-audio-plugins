@@ -145,8 +145,30 @@ impl EventBuffer {
     }
 
     /// Sort events by sample offset.
+    /// Order the block's events by when they happen, and — at the same
+    /// sample — by what they are: a release before a strike.
+    ///
+    /// The tie-break is not decoration. The sort is unstable, so two
+    /// events sharing a sample could come out either way round, and a
+    /// retrigger is exactly that pair: the note off that ends the last
+    /// step and the note on that starts the next. Sorted the wrong way
+    /// the synth starts the note and then stops it, and the step is
+    /// silent. It stayed hidden while the only events sharing a time were
+    /// one voice's, and surfaced when the repeat engine moved onto the
+    /// audio thread and began placing both at the sample they were due.
     pub fn sort_by_time(&mut self) {
-        self.events[..self.len].sort_unstable_by_key(|e| e.time());
+        self.events[..self.len].sort_unstable_by_key(|e| (e.time(), Self::at_same_sample(e)));
+    }
+
+    /// What has to happen first when two events share a sample.
+    fn at_same_sample(event: &NoteEvent) -> u8 {
+        match event {
+            NoteEvent::NoteOff { .. } => 0,
+            // Everything that is not a strike is state the strike should
+            // see: a bend or an aftertouch set before the note starts.
+            NoteEvent::NoteOn { .. } => 2,
+            _ => 1,
+        }
     }
 
     /// Add `offset` to the time of every event from index `from` on.
