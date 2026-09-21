@@ -28,6 +28,7 @@ mod onsets;
 mod params;
 mod record;
 mod voice;
+pub mod wave;
 
 pub use buffer::{SampleBuffer, SharedSample};
 pub use decode::{decode, ImportError, SampleDecoder, IMPORTABLE_EXTENSIONS};
@@ -36,6 +37,7 @@ pub use onsets::detect_onsets;
 pub use params::{ranges, ParamRange, SamplerParams, WAVETABLE_CUTOFF_HZ};
 pub use record::{RecordState, Recorder};
 pub use voice::{SamplerVoice, VoiceState, MAX_CHANNELS};
+pub use wave::{MarkKind, WaveMark, WaveView, WAVE_COLUMNS};
 
 /// The Just-a-Sample revision this crate's voice is a port of.
 ///
