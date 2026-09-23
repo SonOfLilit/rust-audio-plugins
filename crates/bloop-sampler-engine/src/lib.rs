@@ -22,7 +22,7 @@
 
 mod buffer;
 mod decode;
-mod edit;
+pub mod edit;
 mod juce;
 mod onsets;
 mod params;
