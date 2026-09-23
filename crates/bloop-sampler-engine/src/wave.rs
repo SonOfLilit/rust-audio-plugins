@@ -60,6 +60,11 @@ pub enum MarkKind {
     LoopEnd,
     /// A voice's live position.
     Playhead,
+    /// Where the Sample Editor's selection — what an audio function acts
+    /// on — begins.
+    SelectionStart,
+    /// Where it ends.
+    SelectionEnd,
 }
 
 impl MarkKind {
@@ -72,6 +77,8 @@ impl MarkKind {
             Self::LoopStart => '{',
             Self::LoopEnd => '}',
             Self::Playhead => '>',
+            Self::SelectionStart => '(',
+            Self::SelectionEnd => ')',
         }
     }
 }
