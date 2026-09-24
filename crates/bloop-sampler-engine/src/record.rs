@@ -63,6 +63,26 @@ impl Recorder {
         self.channels.first().map_or(0, Vec::len)
     }
 
+    /// The rate the input is captured at.
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    /// Change the level an armed take waits for, keeping what it has.
+    ///
+    /// An infinite threshold listens without keeping anything: the input
+    /// is open and the level meter moves, but the take has not begun —
+    /// which is how a take kept to a bar waits for it, so the device's
+    /// start-up is over by the time the bar comes.
+    pub fn set_threshold(&mut self, threshold: f32) {
+        self.threshold = threshold.max(0.0);
+    }
+
+    /// What has been captured so far, a buffer per channel.
+    pub fn captured(&self) -> &[Vec<f32>] {
+        &self.channels
+    }
+
     /// How full the buffer is, 0.0..=1.0.
     pub fn fullness(&self) -> f32 {
         if self.max_frames == 0 {
@@ -140,6 +160,24 @@ impl Recorder {
         for channel in &mut self.channels {
             channel.truncate(shortest);
         }
+    }
+
+    /// End the take at exactly `frames` long: cut where it ran on, and
+    /// padded with silence where the input fell short of it. `None`, as
+    /// [`Recorder::stop`], when nothing was captured.
+    ///
+    /// For a take kept to the bar: the input is read once a frame, so it
+    /// stops within a frame of the bar, and a loop a few milliseconds off
+    /// its length drifts against the Pattern it was recorded to.
+    pub fn stop_at_length(&mut self, frames: usize) -> Option<SampleBuffer> {
+        if self.frames() == 0 {
+            self.state = RecordState::Idle;
+            return None;
+        }
+        for channel in &mut self.channels {
+            channel.resize(frames, 0.0);
+        }
+        self.stop()
     }
 
     /// End the take and hand back what was captured.

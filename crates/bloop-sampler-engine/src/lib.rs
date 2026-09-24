@@ -45,6 +45,22 @@ pub use wave::{MarkKind, WaveMark, WaveView, WAVE_COLUMNS};
 /// the `license_page_cites_the_pinned_jas_revision` test in bloop-menu-pages).
 pub const PORTED_FROM_JAS_REV: &str = "bc97747a514755ca686f8b1e5cd223e5b44866b4";
 
+/// The left and right gains for a Zone's pan, -1 (left) to 1 (right).
+///
+/// The mixer's equal-power law (`bloop_mixer::pan_law`), restated here
+/// because a plug-in sits below the mixer, and scaled so the centre is
+/// unity rather than -3 dB: an unpanned Zone plays exactly as it
+/// did before it had a pan, and a panned one keeps its power. `libm`, not
+/// `std`, so a panned Zone renders the same on every target.
+#[must_use]
+pub fn pan_gains(pan: f32) -> (f32, f32) {
+    let angle = (pan.clamp(-1.0, 1.0) + 1.0) * core::f32::consts::FRAC_PI_4;
+    (
+        (libm::cosf(angle) * core::f32::consts::SQRT_2).max(0.0),
+        (libm::sinf(angle) * core::f32::consts::SQRT_2).max(0.0),
+    )
+}
+
 /// Encode interleaved 16-bit PCM stereo WAV bytes.
 ///
 /// The pair of [`decode`], and the one encoder in the tree: both the
