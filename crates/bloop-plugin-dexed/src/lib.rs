@@ -305,6 +305,19 @@ impl DexedPlugin {
         self.reset_lfo();
     }
 
+    /// A program change. A note still held keeps sounding — each voice
+    /// took its patch at note-on (`preset_switch_spares_playing_voices`) —
+    /// but what was let go stops. A released voice of a patch whose
+    /// carriers end above nought (L4 > 0: TRAIN) never stops by itself,
+    /// and left running it sounds under every preset loaded after it.
+    fn let_go_of_released(&mut self) {
+        for voice in &mut self.voices {
+            if !voice.keydown {
+                *voice = Voice::default();
+            }
+        }
+    }
+
     /// Re-seed the LFO from the patch's LFO bytes (speed, delay, PMD,
     /// AMD, sync, wave).
     fn reset_lfo(&mut self) {
@@ -453,7 +466,13 @@ impl Plugin for DexedPlugin {
         match index {
             PARAM_VOLUME => self.volume = value.clamp(0.0, 1.0),
             PARAM_PRESET => {
-                self.preset = (value.round().max(0.0) as usize).min(PRESET_COUNT - 1);
+                let preset = (value.round().max(0.0) as usize).min(PRESET_COUNT - 1);
+                // The same preset said again reloads its patch, and is no
+                // program change: what is sounding goes on.
+                if preset != self.preset {
+                    self.let_go_of_released();
+                }
+                self.preset = preset;
                 self.load_preset(self.preset);
             }
             PARAM_VOICE_BASE..PARAM_OP_ENABLE_BASE => {
@@ -742,6 +761,35 @@ mod tests {
     const EORGAN: f32 = 16.0; // ROM1A "E.ORGAN 1" (sustained, near-organ tone)
     const MARIMBA: f32 = 21.0; // ROM1A "MARIMBA" (fast natural decay)
     const BRASS: f32 = 0.0; // ROM1A "BRASS 1" (slow attack, sustains)
+
+    /// TRAIN is one of the DX7 patches whose carriers end on a level above
+    /// nought (L4 > 0), so a note of it sustains after its key comes up —
+    /// the hardware's own behaviour. Loading another preset then left that
+    /// voice running on the new patch's numbers, and the two were heard
+    /// together. A program change silences what was let go.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_preset_change_silences_what_was_sounding() {
+        const TRAIN: f32 = 30.0;
+        check(
+            TRAIN,
+            &[
+                (0, note_on(60, 0.8)),
+                (8, note_off(60)),
+                (40, Ev::Param(PARAM_PRESET, MARIMBA)),
+            ],
+            64,
+            expect![[r#"
+                w 0 peak=0.0692
+                w 1 peak=0.0682
+                w 2 peak=0.0359
+                w 3 peak=0.0321
+                w 4 peak=0.0337
+                w 5 peak=0.0000
+                w 6 peak=0.0000
+                w 7 peak=0.0000"#]],
+        );
+    }
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
