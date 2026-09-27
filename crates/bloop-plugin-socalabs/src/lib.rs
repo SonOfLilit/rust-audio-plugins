@@ -165,6 +165,7 @@ impl Engine {
 pub struct Effect {
     kind: Kind,
     engine: Engine,
+    sample_rate: f32,
 }
 
 impl Effect {
@@ -197,12 +198,23 @@ impl Effect {
             Kind::SoftClipper => Engine::SoftClipper(Box::default()),
         };
         engine.processor_mut().prepare(f64::from(sample_rate));
-        Self { kind, engine }
+        Self {
+            kind,
+            engine,
+            sample_rate,
+        }
     }
 
     #[must_use]
     pub fn kind(&self) -> Kind {
         self.kind
+    }
+
+    /// The rate the effect is prepared for: the last of [`Self::new`] and
+    /// [`Plugin::reset`].
+    #[must_use]
+    pub fn sample_rate(&self) -> f32 {
+        self.sample_rate
     }
 
     /// The unit a parameter's value is in, as the original labels it.
@@ -302,6 +314,7 @@ impl Plugin for Effect {
     }
 
     fn reset(&mut self, sample_rate: f32, _max_buffer_size: usize) {
+        self.sample_rate = sample_rate;
         dispatch!(&mut self.engine, p => p.prepare(f64::from(sample_rate)));
     }
 }
