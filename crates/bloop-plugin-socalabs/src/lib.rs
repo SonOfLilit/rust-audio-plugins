@@ -1,7 +1,9 @@
 //! The SocaLabs effects as bloop Plug-ins.
 //!
-//! A Rust port of the effect processors in Roland Rabien's slPlugins and of
-//! the Gin DSP they are built from. [`Effect`] is the Plug-in; `plugins`
+//! A Rust port of the effect processors in Roland Rabien's slPlugins, of
+//! the Gin DSP they are built from, and of the Gin effects slPlugins does
+//! not ship as plug-ins (PlateReverb, Distortion, TransientShaper,
+//! Maximizer, Exciter, SoftClipper), behind knobs of bloop's choosing. [`Effect`] is the Plug-in; `plugins`
 //! holds the ported processors and `gin` the ported DSP, each module named
 //! for the file it came from.
 //!
@@ -15,9 +17,15 @@ mod math;
 mod plugins;
 
 use bloop_plugin_api::{ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext};
+use plugins::bitcrusher::BitCrusherProcessor;
 use plugins::crossfeed::CrossfeedProcessor;
 use plugins::delay::DelayProcessor;
 use plugins::dynamics::{DynamicsProcessor, Flavour};
+use plugins::extras::{
+    DistortionProcessor, ExciterProcessor, MaximizerProcessor, PlateReverbProcessor,
+    SoftClipperProcessor, TransientShaperProcessor,
+};
+use plugins::graphiceq::GraphicEqProcessor;
 use plugins::simpleverb::SimpleVerbProcessor;
 use plugins::stereo::{StereoEnhancerProcessor, StereoProcessorProcessor};
 use plugins::{Host, Processor};
@@ -37,20 +45,36 @@ pub enum Kind {
     StereoEnhancer,
     StereoProcessor,
     Crossfeed,
+    GraphicEq,
+    BitCrusher,
+    PlateReverb,
+    Distortion,
+    TransientShaper,
+    Maximizer,
+    Exciter,
+    SoftClipper,
 }
 
 impl Kind {
     /// Every effect, in the order the Browser lists them.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 17] = [
+        Self::BitCrusher,
         Self::Compressor,
         Self::Crossfeed,
         Self::Delay,
+        Self::Distortion,
+        Self::Exciter,
         Self::Expander,
         Self::Gate,
+        Self::GraphicEq,
         Self::Limiter,
+        Self::Maximizer,
+        Self::PlateReverb,
         Self::SimpleVerb,
+        Self::SoftClipper,
         Self::StereoEnhancer,
         Self::StereoProcessor,
+        Self::TransientShaper,
     ];
 
     /// The effect's name, as SocaLabs publishes it.
@@ -66,6 +90,14 @@ impl Kind {
             Self::StereoEnhancer => "StereoEnhancer",
             Self::StereoProcessor => "StereoProcessor",
             Self::Crossfeed => "Crossfeed",
+            Self::GraphicEq => "GraphicEQ",
+            Self::BitCrusher => "BitCrusher",
+            Self::PlateReverb => "PlateReverb",
+            Self::Distortion => "Distortion",
+            Self::TransientShaper => "TransientShaper",
+            Self::Maximizer => "Maximizer",
+            Self::Exciter => "Exciter",
+            Self::SoftClipper => "SoftClipper",
         }
     }
 
@@ -87,6 +119,14 @@ enum Engine {
     StereoEnhancer(Box<StereoEnhancerProcessor>),
     StereoProcessor(Box<StereoProcessorProcessor>),
     Crossfeed(Box<CrossfeedProcessor>),
+    GraphicEq(Box<GraphicEqProcessor>),
+    BitCrusher(Box<BitCrusherProcessor>),
+    PlateReverb(Box<PlateReverbProcessor>),
+    Distortion(Box<DistortionProcessor>),
+    TransientShaper(Box<TransientShaperProcessor>),
+    Maximizer(Box<MaximizerProcessor>),
+    Exciter(Box<ExciterProcessor>),
+    SoftClipper(Box<SoftClipperProcessor>),
 }
 
 macro_rules! dispatch {
@@ -98,6 +138,14 @@ macro_rules! dispatch {
             Engine::StereoEnhancer($p) => $body,
             Engine::StereoProcessor($p) => $body,
             Engine::Crossfeed($p) => $body,
+            Engine::GraphicEq($p) => $body,
+            Engine::BitCrusher($p) => $body,
+            Engine::PlateReverb($p) => $body,
+            Engine::Distortion($p) => $body,
+            Engine::TransientShaper($p) => $body,
+            Engine::Maximizer($p) => $body,
+            Engine::Exciter($p) => $body,
+            Engine::SoftClipper($p) => $body,
         }
     };
 }
@@ -120,10 +168,13 @@ pub struct Effect {
 }
 
 impl Effect {
-    /// The effect at its defaults, prepared for 44.1kHz until the host
-    /// says otherwise with [`Plugin::reset`].
+    /// The effect at its defaults, prepared for `sample_rate` as a host
+    /// prepares a processor before its first block. This is where an
+    /// effect allocates — the Delay's line, the reverb's combs — so it
+    /// belongs on the UI thread, at the rate the engine runs at; a later
+    /// [`Plugin::reset`] at that same rate allocates nothing.
     #[must_use]
-    pub fn new(kind: Kind) -> Self {
+    pub fn new(kind: Kind, sample_rate: f32) -> Self {
         let mut engine = match kind {
             Kind::Compressor => {
                 Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Compressor)))
@@ -136,8 +187,16 @@ impl Effect {
             Kind::StereoEnhancer => Engine::StereoEnhancer(Box::default()),
             Kind::StereoProcessor => Engine::StereoProcessor(Box::default()),
             Kind::Crossfeed => Engine::Crossfeed(Box::default()),
+            Kind::GraphicEq => Engine::GraphicEq(Box::default()),
+            Kind::BitCrusher => Engine::BitCrusher(Box::default()),
+            Kind::PlateReverb => Engine::PlateReverb(Box::default()),
+            Kind::Distortion => Engine::Distortion(Box::default()),
+            Kind::TransientShaper => Engine::TransientShaper(Box::default()),
+            Kind::Maximizer => Engine::Maximizer(Box::default()),
+            Kind::Exciter => Engine::Exciter(Box::default()),
+            Kind::SoftClipper => Engine::SoftClipper(Box::default()),
         };
-        engine.processor_mut().prepare(44100.0);
+        engine.processor_mut().prepare(f64::from(sample_rate));
         Self { kind, engine }
     }
 

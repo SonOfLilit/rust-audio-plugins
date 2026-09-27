@@ -8,6 +8,7 @@
 //! value a processor sees, step by step, which is all that reaches audio.
 
 use crate::juce::{approximately_equal, jlimit, NormalisableRange};
+use crate::math::{std_max, std_min};
 
 /// `gin::ValueSmoother<float>`: a constant-rate ramp, one full 0-to-1
 /// sweep per `time` seconds.
@@ -75,14 +76,16 @@ impl ValueSmoother {
 
     fn update_value(&mut self) {
         if self.current < self.target {
-            self.current = self
-                .target
-                .min((f64::from(self.current) + self.delta) as f32);
+            self.current = std_min(self.target, (f64::from(self.current) + self.delta) as f32);
         } else if self.current > self.target {
-            self.current = self
-                .target
-                .max((f64::from(self.current) - self.delta) as f32);
+            self.current = std_max(self.target, (f64::from(self.current) - self.delta) as f32);
         }
+    }
+
+    /// `getNextValue`: one step on, and where that lands.
+    pub fn next_value(&mut self) -> f32 {
+        self.update_value();
+        self.current
     }
 }
 
@@ -162,7 +165,7 @@ impl EasedValueSmoother {
     fn update_value(&mut self) {
         if self.position < 1.0 {
             let delta = 1.0 / (self.sample_rate * self.time);
-            self.position = (self.position + delta).min(1.0);
+            self.position = crate::math::std_min_f64(self.position + delta, 1.0);
             let f = ease_quadratic_in_out(self.position);
             self.current = (f64::from(self.target) * f + f64::from(self.orig) * (1.0 - f)) as f32;
         }
@@ -197,6 +200,8 @@ pub enum Conversion {
     DecibelsToGain,
     /// Percent to a fraction, in float: `in / 100.0f`.
     PercentToFraction,
+    /// A MIDI note number to its frequency: `gin::getMidiNoteInHertz`.
+    MidiNoteToHertz,
 }
 
 impl Conversion {
@@ -207,8 +212,21 @@ impl Conversion {
             Self::MsToSeconds => (f64::from(value) / 1000.0) as f32,
             Self::DecibelsToGain => crate::juce::decibels_to_gain(value),
             Self::PercentToFraction => value / 100.0,
+            Self::MidiNoteToHertz => midi_note_in_hertz(value),
         }
     }
+}
+
+/// `gin::getMidiNoteInHertz<float>`, A at 440 Hz.
+#[must_use]
+pub fn midi_note_in_hertz(note: f32) -> f32 {
+    (f64::from(440.0f32) * crate::math::pow(2.0, (f64::from(note) - 69.0) / 12.0)) as f32
+}
+
+/// `gin::getMidiNoteFromHertz<float>`, A at 440 Hz.
+#[must_use]
+pub fn midi_note_from_hertz(freq: f32) -> f32 {
+    (12.0 * crate::math::log2(f64::from(freq) / f64::from(440.0f32)) + 69.0) as f32
 }
 
 /// The constant part of a parameter: what it is called and how it runs,

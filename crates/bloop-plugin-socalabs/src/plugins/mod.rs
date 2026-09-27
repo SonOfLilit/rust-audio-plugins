@@ -1,8 +1,11 @@
 //! Ports of slPlugins' effect processors, one module per plug-in family.
 
+pub mod bitcrusher;
 pub mod crossfeed;
 pub mod delay;
 pub mod dynamics;
+pub mod extras;
+pub mod graphiceq;
 pub mod simpleverb;
 pub mod stereo;
 

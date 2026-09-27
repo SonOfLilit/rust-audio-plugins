@@ -16,7 +16,9 @@
 // Each plugin's own PluginProcessor.cpp is compiled into the harness
 // unmodified (tests/gold.rs builds one unit per plugin, see
 // slplugins_unit), so what runs here is the original, not a copy of it.
-// tests/gold.rs writes the same program to the Rust port and compares the
+// The Gin effects slPlugins has no plug-in for are wrapped in extras/, one
+// gin::Processor each, knobs and all; those wrappers are bloop's, and the
+// port's wrappers mirror them. tests/gold.rs writes the same program to the Rust port and compares the
 // two outputs bit for bit.
 #include <JuceHeader.h>
 
@@ -45,7 +47,10 @@ void operator delete (void* p, std::size_t) noexcept    { std::free (p); }
 void operator delete[] (void* p, std::size_t) noexcept  { std::free (p); }
 
 #define SLPLUGIN(name) juce::AudioProcessor* create_##name();
+#define GINEXTRA(name) SLPLUGIN(name)
 #include "slplugins.inc"
+#include "extras.inc"
+#undef GINEXTRA
 #undef SLPLUGIN
 
 namespace
@@ -58,7 +63,10 @@ const std::map<std::string, Factory>& factories()
     static const std::map<std::string, Factory> all =
     {
        #define SLPLUGIN(name) { #name, &create_##name },
+       #define GINEXTRA(name) SLPLUGIN(name)
        #include "slplugins.inc"
+       #include "extras.inc"
+       #undef GINEXTRA
        #undef SLPLUGIN
     };
     return all;

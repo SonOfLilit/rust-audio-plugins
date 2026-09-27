@@ -73,10 +73,14 @@ fn check(text: &str, expect: &Expect) {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the table is the snapshot, one line a knob"
+)]
 fn every_effect_describes_itself() {
     let mut out = String::new();
     for kind in Kind::ALL {
-        let effect = Effect::new(kind);
+        let effect = Effect::new(kind, 48000.0);
         let info = effect.info();
         let _ = writeln!(
             out,
@@ -87,7 +91,7 @@ fn every_effect_describes_itself() {
             let p = effect.param_info(i);
             let _ = writeln!(
                 out,
-                "  {i}. {:<10} {:>7} to {:<7} {:<3} default {:<7} skew {}",
+                "  {i:>2}. {:<10} {:>9} to {:<9} {:<3} default {:<9} skew {}",
                 p.name,
                 p.min,
                 p.max,
@@ -100,67 +104,123 @@ fn every_effect_describes_itself() {
     check(
         &out,
         &expect![[r#"
-        Compressor by SocaLabs, Effect, 2 in 2 out
-          0. Attack           1 to 200     ms  default 1       skew 0.4
-          1. Release          1 to 2000    ms  default 5       skew 0.4
-          2. Ratio            1 to 30          default 5       skew 0.4
-          3. Threshold      -60 to 0       dB  default -30     skew 1
-          4. Knee             0 to 60      dB  default 5       skew 1
-          5. Input          -30 to 30      dB  default 0       skew 1
-          6. Output         -30 to 30      dB  default 0       skew 1
-        Crossfeed by SocaLabs, Effect, 2 in 2 out
-          0. Enable           0 to 1           default 1       skew 1
-        Delay by SocaLabs, Effect, 2 in 2 out
-          0. Sync             0 to 1           default 0       skew 1
-          1. Time             0 to 120     s   default 1       skew 0.3
-          2. Beat             0 to 32          default 13      skew 1
-          3. Feedback      -100 to 0       dB  default -10     skew 5
-          4. Crossfeed     -100 to 0       dB  default -100    skew 5
-          5. Mix              0 to 100     %   default 0       skew 1
-        Expander by SocaLabs, Effect, 2 in 2 out
-          0. Attack           1 to 200     ms  default 1       skew 0.4
-          1. Release          1 to 2000    ms  default 5       skew 0.4
-          2. Ratio            1 to 4           default 1       skew 1
-          3. Threshold      -60 to 0       dB  default -30     skew 1
-          4. Knee             0 to 60      dB  default 5       skew 1
-          5. Input          -30 to 30      dB  default 0       skew 1
-          6. Output         -30 to 30      dB  default 0       skew 1
-        Gate by SocaLabs, Effect, 2 in 2 out
-          0. Attack           0 to 5       ms  default 0       skew 1
-          1. Hold             0 to 500     ms  default 0       skew 0.3
-          2. Release          1 to 500     ms  default 5       skew 0.3
-          3. Threshold     -100 to 0       dB  default -30     skew 1
-          4. Knee             0 to 60      dB  default 0       skew 1
-          5. Input          -30 to 30      dB  default 0       skew 1
-          6. Output         -30 to 30      dB  default 0       skew 1
-        Limiter by SocaLabs, Effect, 2 in 2 out
-          0. Attack           0 to 5       ms  default 0       skew 1
-          1. Release          1 to 500     ms  default 5       skew 0.3
-          2. Threshold      -60 to 0       dB  default -30     skew 1
-          3. Input          -30 to 30      dB  default 0       skew 1
-          4. Output         -30 to 30      dB  default 0       skew 1
-        SimpleVerb by SocaLabs, Effect, 2 in 2 out
-          0. Room             0 to 1       %   default 0.3     skew 1
-          1. Damp             0 to 1       %   default 0.6     skew 1
-          2. PreDelay         0 to 1       %   default 0.3     skew 1
-          3. LP               0 to 1       %   default 0.9     skew 1
-          4. HP               0 to 1       %   default 0.1     skew 1
-          5. Wet              0 to 1       %   default 0.4     skew 1
-          6. Dry              0 to 1       %   default 0.3     skew 1
-        StereoEnhancer by SocaLabs, Effect, 2 in 2 out
-          0. Width            0 to 1       %   default 0.5     skew 1
-          1. Freq HP          0 to 1       %   default 0.5     skew 1
-          2. Width HP         0 to 1       %   default 0       skew 1
-        StereoProcessor by SocaLabs, Effect, 2 in 2 out
-          0. Width 1          0 to 1       %   default 0.5     skew 1
-          1. Center 1         0 to 1       %   default 0.5     skew 1
-          2. Pan 1           -1 to 1       %   default 0       skew 1
-          3. Rotation         0 to 1       %   default 0.5     skew 1
-          4. Pan 2           -1 to 1       %   default 0       skew 1
-          5. Center 2         0 to 1       %   default 0.5     skew 1
-          6. Width 2          0 to 1       %   default 0.5     skew 1
-          7. Output           0 to 1       %   default 0.5     skew 1
-    "#]],
+            BitCrusher by SocaLabs, Effect, 2 in 2 out
+               0. Bits               1 to 16            default 16        skew 1
+               1. Rate             500 to 48000     Hz  default 48000     skew 0.3
+               2. Dirty              0 to 1             default 0         skew 1
+            Compressor by SocaLabs, Effect, 2 in 2 out
+               0. Attack             1 to 200       ms  default 1         skew 0.4
+               1. Release            1 to 2000      ms  default 5         skew 0.4
+               2. Ratio              1 to 30            default 5         skew 0.4
+               3. Threshold        -60 to 0         dB  default -30       skew 1
+               4. Knee               0 to 60        dB  default 5         skew 1
+               5. Input            -30 to 30        dB  default 0         skew 1
+               6. Output           -30 to 30        dB  default 0         skew 1
+            Crossfeed by SocaLabs, Effect, 2 in 2 out
+               0. Enable             0 to 1             default 1         skew 1
+            Delay by SocaLabs, Effect, 2 in 2 out
+               0. Sync               0 to 1             default 0         skew 1
+               1. Time               0 to 120       s   default 1         skew 0.3
+               2. Beat               0 to 32            default 13        skew 1
+               3. Feedback        -100 to 0         dB  default -10       skew 5
+               4. Crossfeed       -100 to 0         dB  default -100      skew 5
+               5. Mix                0 to 100       %   default 0         skew 1
+            Distortion by SocaLabs, Effect, 2 in 2 out
+               0. Density           -1 to 4             default 0         skew 1
+               1. Highpass           0 to 100       %   default 0         skew 1
+               2. Output             0 to 100       %   default 100       skew 1
+               3. Mix                0 to 100       %   default 100       skew 1
+            Exciter by SocaLabs, Effect, 2 in 2 out
+               0. Frequency       1000 to 16000     Hz  default 7000      skew 0.5
+               1. Drive              1 to 8             default 1         skew 1
+               2. Harmonics          0 to 100       %   default 0         skew 1
+               3. Mix                0 to 200       %   default 50        skew 1
+            Expander by SocaLabs, Effect, 2 in 2 out
+               0. Attack             1 to 200       ms  default 1         skew 0.4
+               1. Release            1 to 2000      ms  default 5         skew 0.4
+               2. Ratio              1 to 4             default 1         skew 1
+               3. Threshold        -60 to 0         dB  default -30       skew 1
+               4. Knee               0 to 60        dB  default 5         skew 1
+               5. Input            -30 to 30        dB  default 0         skew 1
+               6. Output           -30 to 30        dB  default 0         skew 1
+            Gate by SocaLabs, Effect, 2 in 2 out
+               0. Attack             0 to 5         ms  default 0         skew 1
+               1. Hold               0 to 500       ms  default 0         skew 0.3
+               2. Release            1 to 500       ms  default 5         skew 0.3
+               3. Threshold       -100 to 0         dB  default -30       skew 1
+               4. Knee               0 to 60        dB  default 0         skew 1
+               5. Input            -30 to 30        dB  default 0         skew 1
+               6. Output           -30 to 30        dB  default 0         skew 1
+            GraphicEQ by SocaLabs, Effect, 2 in 2 out
+               0. 31 Hz            -12 to 12        dB  default 0         skew 1
+               1. 63 Hz            -12 to 12        dB  default 0         skew 1
+               2. 125 Hz           -12 to 12        dB  default 0         skew 1
+               3. 250 Hz           -12 to 12        dB  default 0         skew 1
+               4. 500 Hz           -12 to 12        dB  default 0         skew 1
+               5. 1k Hz            -12 to 12        dB  default 0         skew 1
+               6. 2k Hz            -12 to 12        dB  default 0         skew 1
+               7. 4k Hz            -12 to 12        dB  default 0         skew 1
+               8. 8k Hz            -12 to 12        dB  default 0         skew 1
+               9. 16k Hz           -12 to 12        dB  default 0         skew 1
+              10. LP                 0 to 1             default 0         skew 1
+              11. LP Freq      83.2131 to 135.07623     default 135.07623 skew 1
+              12. LP Slope           0 to 1             default 0         skew 1
+              13. HP                 0 to 1             default 0         skew 1
+              14. HP Freq     15.48682 to 95.2131       default 15.48682  skew 1
+              15. HP Slope           0 to 1             default 0         skew 1
+              16. Output           -12 to 12        dB  default 0         skew 1
+            Limiter by SocaLabs, Effect, 2 in 2 out
+               0. Attack             0 to 5         ms  default 0         skew 1
+               1. Release            1 to 500       ms  default 5         skew 0.3
+               2. Threshold        -60 to 0         dB  default -30       skew 1
+               3. Input            -30 to 30        dB  default 0         skew 1
+               4. Output           -30 to 30        dB  default 0         skew 1
+            Maximizer by SocaLabs, Effect, 2 in 2 out
+               0. Threshold        -24 to 0         dB  default -6        skew 1
+               1. Ceiling          -24 to 0         dB  default -0.3      skew 1
+               2. Release            0 to 1000      ms  default 100       skew 0.5
+            PlateReverb by SocaLabs, Effect, 2 in 2 out
+               0. Mix                0 to 100       %   default 25        skew 1
+               1. Predelay           0 to 100       ms  default 0         skew 1
+               2. Lowpass           16 to 20000     Hz  default 10000     skew 0.3
+               3. Decay              0 to 100       %   default 50        skew 1
+               4. Size               0 to 200       %   default 100       skew 1
+               5. Damping           16 to 20000     Hz  default 10000     skew 0.3
+            SimpleVerb by SocaLabs, Effect, 2 in 2 out
+               0. Room               0 to 1         %   default 0.3       skew 1
+               1. Damp               0 to 1         %   default 0.6       skew 1
+               2. PreDelay           0 to 1         %   default 0.3       skew 1
+               3. LP                 0 to 1         %   default 0.9       skew 1
+               4. HP                 0 to 1         %   default 0.1       skew 1
+               5. Wet                0 to 1         %   default 0.4       skew 1
+               6. Dry                0 to 1         %   default 0.3       skew 1
+            SoftClipper by SocaLabs, Effect, 2 in 2 out
+               0. Drive              0 to 24        dB  default 0         skew 1
+               1. Knee               0 to 100       %   default 50        skew 1
+               2. Ceiling          -24 to 0         dB  default 0         skew 1
+            StereoEnhancer by SocaLabs, Effect, 2 in 2 out
+               0. Width              0 to 1         %   default 0.5       skew 1
+               1. Freq HP            0 to 1         %   default 0.5       skew 1
+               2. Width HP           0 to 1         %   default 0         skew 1
+            StereoProcessor by SocaLabs, Effect, 2 in 2 out
+               0. Width 1            0 to 1         %   default 0.5       skew 1
+               1. Center 1           0 to 1         %   default 0.5       skew 1
+               2. Pan 1             -1 to 1         %   default 0         skew 1
+               3. Rotation           0 to 1         %   default 0.5       skew 1
+               4. Pan 2             -1 to 1         %   default 0         skew 1
+               5. Center 2           0 to 1         %   default 0.5       skew 1
+               6. Width 2            0 to 1         %   default 0.5       skew 1
+               7. Output             0 to 1         %   default 0.5       skew 1
+            TransientShaper by SocaLabs, Effect, 2 in 2 out
+               0. Attack            -4 to 4             default 0         skew 1
+               1. Sustain           -8 to 8             default 0         skew 1
+               2. Smoothing          0 to 100       %   default 50        skew 1
+               3. Low Cut            0 to 2000      Hz  default 0         skew 0.5
+               4. High Cut           0 to 20000     Hz  default 0         skew 0.3
+               5. Detector           0 to 100       %   default 50        skew 1
+               6. Process            0 to 100       %   default 50        skew 1
+               7. Output           -24 to 24        dB  default 0         skew 1
+        "#]],
     );
 }
 
@@ -168,7 +228,7 @@ fn every_effect_describes_itself() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn every_knob_starts_at_its_default() {
     for kind in Kind::ALL {
-        let effect = Effect::new(kind);
+        let effect = Effect::new(kind, 48000.0);
         for i in 0..effect.param_count() {
             assert_eq!(
                 effect.get_param(i).to_bits(),
@@ -182,7 +242,7 @@ fn every_knob_starts_at_its_default() {
 /// What reading a knob back gives after setting it: snapped to its step
 /// and held to its range, or left alone.
 fn after_setting(kind: Kind, index: usize, values: &[f32]) -> String {
-    let mut effect = Effect::new(kind);
+    let mut effect = Effect::new(kind, 48000.0);
     let name = effect.param_info(index).name;
     values
         .iter()
@@ -241,7 +301,7 @@ fn knobs_snap_and_hold_to_their_range() {
 fn a_knob_past_the_last_is_nothing() {
     let mut out = String::new();
     for kind in Kind::ALL {
-        let mut effect = Effect::new(kind);
+        let mut effect = Effect::new(kind, 48000.0);
         let past = effect.param_count();
         effect.set_param(past, 1.0);
         let info = effect.param_info(past);
@@ -257,16 +317,24 @@ fn a_knob_past_the_last_is_nothing() {
     check(
         &out,
         &expect![[r#"
-        Compressor: 7 knobs; knob 7 is "" 0..0 reading 0
-        Crossfeed: 1 knobs; knob 1 is "" 0..0 reading 0
-        Delay: 6 knobs; knob 6 is "" 0..0 reading 0
-        Expander: 7 knobs; knob 7 is "" 0..0 reading 0
-        Gate: 7 knobs; knob 7 is "" 0..0 reading 0
-        Limiter: 5 knobs; knob 5 is "" 0..0 reading 0
-        SimpleVerb: 7 knobs; knob 7 is "" 0..0 reading 0
-        StereoEnhancer: 3 knobs; knob 3 is "" 0..0 reading 0
-        StereoProcessor: 8 knobs; knob 8 is "" 0..0 reading 0
-    "#]],
+            BitCrusher: 3 knobs; knob 3 is "" 0..0 reading 0
+            Compressor: 7 knobs; knob 7 is "" 0..0 reading 0
+            Crossfeed: 1 knobs; knob 1 is "" 0..0 reading 0
+            Delay: 6 knobs; knob 6 is "" 0..0 reading 0
+            Distortion: 4 knobs; knob 4 is "" 0..0 reading 0
+            Exciter: 4 knobs; knob 4 is "" 0..0 reading 0
+            Expander: 7 knobs; knob 7 is "" 0..0 reading 0
+            Gate: 7 knobs; knob 7 is "" 0..0 reading 0
+            GraphicEq: 17 knobs; knob 17 is "" 0..0 reading 0
+            Limiter: 5 knobs; knob 5 is "" 0..0 reading 0
+            Maximizer: 3 knobs; knob 3 is "" 0..0 reading 0
+            PlateReverb: 6 knobs; knob 6 is "" 0..0 reading 0
+            SimpleVerb: 7 knobs; knob 7 is "" 0..0 reading 0
+            SoftClipper: 3 knobs; knob 3 is "" 0..0 reading 0
+            StereoEnhancer: 3 knobs; knob 3 is "" 0..0 reading 0
+            StereoProcessor: 8 knobs; knob 8 is "" 0..0 reading 0
+            TransientShaper: 8 knobs; knob 8 is "" 0..0 reading 0
+        "#]],
     );
 }
 
@@ -277,7 +345,7 @@ fn a_knob_past_the_last_is_nothing() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn the_delays_internal_time_is_not_a_knob() {
     let run = |set_seventh: bool| {
-        let mut effect = Effect::new(Kind::Delay);
+        let mut effect = Effect::new(Kind::Delay, 48000.0);
         effect.reset(48000.0, 512);
         effect.set_param(5, 100.0);
         if set_seventh {
@@ -296,7 +364,7 @@ fn the_delays_internal_time_is_not_a_knob() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn an_effect_given_no_stereo_pair_does_nothing() {
     for kind in Kind::ALL {
-        let mut effect = Effect::new(kind);
+        let mut effect = Effect::new(kind, 48000.0);
         let events = bloop_events::EventBuffer::new();
         let mut mono = vec![0.5f32; 64];
         let mut outputs: [&mut [f32]; 1] = [&mut mono];
@@ -323,7 +391,7 @@ fn an_effect_given_no_stereo_pair_does_nothing() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn the_audio_thread_never_allocates() {
     for kind in Kind::ALL {
-        let mut effect = Effect::new(kind);
+        let mut effect = Effect::new(kind, 48000.0);
         effect.reset(48000.0, 512);
         let mut left = vec![0.25f32; 512];
         let mut right = vec![-0.25f32; 512];

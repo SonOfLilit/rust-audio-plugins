@@ -33,6 +33,14 @@ public:
 class AudioProcessor
 {
 public:
+    // What a processor's constructor says about its buses; the harness
+    // always runs them stereo in and out.
+    struct BusesProperties
+    {
+        BusesProperties withInput (const String&, const AudioChannelSet&, bool = true) const   { return *this; }
+        BusesProperties withOutput (const String&, const AudioChannelSet&, bool = true) const  { return *this; }
+    };
+
     virtual ~AudioProcessor() = default;
 
     virtual void prepareToPlay (double sampleRate, int samplesPerBlock) = 0;
@@ -179,6 +187,7 @@ class Processor : public juce::AudioProcessor
 {
 public:
     Processor (bool = false, ProcessorOptions = {}) {}
+    Processor (const BusesProperties&, bool = false, ProcessorOptions = {}) {}
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override
     {

@@ -19,3 +19,7 @@
 #define JUCE_MODULE_AVAILABLE_juce_audio_basics 1
 #define JUCE_MODULE_AVAILABLE_juce_audio_formats 1
 #define JUCE_MODULE_AVAILABLE_juce_dsp 1
+
+// ScopedNoDenormals sets flush-to-zero on x86 through this; the port runs
+// IEEE denormals on every target, so the harness does too.
+#define JUCE_USE_SSE_INTRINSICS 0
