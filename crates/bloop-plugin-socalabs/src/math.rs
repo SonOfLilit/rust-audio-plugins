@@ -36,22 +36,11 @@ macro_rules! pick {
 pick!(expf(x: f32) -> f32, x.exp(), libm::expf);
 pick!(exp(x: f64) -> f64, x.exp(), libm::exp);
 pick!(logf(x: f32) -> f32, x.ln(), libm::logf);
-pick!(log(x: f64) -> f64, x.ln(), libm::log);
 pick!(log10f(x: f32) -> f32, x.log10(), libm::log10f);
-pick!(log10(x: f64) -> f64, x.log10(), libm::log10);
 pick!(powf(x: f32, y: f32) -> f32, x.powf(y), libm::powf);
-pick!(pow(x: f64, y: f64) -> f64, x.powf(y), libm::pow);
 pick!(sinf(x: f32) -> f32, x.sin(), libm::sinf);
-pick!(sin(x: f64) -> f64, x.sin(), libm::sin);
 pick!(cosf(x: f32) -> f32, x.cos(), libm::cosf);
-pick!(cos(x: f64) -> f64, x.cos(), libm::cos);
-pick!(tanf(x: f32) -> f32, x.tan(), libm::tanf);
-pick!(tan(x: f64) -> f64, x.tan(), libm::tan);
-pick!(tanhf(x: f32) -> f32, x.tanh(), libm::tanhf);
-pick!(tanh(x: f64) -> f64, x.tanh(), libm::tanh);
 pick!(atanf(x: f32) -> f32, x.atan(), libm::atanf);
-pick!(sinhf(x: f32) -> f32, x.sinh(), libm::sinhf);
-pick!(sinh(x: f64) -> f64, x.sinh(), libm::sinh);
 
 /// `std::max (a, b)` as C++ defines it, `(a < b) ? b : a` — which differs
 /// from `f32::max` on a NaN and on the sign of a zero.
@@ -69,28 +58,6 @@ pub fn std_max(a: f32, b: f32) -> f32 {
 #[inline]
 #[must_use]
 pub fn std_min(a: f32, b: f32) -> f32 {
-    if b < a {
-        b
-    } else {
-        a
-    }
-}
-
-/// `std::max` on doubles.
-#[inline]
-#[must_use]
-pub fn std_max_f64(a: f64, b: f64) -> f64 {
-    if a < b {
-        b
-    } else {
-        a
-    }
-}
-
-/// `std::min` on doubles.
-#[inline]
-#[must_use]
-pub fn std_min_f64(a: f64, b: f64) -> f64 {
     if b < a {
         b
     } else {

@@ -31,15 +31,17 @@ const fn plain(name: &'static str, unit: &'static str, range: Range, default: f3
     ParamSpec::new(name, unit, range, default, SMOOTH, Conversion::Identity)
 }
 
-/// The Compressor's knobs, in the order its constructor adds them.
+/// The Compressor's knobs, in the order its constructor adds them. The
+/// original labels the Compressor's and Expander's decibel knobs with no
+/// unit, where the Limiter's and Gate's say dB; here all four say dB.
 pub const COMPRESSOR: [ParamSpec; 7] = [
     ms("Attack", Range::new(1.0, 200.0, 0.0, 0.4), 1.0),
     ms("Release", Range::new(1.0, 2000.0, 0.0, 0.4), 5.0),
     plain("Ratio", "", Range::new(1.0, 30.0, 0.0, 0.4), 5.0),
-    plain("Threshold", "", Range::new(-60.0, 0.0, 0.0, 1.0), -30.0),
-    plain("Knee", "", Range::new(0.0, 60.0, 0.0, 1.0), 5.0),
-    db("Input", "", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
-    db("Output", "", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
+    plain("Threshold", "dB", Range::new(-60.0, 0.0, 0.0, 1.0), -30.0),
+    plain("Knee", "dB", Range::new(0.0, 60.0, 0.0, 1.0), 5.0),
+    db("Input", "dB", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
+    db("Output", "dB", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
 ];
 
 pub const LIMITER: [ParamSpec; 5] = [
@@ -64,10 +66,10 @@ pub const EXPANDER: [ParamSpec; 7] = [
     ms("Attack", Range::new(1.0, 200.0, 0.0, 0.4), 1.0),
     ms("Release", Range::new(1.0, 2000.0, 0.0, 0.4), 5.0),
     plain("Ratio", "", Range::new(1.0, 4.0, 0.0, 1.0), 1.0),
-    plain("Threshold", "", Range::new(-60.0, 0.0, 0.0, 1.0), -30.0),
-    plain("Knee", "", Range::new(0.0, 60.0, 0.0, 1.0), 5.0),
-    db("Input", "", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
-    db("Output", "", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
+    plain("Threshold", "dB", Range::new(-60.0, 0.0, 0.0, 1.0), -30.0),
+    plain("Knee", "dB", Range::new(0.0, 60.0, 0.0, 1.0), 5.0),
+    db("Input", "dB", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
+    db("Output", "dB", Range::new(-30.0, 30.0, 0.0, 1.0), 0.0),
 ];
 
 /// Which of the four processors this is.

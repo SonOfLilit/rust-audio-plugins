@@ -63,3 +63,6 @@ cast_possible_wrap = "allow"
 cast_lossless = "allow"
 float_cmp = "allow"
 many_single_char_names = "allow"
+# `(a + b) / 2` is what the originals compute; `f32::midpoint` rounds
+# differently.
+manual_midpoint = "allow"

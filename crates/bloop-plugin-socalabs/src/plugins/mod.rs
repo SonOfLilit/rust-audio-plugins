@@ -1,7 +1,10 @@
 //! Ports of slPlugins' effect processors, one module per plug-in family.
 
+pub mod crossfeed;
 pub mod delay;
 pub mod dynamics;
+pub mod simpleverb;
+pub mod stereo;
 
 use crate::gin::param::Param;
 

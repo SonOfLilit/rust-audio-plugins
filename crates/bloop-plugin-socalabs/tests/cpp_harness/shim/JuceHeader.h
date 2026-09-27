@@ -1,23 +1,70 @@
-// A stand-in for gin::Parameter and gin::SmoothedParameter, which cannot be
-// compiled here: they derive from juce::AudioProcessorParameter, and
-// juce_audio_processors needs JUCE's GUI modules. What they do to a value
-// is transcribed from gin_parameter.h, gin_smoothedparameter.h and
-// Processor::createParam line for line, over the real
-// juce::NormalisableRange and the real gin smoothers, so the harness
-// processors below can keep the originals' processBlock bodies as written.
+// What slPlugins' PluginProcessor.cpp files get from <JuceHeader.h>, so they
+// compile here unmodified: the real JUCE non-GUI modules and Gin DSP
+// (gin_dsp.h), and stand-ins for the two classes that would need JUCE's GUI
+// modules — juce::AudioProcessor and gin::Processor with its parameters.
+//
+// The stand-ins do to a value exactly what the originals do. gin::Parameter
+// and gin::SmoothedParameter are transcribed from gin_parameter.{h,cpp} and
+// gin_smoothedparameter.h over the real juce::NormalisableRange and the
+// real gin smoothers; gin::Processor from gin_processor.cpp's createParam,
+// prepareToPlay, reset and isSmoothing. Everything a host needs of them
+// that never reaches audio — notification, text, state, presets — is left
+// out, and whatever a processor calls of it is a no-op.
 #pragma once
 
-#include "gin_dsp.h"
+#include "../gin_dsp.h"
 
+#include <cstdlib>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <random>
 #include <vector>
 
-namespace harness
+namespace juce
 {
 
-struct SmoothingType
+class AudioProcessorEditor
 {
+public:
+    virtual ~AudioProcessorEditor() = default;
+};
+
+class AudioProcessor
+{
+public:
+    virtual ~AudioProcessor() = default;
+
+    virtual void prepareToPlay (double sampleRate, int samplesPerBlock) = 0;
+    virtual void releaseResources() {}
+    virtual void processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi) = 0;
+    virtual void reset() {}
+    virtual void numChannelsChanged() {}
+    virtual AudioProcessorEditor* createEditor() { return nullptr; }
+    virtual bool hasEditor() const { return false; }
+
+    int getTotalNumInputChannels() const    { return 2; }
+    int getTotalNumOutputChannels() const   { return 2; }
+
+    AudioPlayHead* getPlayHead() const      { return playHead; }
+
+    void setLatencySamples (int samples)    { latency = samples; }
+    int getLatencySamples() const           { return latency; }
+
+    AudioPlayHead* playHead = nullptr;
+
+private:
+    int latency = 0;
+};
+
+}
+
+namespace gin
+{
+
+class SmoothingType
+{
+public:
     enum Type { linear, eased };
     SmoothingType (float time_ = 0.1f, Type type_ = linear) : time (time_), type (type_) {}
     float time;
@@ -47,6 +94,13 @@ public:
     float getUserValue() const              { return juce::jlimit (range.start, range.end, value); }
     int getUserValueInt() const             { return int (juce::jlimit (range.start, range.end, value)); }
     bool isOn()                             { return ! juce::exactlyEqual (range.start, getUserValue()); }
+
+    float getProcValue()
+    {
+        if (conversionFunction != nullptr)
+            return conversionFunction (getUserValue());
+        return getUserValue();
+    }
 
     virtual float getProcValue (int /*stepSize*/)
     {
@@ -108,25 +162,35 @@ protected:
     T smoother;
 };
 
-// gin::Processor, as far as its parameters go.
-class Processor
+class ProcessorOptions
 {
 public:
-    virtual ~Processor() = default;
+    ProcessorOptions withMidiLearn() const                                  { return *this; }
+    ProcessorOptions withAdditionalCredits (const juce::StringArray&) const  { return *this; }
+};
 
-    virtual void prepareToPlay (double sampleRate, int samplesPerBlock)
+class MidiLearn
+{
+public:
+    void processBlock (juce::MidiBuffer&, int) {}
+};
+
+class Processor : public juce::AudioProcessor
+{
+public:
+    Processor (bool = false, ProcessorOptions = {}) {}
+
+    void prepareToPlay (double sampleRate, int samplesPerBlock) override
     {
         for (auto& p : allParameters)
             p->prepareToPlay (sampleRate, samplesPerBlock);
     }
 
-    virtual void reset()
+    void reset() override
     {
         for (auto& p : allParameters)
             p->reset();
     }
-
-    virtual void processBlock (juce::AudioSampleBuffer& buffer) = 0;
 
     bool isSmoothing()
     {
@@ -136,27 +200,17 @@ public:
         return false;
     }
 
-    int getTotalNumInputChannels() const    { return 2; }
+    virtual juce::File getProgramDirectory()                        { return {}; }
+    virtual juce::Array<juce::File> getFactoryProgramDirectories()  { return {}; }
 
-    // The host's play head: 4/4 at whatever tempo the program last set.
-    struct PlayHead : juce::AudioPlayHead
-    {
-        double bpm = 120.0;
+    void init() {}
 
-        juce::Optional<PositionInfo> getPosition() const override
-        {
-            PositionInfo info;
-            info.setBpm (bpm);
-            info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
-            return info;
-        }
-    };
+    // Always null: a MIDI learn map only ever moves parameters, and the
+    // gold programs move them directly.
+    std::unique_ptr<MidiLearn> midiLearn;
 
-    PlayHead playHead;
-    juce::AudioPlayHead* getPlayHead()      { return &playHead; }
-
-    // The order parameters are added is the order the gold tests index them.
-    std::vector<std::unique_ptr<Parameter>> allParameters;
+    // External parameters in the order they are added: what the gold
+    // programs' `set <index>` addresses.
     std::vector<Parameter*> extParameters;
 
 protected:
@@ -169,11 +223,27 @@ protected:
         return p;
     }
 
+    template <class TextFunction>
+    Parameter::Ptr addExtParam (juce::String uid, juce::String name, juce::String shortName, juce::String label,
+                                juce::NormalisableRange<float> range, float defaultValue,
+                                SmoothingType st, TextFunction&&)
+    {
+        return addExtParam (uid, name, shortName, label, range, defaultValue, st);
+    }
+
     Parameter::Ptr addIntParam (juce::String, juce::String, juce::String, juce::String,
                                 juce::NormalisableRange<float> range, float defaultValue,
                                 SmoothingType st)
     {
         return createParam (range, defaultValue, st);
+    }
+
+    template <class TextFunction>
+    Parameter::Ptr addIntParam (juce::String uid, juce::String name, juce::String shortName, juce::String label,
+                                juce::NormalisableRange<float> range, float defaultValue,
+                                SmoothingType st, TextFunction&&)
+    {
+        return addIntParam (uid, name, shortName, label, range, defaultValue, st);
     }
 
 private:
@@ -184,13 +254,13 @@ private:
         {
             if (st.type == SmoothingType::linear)
             {
-                auto sp = new SmoothedParameter<gin::ValueSmoother<float>> (range, defaultValue);
+                auto sp = new SmoothedParameter<ValueSmoother<float>> (range, defaultValue);
                 sp->setSmoothingTime (st.time);
                 p = std::unique_ptr<Parameter> (sp);
             }
-            else
+            else if (st.type == SmoothingType::eased)
             {
-                auto sp = new SmoothedParameter<gin::EasedValueSmoother<float>> (range, defaultValue);
+                auto sp = new SmoothedParameter<EasedValueSmoother<float>> (range, defaultValue);
                 sp->setSmoothingTime (st.time);
                 p = std::unique_ptr<Parameter> (sp);
             }
@@ -203,6 +273,8 @@ private:
         allParameters.push_back (std::move (p));
         return raw;
     }
+
+    std::vector<std::unique_ptr<Parameter>> allParameters;
 };
 
 }

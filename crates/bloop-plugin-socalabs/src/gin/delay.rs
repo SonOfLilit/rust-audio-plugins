@@ -114,26 +114,6 @@ impl DelayLine {
         lagrange(&xs, &ys, fraction)
     }
 
-    /// `readLinear`: straight-line interpolation, `t` seconds back.
-    #[must_use]
-    pub fn read_linear(&self, channel: usize, t: f64) -> f32 {
-        let n = self.len();
-        let read_pos = self.read_pos(t);
-        let prev = read_pos.floor() as usize;
-        let next = (prev + 1) % n;
-        let data = &self.channels[channel];
-        let fraction = read_pos - prev as f32;
-        (1.0 - fraction) * data[prev] + fraction * data[next]
-    }
-
-    /// `readSample`: a whole number of samples back.
-    #[must_use]
-    pub fn read_sample(&self, channel: usize, samples_back: usize) -> f32 {
-        let n = self.len();
-        let back = samples_back.min(n - 1);
-        self.channels[channel][(self.write_pos + n - 1 - back) % n]
-    }
-
     pub fn write(&mut self, channel: usize, input: f32) {
         let pos = self.write_pos;
         self.channels[channel][pos] = input;
@@ -187,11 +167,20 @@ impl StereoDelay {
         }
     }
 
+    /// Each setting moves only if it moves by more than float rounding:
+    /// `SmoothedValue::setTargetValue` ignores a target approximately
+    /// equal to the one it has, and a knob smoothing a sample at a time
+    /// asks for exactly such steps.
     pub fn set_params(&mut self, delay: f32, mix: f32, feedback: f32, crossfeed: f32) {
-        self.mix = mix;
-        self.delay = delay;
-        self.feedback = math::std_min(0.99, feedback);
-        self.crossfeed = math::std_min(0.99, crossfeed);
+        let retarget = |target: &mut f32, value: f32| {
+            if !approximately_equal(value, *target) {
+                *target = value;
+            }
+        };
+        retarget(&mut self.mix, mix);
+        retarget(&mut self.delay, delay);
+        retarget(&mut self.feedback, math::std_min(0.99, feedback));
+        retarget(&mut self.crossfeed, math::std_min(0.99, crossfeed));
     }
 
     pub fn reset(&mut self) {

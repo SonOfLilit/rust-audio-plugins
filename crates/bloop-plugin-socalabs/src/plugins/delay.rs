@@ -11,7 +11,9 @@ use crate::juce::NormalisableRange as Range;
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
 
-/// The Delay's knobs, in the order its constructor adds them.
+/// The Delay's knobs, in the order its constructor adds them. The original
+/// calls both the free time and the synced note "Delay"; here they are
+/// Time and Beat.
 pub const DELAY: [ParamSpec; 6] = [
     ParamSpec::new(
         "Sync",
@@ -22,7 +24,7 @@ pub const DELAY: [ParamSpec; 6] = [
         Conversion::Identity,
     ),
     ParamSpec::new(
-        "Delay",
+        "Time",
         "s",
         Range::new(0.0, 120.0, 0.0, 0.3),
         1.0,
@@ -63,6 +65,11 @@ pub const DELAY: [ParamSpec; 6] = [
     ),
 ];
 
+/// How long the line is, in seconds: the original's `stereoDelay { 120.1 }`,
+/// enough for the Time knob's two minutes. At 48kHz that is 46 MB of line
+/// per Delay, allocated when the Delay is made.
+const MAX_DELAY: f64 = 120.1;
+
 /// The delay the other knobs resolve to: an internal parameter, eased.
 const DELAY_TIME: ParamSpec = ParamSpec::new(
     "Delay",
@@ -96,7 +103,7 @@ impl Default for DelayProcessor {
         params.push(Param::new(DELAY_TIME));
         Self {
             params,
-            delay: StereoDelay::new(5.1),
+            delay: StereoDelay::new(MAX_DELAY),
         }
     }
 }

@@ -84,17 +84,6 @@ impl ValueSmoother {
                 .max((f64::from(self.current) - self.delta) as f32);
         }
     }
-
-    #[must_use]
-    pub fn next_value(&mut self) -> f32 {
-        self.update_value();
-        self.current
-    }
-
-    pub fn set_value_unsmoothed(&mut self, value: f32) {
-        self.target = value;
-        self.current = value;
-    }
 }
 
 /// `gin::EasedValueSmoother<float, QuadraticInOutEasing>`: the same ramp
@@ -177,23 +166,6 @@ impl EasedValueSmoother {
             let f = ease_quadratic_in_out(self.position);
             self.current = (f64::from(self.target) * f + f64::from(self.orig) * (1.0 - f)) as f32;
         }
-    }
-
-    #[must_use]
-    pub fn next_value(&mut self) -> f32 {
-        self.update_value();
-        if self.position < 1.0 {
-            self.current
-        } else {
-            self.target
-        }
-    }
-
-    pub fn set_value_unsmoothed(&mut self, value: f32) {
-        self.target = value;
-        self.current = value;
-        self.orig = value;
-        self.position = 1.0;
     }
 }
 

@@ -70,7 +70,7 @@ pub const DURATIONS: [NoteDuration; 33] = [
 impl NoteDuration {
     /// `toSeconds (playhead)`, for a host at `bpm` in 4/4.
     #[must_use]
-    pub fn to_seconds(&self, bpm: f32) -> f32 {
+    pub fn to_seconds(self, bpm: f32) -> f32 {
         let numerator = 4.0f32;
         let denominator = 4.0f32;
         let bpm = if bpm == 0.0 { 120.0 } else { bpm };

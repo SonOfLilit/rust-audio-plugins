@@ -39,16 +39,6 @@ pub fn approximately_equal(a: f32, b: f32) -> bool {
     diff <= f32::MIN_POSITIVE || diff <= f32::EPSILON * a.abs().max(b.abs())
 }
 
-/// `juce::approximatelyEqual` for doubles.
-#[must_use]
-pub fn approximately_equal_f64(a: f64, b: f64) -> bool {
-    if !(a.is_finite() && b.is_finite()) {
-        return a == b;
-    }
-    let diff = (a - b).abs();
-    diff <= f64::MIN_POSITIVE || diff <= f64::EPSILON * a.abs().max(b.abs())
-}
-
 /// `juce::jlimit`: `value` held to `[lo, hi]`, compared the way JUCE does
 /// (so a NaN passes through rather than being clamped).
 #[must_use]
@@ -118,5 +108,67 @@ impl NormalisableRange {
         } else {
             v
         }
+    }
+}
+
+/// `juce::LinearSmoothedValue<float>`: a ramp of a fixed number of steps
+/// to each new target.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LinearSmoothedValue {
+    current: f32,
+    target: f32,
+    countdown: i32,
+    steps_to_target: i32,
+    step: f32,
+}
+
+impl LinearSmoothedValue {
+    /// `reset (sampleRate, rampLengthInSeconds)`: ramps that long from now
+    /// on, and no ramp in progress.
+    pub fn reset(&mut self, sample_rate: f64, ramp_seconds: f64) {
+        self.steps_to_target = (ramp_seconds * sample_rate).floor() as i32;
+        self.set_current_and_target(self.target);
+    }
+
+    pub fn set_current_and_target(&mut self, value: f32) {
+        self.target = value;
+        self.current = value;
+        self.countdown = 0;
+    }
+
+    pub fn set_target(&mut self, value: f32) {
+        if approximately_equal(value, self.target) {
+            return;
+        }
+        if self.steps_to_target <= 0 {
+            self.set_current_and_target(value);
+            return;
+        }
+        self.target = value;
+        self.countdown = self.steps_to_target;
+        self.step = (self.target - self.current) / self.countdown as f32;
+    }
+
+    #[must_use]
+    pub fn is_smoothing(&self) -> bool {
+        self.countdown > 0
+    }
+
+    #[must_use]
+    pub fn target(&self) -> f32 {
+        self.target
+    }
+
+    pub fn next_value(&mut self) -> f32 {
+        if !self.is_smoothing() {
+            return self.target;
+        }
+        self.countdown -= 1;
+        if self.is_smoothing() {
+            self.current += self.step;
+        } else {
+            self.current = self.target;
+        }
+        self.current
     }
 }

@@ -30,6 +30,7 @@ namespace gin
 #include <gin_dsp/dsp/gin_audioutil.h>
 #include <gin_dsp/dsp/gin_leveltracker.h>
 #include <gin_dsp/dsp/gin_scratchbuffer.h>
+#include <gin_dsp/dsp/gin_audiofifo.h>
 #include <gin_dsp/dsp/gin_analogadsr.h>
 #include <gin_dsp/dsp/gin_biquad.h>
 #include <gin_dsp/dsp/gin_distortion.h>

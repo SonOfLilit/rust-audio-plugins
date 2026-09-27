@@ -9,14 +9,17 @@
 //! `cargo test -p bloop-plugin-socalabs --features gold` builds the
 //! originals and runs both over the same programs (tests/gold.rs).
 
-pub mod gin;
-pub mod juce;
-pub mod math;
-pub mod plugins;
+mod gin;
+mod juce;
+mod math;
+mod plugins;
 
 use bloop_plugin_api::{ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext};
+use plugins::crossfeed::CrossfeedProcessor;
 use plugins::delay::DelayProcessor;
 use plugins::dynamics::{DynamicsProcessor, Flavour};
+use plugins::simpleverb::SimpleVerbProcessor;
+use plugins::stereo::{StereoEnhancerProcessor, StereoProcessorProcessor};
 use plugins::{Host, Processor};
 
 /// The vendor every effect here reports.
@@ -30,16 +33,24 @@ pub enum Kind {
     Gate,
     Expander,
     Delay,
+    SimpleVerb,
+    StereoEnhancer,
+    StereoProcessor,
+    Crossfeed,
 }
 
 impl Kind {
     /// Every effect, in the order the Browser lists them.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 9] = [
         Self::Compressor,
+        Self::Crossfeed,
         Self::Delay,
         Self::Expander,
         Self::Gate,
         Self::Limiter,
+        Self::SimpleVerb,
+        Self::StereoEnhancer,
+        Self::StereoProcessor,
     ];
 
     /// The effect's name, as SocaLabs publishes it.
@@ -51,6 +62,10 @@ impl Kind {
             Self::Gate => "Gate",
             Self::Expander => "Expander",
             Self::Delay => "Delay",
+            Self::SimpleVerb => "SimpleVerb",
+            Self::StereoEnhancer => "StereoEnhancer",
+            Self::StereoProcessor => "StereoProcessor",
+            Self::Crossfeed => "Crossfeed",
         }
     }
 
@@ -63,10 +78,15 @@ impl Kind {
 
 /// The ported processor behind an [`Effect`], by enum rather than trait
 /// object so that nothing on the audio thread dispatches through a vtable.
+/// Boxed, so an `Effect` is small whichever effect it holds.
 #[derive(Clone, Debug)]
 enum Engine {
-    Dynamics(DynamicsProcessor),
-    Delay(DelayProcessor),
+    Dynamics(Box<DynamicsProcessor>),
+    Delay(Box<DelayProcessor>),
+    SimpleVerb(Box<SimpleVerbProcessor>),
+    StereoEnhancer(Box<StereoEnhancerProcessor>),
+    StereoProcessor(Box<StereoProcessorProcessor>),
+    Crossfeed(Box<CrossfeedProcessor>),
 }
 
 macro_rules! dispatch {
@@ -74,17 +94,21 @@ macro_rules! dispatch {
         match $engine {
             Engine::Dynamics($p) => $body,
             Engine::Delay($p) => $body,
+            Engine::SimpleVerb($p) => $body,
+            Engine::StereoEnhancer($p) => $body,
+            Engine::StereoProcessor($p) => $body,
+            Engine::Crossfeed($p) => $body,
         }
     };
 }
 
 impl Engine {
     fn processor(&self) -> &dyn Processor {
-        dispatch!(self, p => p)
+        dispatch!(self, p => &**p)
     }
 
     fn processor_mut(&mut self) -> &mut dyn Processor {
-        dispatch!(self, p => p)
+        dispatch!(self, p => &mut **p)
     }
 }
 
@@ -101,11 +125,17 @@ impl Effect {
     #[must_use]
     pub fn new(kind: Kind) -> Self {
         let mut engine = match kind {
-            Kind::Compressor => Engine::Dynamics(DynamicsProcessor::new(Flavour::Compressor)),
-            Kind::Limiter => Engine::Dynamics(DynamicsProcessor::new(Flavour::Limiter)),
-            Kind::Gate => Engine::Dynamics(DynamicsProcessor::new(Flavour::Gate)),
-            Kind::Expander => Engine::Dynamics(DynamicsProcessor::new(Flavour::Expander)),
-            Kind::Delay => Engine::Delay(DelayProcessor::default()),
+            Kind::Compressor => {
+                Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Compressor)))
+            }
+            Kind::Limiter => Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Limiter))),
+            Kind::Gate => Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Gate))),
+            Kind::Expander => Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Expander))),
+            Kind::Delay => Engine::Delay(Box::default()),
+            Kind::SimpleVerb => Engine::SimpleVerb(Box::default()),
+            Kind::StereoEnhancer => Engine::StereoEnhancer(Box::default()),
+            Kind::StereoProcessor => Engine::StereoProcessor(Box::default()),
+            Kind::Crossfeed => Engine::Crossfeed(Box::default()),
         };
         engine.processor_mut().prepare(44100.0);
         Self { kind, engine }
@@ -181,7 +211,14 @@ impl Plugin for Effect {
         )
     }
 
+    /// The knob at `index` to `value`, snapped and held to its range as
+    /// the original's `setUserValue` does. A value that is not a number is
+    /// dropped: the original would store it, and every sample after would
+    /// be NaN.
     fn set_param(&mut self, index: usize, value: f32) {
+        if !value.is_finite() {
+            return;
+        }
         if let Some(p) = self.engine.processor_mut().params_mut().get_mut(index) {
             p.set_user_value(value);
         }

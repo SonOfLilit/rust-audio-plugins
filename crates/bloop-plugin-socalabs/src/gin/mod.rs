@@ -2,7 +2,10 @@
 //! Gin source file.
 
 pub mod audioutil;
+pub mod crossfeed;
 pub mod delay;
 pub mod dynamics;
 pub mod noteduration;
 pub mod param;
+pub mod simpleverb;
+pub mod stereo;
