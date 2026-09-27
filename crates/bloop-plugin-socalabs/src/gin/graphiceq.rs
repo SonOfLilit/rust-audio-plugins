@@ -79,11 +79,13 @@ impl GraphicEq {
 
     pub fn process(&mut self, channels: [&mut [f32]; 2]) {
         for (c, data) in channels.into_iter().enumerate().take(self.channels) {
+            // Once a block, as the original works each band over the block.
+            let weights = self.gains[c].map(|gain| decibels_to_gain(gain) - 1.0);
             for x in data.iter_mut() {
                 let mut accumulator = 0.0f32;
-                for (filter, &gain) in self.filters[c].iter_mut().zip(&self.gains[c]) {
+                for (filter, &weight) in self.filters[c].iter_mut().zip(&weights) {
                     let filtered = filter.process(0, *x);
-                    accumulator += filtered * (decibels_to_gain(gain) - 1.0);
+                    accumulator += filtered * weight;
                 }
                 *x += accumulator;
             }

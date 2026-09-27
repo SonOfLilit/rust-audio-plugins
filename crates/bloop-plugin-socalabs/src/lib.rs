@@ -108,6 +108,13 @@ impl Kind {
     }
 }
 
+/// The lowest rate an effect is prepared for.
+pub const MIN_SAMPLE_RATE: f32 = 8000.0;
+
+fn playable(sample_rate: f32) -> f32 {
+    sample_rate.max(MIN_SAMPLE_RATE)
+}
+
 /// The ported processor behind an [`Effect`], by enum rather than trait
 /// object so that nothing on the audio thread dispatches through a vtable.
 /// Boxed, so an `Effect` is small whichever effect it holds.
@@ -151,12 +158,16 @@ macro_rules! dispatch {
 }
 
 impl Engine {
-    fn processor(&self) -> &dyn Processor {
-        dispatch!(self, p => &**p)
+    fn params(&self) -> &[gin::param::Param] {
+        dispatch!(self, p => p.params())
     }
 
-    fn processor_mut(&mut self) -> &mut dyn Processor {
-        dispatch!(self, p => &mut **p)
+    fn params_mut(&mut self) -> &mut [gin::param::Param] {
+        dispatch!(self, p => p.params_mut())
+    }
+
+    fn prepare(&mut self, sample_rate: f32) {
+        dispatch!(self, p => p.prepare(f64::from(sample_rate)));
     }
 }
 
@@ -174,8 +185,12 @@ impl Effect {
     /// effect allocates — the Delay's line, the reverb's combs — so it
     /// belongs on the UI thread, at the rate the engine runs at; a later
     /// [`Plugin::reset`] at that same rate allocates nothing.
+    ///
+    /// A rate below [`MIN_SAMPLE_RATE`], or not a number, is taken as that
+    /// minimum: the delay lines are sized from it, and none can be empty.
     #[must_use]
     pub fn new(kind: Kind, sample_rate: f32) -> Self {
+        let sample_rate = playable(sample_rate);
         let mut engine = match kind {
             Kind::Compressor => {
                 Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Compressor)))
@@ -197,7 +212,7 @@ impl Effect {
             Kind::Exciter => Engine::Exciter(Box::default()),
             Kind::SoftClipper => Engine::SoftClipper(Box::default()),
         };
-        engine.processor_mut().prepare(f64::from(sample_rate));
+        engine.prepare(sample_rate);
         Self {
             kind,
             engine,
@@ -221,7 +236,6 @@ impl Effect {
     #[must_use]
     pub fn param_unit(&self, index: usize) -> &'static str {
         self.engine
-            .processor()
             .params()
             .get(index)
             .map_or("", |p| p.spec().unit)
@@ -232,7 +246,6 @@ impl Effect {
     #[must_use]
     pub fn param_skew(&self, index: usize) -> f32 {
         self.engine
-            .processor()
             .params()
             .get(index)
             .map_or(1.0, |p| p.spec().range.skew)
@@ -259,11 +272,11 @@ impl Plugin for Effect {
     }
 
     fn param_count(&self) -> usize {
-        self.engine.processor().params().len()
+        self.engine.params().len()
     }
 
     fn param_info(&self, index: usize) -> ParamInfo {
-        self.engine.processor().params().get(index).map_or(
+        self.engine.params().get(index).map_or(
             ParamInfo {
                 name: "",
                 default: 0.0,
@@ -283,21 +296,20 @@ impl Plugin for Effect {
     }
 
     /// The knob at `index` to `value`, snapped and held to its range as
-    /// the original's `setUserValue` does. A value that is not a number is
-    /// dropped: the original would store it, and every sample after would
-    /// be NaN.
+    /// the original's `setUserValue` does. A value that is not finite is
+    /// dropped: the original would store a NaN, and every sample after
+    /// would be NaN.
     fn set_param(&mut self, index: usize, value: f32) {
         if !value.is_finite() {
             return;
         }
-        if let Some(p) = self.engine.processor_mut().params_mut().get_mut(index) {
+        if let Some(p) = self.engine.params_mut().get_mut(index) {
             p.set_user_value(value);
         }
     }
 
     fn get_param(&self, index: usize) -> f32 {
         self.engine
-            .processor()
             .params()
             .get(index)
             .map_or(0.0, gin::param::Param::user_value)
@@ -314,7 +326,8 @@ impl Plugin for Effect {
     }
 
     fn reset(&mut self, sample_rate: f32, _max_buffer_size: usize) {
+        let sample_rate = playable(sample_rate);
         self.sample_rate = sample_rate;
-        dispatch!(&mut self.engine, p => p.prepare(f64::from(sample_rate)));
+        self.engine.prepare(sample_rate);
     }
 }

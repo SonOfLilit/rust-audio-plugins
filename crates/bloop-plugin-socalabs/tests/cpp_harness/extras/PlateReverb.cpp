@@ -1,5 +1,7 @@
 // gin::PlateReverb behind six knobs. Percentages and milliseconds are
-// converted where the knobs are read, once a block.
+// converted where the knobs are read, once a block. Decay stops at 95%:
+// at the class's 100% the plate never decays and every note adds to it.
+// Size starts at 10%, below which the tanks are too short to be a plate.
 #include <JuceHeader.h>
 
 namespace
@@ -10,10 +12,10 @@ public:
     PlateReverbProcessor()
     {
         mix      = addExtParam ("mix",      "Mix",      "", "%",  {  0.0f,   100.0f, 0.0f, 1.0f },    25.0f, 0.1f);
-        predelay = addExtParam ("predelay", "Predelay", "", "ms", {  0.0f,   100.0f, 0.0f, 1.0f },     0.0f, 0.0f);
+        predelay = addExtParam ("predelay", "Predelay", "", "ms", {  0.0f,   100.0f, 0.0f, 1.0f },     0.0f, 0.1f);
         lowpass  = addExtParam ("lowpass",  "Lowpass",  "", "Hz", { 16.0f, 20000.0f, 0.0f, 0.3f }, 10000.0f, 0.1f);
-        decay    = addExtParam ("decay",    "Decay",    "", "%",  {  0.0f,   100.0f, 0.0f, 1.0f },    50.0f, 0.1f);
-        size     = addExtParam ("size",     "Size",     "", "%",  {  0.0f,   200.0f, 0.0f, 1.0f },   100.0f, 0.0f);
+        decay    = addExtParam ("decay",    "Decay",    "", "%",  {  0.0f,    95.0f, 0.0f, 1.0f },    50.0f, 0.1f);
+        size     = addExtParam ("size",     "Size",     "", "%",  { 10.0f,   200.0f, 0.0f, 1.0f },   100.0f, 0.1f);
         damping  = addExtParam ("damping",  "Damping",  "", "Hz", { 16.0f, 20000.0f, 0.0f, 0.3f }, 10000.0f, 0.1f);
         init();
     }

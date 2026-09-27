@@ -3,8 +3,10 @@
 //!
 //! Every wrapper here has a C++ twin in `tests/cpp_harness/extras/`, knob
 //! for knob, which is what the gold tests run the port against. The
-//! ranges are the ones each class documents; percentages and milliseconds
-//! are converted where the knobs are read, once a block, on both sides.
+//! ranges are the ones each class documents, short of the ends that are
+//! only good for hurting someone (each wrapper says which); percentages
+//! and milliseconds are converted where the knobs are read, once a block,
+//! on both sides.
 
 use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::distortion::AirWindowsDistortion;
@@ -14,7 +16,7 @@ use crate::gin::param::{Conversion, Param, ParamSpec, Smoothing};
 use crate::gin::platereverb::PlateReverb;
 use crate::gin::softclipper::SoftClipper;
 use crate::gin::transientshaper::TransientShaper;
-use crate::juce::NormalisableRange as Range;
+use crate::juce::{decibels_to_gain, jlimit, NormalisableRange as Range};
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
 
@@ -42,17 +44,20 @@ fn read<const N: usize>(params: &mut [Param], samples: usize) -> [f32; N] {
     core::array::from_fn(|i| params[i].proc_value(samples))
 }
 
+/// Decay stops at 95%: at the class's 100% the plate never decays, and
+/// every note adds to what it holds. Size starts at 10%, below which the
+/// tanks are too short to be a plate.
 pub const PLATE_REVERB: [ParamSpec; 6] = [
     knob("Mix", "%", Range::new(0.0, 100.0, 0.0, 1.0), 25.0),
-    stepped("Predelay", "ms", Range::new(0.0, 100.0, 0.0, 1.0), 0.0),
+    knob("Predelay", "ms", Range::new(0.0, 100.0, 0.0, 1.0), 0.0),
     knob(
         "Lowpass",
         "Hz",
         Range::new(16.0, 20000.0, 0.0, 0.3),
         10000.0,
     ),
-    knob("Decay", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
-    stepped("Size", "%", Range::new(0.0, 200.0, 0.0, 1.0), 100.0),
+    knob("Decay", "%", Range::new(0.0, 95.0, 0.0, 1.0), 50.0),
+    knob("Size", "%", Range::new(10.0, 200.0, 0.0, 1.0), 100.0),
     knob(
         "Damping",
         "Hz",
@@ -166,15 +171,22 @@ impl Processor for DistortionProcessor {
     }
 }
 
+/// Low Cut is off at 0 Hz and High Cut at 20 kHz, the two ends of the
+/// band. Output stops at +12 dB: the shaping itself can add 36.
 pub const TRANSIENT_SHAPER: [ParamSpec; 8] = [
     knob("Attack", "", Range::new(-4.0, 4.0, 0.0, 1.0), 0.0),
     knob("Sustain", "", Range::new(-8.0, 8.0, 0.0, 1.0), 0.0),
     knob("Smoothing", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
     stepped("Low Cut", "Hz", Range::new(0.0, 2000.0, 0.0, 0.5), 0.0),
-    stepped("High Cut", "Hz", Range::new(0.0, 20000.0, 0.0, 0.3), 0.0),
+    stepped(
+        "High Cut",
+        "Hz",
+        Range::new(20.0, 20000.0, 0.0, 0.3),
+        20000.0,
+    ),
     knob("Detector", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
     knob("Process", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
-    knob("Output", "dB", Range::new(-24.0, 24.0, 0.0, 1.0), 0.0),
+    knob("Output", "dB", Range::new(-24.0, 12.0, 0.0, 1.0), 0.0),
 ];
 
 #[derive(Clone, Debug)]
@@ -219,6 +231,7 @@ impl Processor for TransientShaperProcessor {
         self.shaper.set_attack(attack);
         self.shaper.set_sustain(sustain);
         self.shaper.set_smoothing(smoothing / 100.0);
+        let high_cut = if high_cut >= 20000.0 { 0.0 } else { high_cut };
         self.shaper.set_band(low_cut, high_cut);
         self.shaper.set_detector_balance(detector / 100.0);
         self.shaper.set_process_balance(balance / 100.0);
@@ -228,6 +241,9 @@ impl Processor for TransientShaperProcessor {
     }
 }
 
+/// What comes out is held to the ceiling: a half cycle longer than the
+/// longest the class holds (DC, anything under 10 Hz) is never scaled, and
+/// would otherwise get the whole makeup gain.
 pub const MAXIMIZER: [ParamSpec; 3] = [
     knob("Threshold", "dB", Range::new(-24.0, 0.0, 0.0, 1.0), -6.0),
     knob("Ceiling", "dB", Range::new(-24.0, 0.0, 0.0, 1.0), -0.3),
@@ -279,9 +295,16 @@ impl Processor for MaximizerProcessor {
         self.maximizer.set_release(release / 1000.0);
         self.maximizer
             .process(&mut left[..samples], &mut right[..samples]);
+        let limit = decibels_to_gain(ceiling);
+        for x in left[..samples].iter_mut().chain(&mut right[..samples]) {
+            *x = jlimit(-limit, limit, *x);
+        }
     }
 }
 
+/// Mix stops at 100%, where the class goes to 200%, and Harmonics is
+/// skewed toward its bottom: its top quarter turns anything in the band
+/// into a square wave.
 pub const EXCITER: [ParamSpec; 4] = [
     knob(
         "Frequency",
@@ -290,8 +313,8 @@ pub const EXCITER: [ParamSpec; 4] = [
         7000.0,
     ),
     knob("Drive", "", Range::new(1.0, 8.0, 0.0, 1.0), 1.0),
-    knob("Harmonics", "%", Range::new(0.0, 100.0, 0.0, 1.0), 0.0),
-    knob("Mix", "%", Range::new(0.0, 200.0, 0.0, 1.0), 50.0),
+    knob("Harmonics", "%", Range::new(0.0, 100.0, 0.0, 0.5), 0.0),
+    knob("Mix", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
 ];
 
 #[derive(Clone, Debug)]

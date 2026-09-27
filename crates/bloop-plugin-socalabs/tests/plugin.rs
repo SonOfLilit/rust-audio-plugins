@@ -133,8 +133,8 @@ fn every_effect_describes_itself() {
             Exciter by SocaLabs, Effect, 2 in 2 out
                0. Frequency       1000 to 16000     Hz  default 7000      skew 0.5
                1. Drive              1 to 8             default 1         skew 1
-               2. Harmonics          0 to 100       %   default 0         skew 1
-               3. Mix                0 to 200       %   default 50        skew 1
+               2. Harmonics          0 to 100       %   default 0         skew 0.5
+               3. Mix                0 to 100       %   default 50        skew 1
             Expander by SocaLabs, Effect, 2 in 2 out
                0. Attack             1 to 200       ms  default 1         skew 0.4
                1. Release            1 to 2000      ms  default 5         skew 0.4
@@ -183,8 +183,8 @@ fn every_effect_describes_itself() {
                0. Mix                0 to 100       %   default 25        skew 1
                1. Predelay           0 to 100       ms  default 0         skew 1
                2. Lowpass           16 to 20000     Hz  default 10000     skew 0.3
-               3. Decay              0 to 100       %   default 50        skew 1
-               4. Size               0 to 200       %   default 100       skew 1
+               3. Decay              0 to 95        %   default 50        skew 1
+               4. Size              10 to 200       %   default 100       skew 1
                5. Damping           16 to 20000     Hz  default 10000     skew 0.3
             SimpleVerb by SocaLabs, Effect, 2 in 2 out
                0. Room               0 to 1         %   default 0.3       skew 1
@@ -216,10 +216,10 @@ fn every_effect_describes_itself() {
                1. Sustain           -8 to 8             default 0         skew 1
                2. Smoothing          0 to 100       %   default 50        skew 1
                3. Low Cut            0 to 2000      Hz  default 0         skew 0.5
-               4. High Cut           0 to 20000     Hz  default 0         skew 0.3
+               4. High Cut          20 to 20000     Hz  default 20000     skew 0.3
                5. Detector           0 to 100       %   default 50        skew 1
                6. Process            0 to 100       %   default 50        skew 1
-               7. Output           -24 to 24        dB  default 0         skew 1
+               7. Output           -24 to 12        dB  default 0         skew 1
         "#]],
     );
 }
@@ -261,14 +261,22 @@ fn knobs_snap_and_hold_to_their_range() {
         &after_setting(
             Kind::Compressor,
             3,
-            &[-40.0, 10.0, -1000.0, f32::NAN, f32::INFINITY],
+            &[
+                -40.0,
+                -1000.0,
+                10.0,
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+            ],
         ),
         &expect![[r#"
             Threshold -40 → -40
-            Threshold 10 → 0
             Threshold -1000 → -60
-            Threshold NaN → -60
-            Threshold inf → -60"#]],
+            Threshold 10 → 0
+            Threshold NaN → 0
+            Threshold inf → 0
+            Threshold -inf → 0"#]],
     );
     check(
         &after_setting(Kind::Delay, 2, &[10.4, 10.6, 10.5, -3.0, 99.0]),
@@ -413,4 +421,145 @@ fn the_audio_thread_never_allocates() {
             "{kind:?} allocated {count} times on the audio thread"
         );
     }
+}
+
+/// Two short stereo hits, loud then quiet, the channels different noise:
+/// something for every knob to act on — a threshold to cross, a side
+/// channel to widen, a tail to shape.
+fn hits() -> (Vec<f32>, Vec<f32>) {
+    let mut state = 0x1234_5678u32;
+    let mut noise = move || {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        (f64::from(state) / f64::from(u32::MAX) * 2.0 - 1.0) as f32
+    };
+    let mut left = Vec::with_capacity(16384);
+    let mut right = Vec::with_capacity(16384);
+    for i in 0..16384 {
+        let (level, t) = if i < 8192 { (0.5, i) } else { (0.02, i - 8192) };
+        let env = level * libm::expf(-(t as f32) / 1500.0);
+        left.push(env * noise());
+        right.push(env * noise());
+    }
+    (left, right)
+}
+
+/// A fingerprint of what `kind` makes of the hits with `knobs` set, the
+/// smoothers settled by a reset before the first block.
+fn render(kind: Kind, knobs: &[(usize, f32)]) -> u64 {
+    let mut effect = Effect::new(kind, 48000.0);
+    for &(index, value) in knobs {
+        effect.set_param(index, value);
+    }
+    effect.reset(48000.0, 512);
+    let (mut left, mut right) = hits();
+    for (l, r) in left.chunks_mut(512).zip(right.chunks_mut(512)) {
+        process(&mut effect, l, r);
+    }
+    left.iter()
+        .chain(&right)
+        .fold(0xcbf2_9ce4_8422_2325u64, |h, s| {
+            (h ^ u64::from(s.to_bits())).wrapping_mul(0x0100_0000_01b3)
+        })
+}
+
+/// What a knob needs set before what it does can be heard: a delay's
+/// time says nothing while the mix is dry.
+fn needs(kind: Kind, knob: &str) -> &'static [(&'static str, f32)] {
+    match (kind, knob) {
+        // The knobs the others wait on.
+        (Kind::Delay, "Mix")
+        | (Kind::Expander, "Ratio")
+        | (Kind::Distortion, "Density")
+        | (Kind::TransientShaper, "Attack") => &[],
+        (Kind::Delay, "Beat") => &[("Sync", 1.0), ("Mix", 100.0)],
+        (Kind::Delay, "Sync") => &[("Beat", 1.0), ("Mix", 100.0)],
+        (Kind::Delay, "Time") => &[("Mix", 100.0)],
+        (Kind::Delay, _) => &[("Time", 0.05), ("Mix", 100.0)],
+        (Kind::Maximizer, "Release") => &[("Threshold", -24.0)],
+        (Kind::Expander, _) => &[("Ratio", 4.0)],
+        (Kind::GraphicEq, "LP Freq" | "LP Slope") => &[("LP", 1.0)],
+        (Kind::GraphicEq, "HP Freq" | "HP Slope") => &[("HP", 1.0)],
+        (Kind::Distortion, _) => &[("Density", 2.0)],
+        (Kind::TransientShaper, _) => &[("Attack", 2.0)],
+        (Kind::SoftClipper, "Knee") => &[("Drive", 12.0)],
+        _ => &[],
+    }
+}
+
+/// Every knob of every effect changes what comes out: from its default,
+/// turned to one end of its range or the other, the output is not the
+/// same bits. A knob that reached nothing — read into the wrong slot,
+/// never passed on — would be listed as still.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn every_knob_changes_what_comes_out() {
+    let mut out = String::new();
+    for kind in Kind::ALL {
+        let probe = Effect::new(kind, 48000.0);
+        let index_of = |name: &str| {
+            (0..probe.param_count())
+                .find(|&i| probe.param_info(i).name == name)
+                .expect("a prerequisite names a knob the effect has")
+        };
+        let mut moved = Vec::new();
+        let mut still = Vec::new();
+        for i in 0..probe.param_count() {
+            let info = probe.param_info(i);
+            let before: Vec<(usize, f32)> = needs(kind, info.name)
+                .iter()
+                .map(|&(name, value)| (index_of(name), value))
+                .collect();
+            let base = render(kind, &before);
+            let turned = [info.min, info.max].into_iter().any(|end| {
+                let mut knobs = before.clone();
+                knobs.push((i, end));
+                render(kind, &knobs) != base
+            });
+            let label = match needs(kind, info.name) {
+                [] => info.name.to_string(),
+                prerequisites => format!(
+                    "{} (with {})",
+                    info.name,
+                    prerequisites
+                        .iter()
+                        .map(|(n, v)| format!("{n} {v}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            };
+            if turned {
+                moved.push(label);
+            } else {
+                still.push(label);
+            }
+        }
+        let _ = writeln!(out, "{}: {}", kind.name(), moved.join(", "));
+        if !still.is_empty() {
+            let _ = writeln!(out, "  STILL: {}", still.join(", "));
+        }
+    }
+    check(
+        &out,
+        &expect![[r#"
+        BitCrusher: Bits, Rate, Dirty
+        Compressor: Attack, Release, Ratio, Threshold, Knee, Input, Output
+        Crossfeed: Enable
+        Delay: Sync (with Beat 1, Mix 100), Time (with Mix 100), Beat (with Sync 1, Mix 100), Feedback (with Time 0.05, Mix 100), Crossfeed (with Time 0.05, Mix 100), Mix
+        Distortion: Density, Highpass (with Density 2), Output (with Density 2), Mix (with Density 2)
+        Exciter: Frequency, Drive, Harmonics, Mix
+        Expander: Attack (with Ratio 4), Release (with Ratio 4), Ratio, Threshold (with Ratio 4), Knee (with Ratio 4), Input (with Ratio 4), Output (with Ratio 4)
+        Gate: Attack, Hold, Release, Threshold, Knee, Input, Output
+        GraphicEQ: 31 Hz, 63 Hz, 125 Hz, 250 Hz, 500 Hz, 1k Hz, 2k Hz, 4k Hz, 8k Hz, 16k Hz, LP, LP Freq (with LP 1), LP Slope (with LP 1), HP, HP Freq (with HP 1), HP Slope (with HP 1), Output
+        Limiter: Attack, Release, Threshold, Input, Output
+        Maximizer: Threshold, Ceiling, Release (with Threshold -24)
+        PlateReverb: Mix, Predelay, Lowpass, Decay, Size, Damping
+        SimpleVerb: Room, Damp, PreDelay, LP, HP, Wet, Dry
+        SoftClipper: Drive, Knee (with Drive 12), Ceiling
+        StereoEnhancer: Width, Freq HP, Width HP
+        StereoProcessor: Width 1, Center 1, Pan 1, Rotation, Pan 2, Center 2, Width 2, Output
+        TransientShaper: Attack, Sustain (with Attack 2), Smoothing (with Attack 2), Low Cut (with Attack 2), High Cut (with Attack 2), Detector (with Attack 2), Process (with Attack 2), Output (with Attack 2)
+    "#]],
+    );
 }

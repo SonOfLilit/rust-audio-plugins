@@ -1,4 +1,6 @@
-// gin::Exciter behind four knobs.
+// gin::Exciter behind four knobs. Mix stops at 100%, where the class goes
+// to 200%, and Harmonics is skewed toward its bottom: its top quarter turns
+// anything in the band into a square wave.
 #include <JuceHeader.h>
 
 namespace
@@ -10,8 +12,8 @@ public:
     {
         frequency = addExtParam ("frequency", "Frequency", "", "Hz", { 1000.0f, 16000.0f, 0.0f, 0.5f }, 7000.0f, 0.1f);
         drive     = addExtParam ("drive",     "Drive",     "", "",   {    1.0f,     8.0f, 0.0f, 1.0f },    1.0f, 0.1f);
-        harmonics = addExtParam ("harmonics", "Harmonics", "", "%",  {    0.0f,   100.0f, 0.0f, 1.0f },    0.0f, 0.1f);
-        mix       = addExtParam ("mix",       "Mix",       "", "%",  {    0.0f,   200.0f, 0.0f, 1.0f },   50.0f, 0.1f);
+        harmonics = addExtParam ("harmonics", "Harmonics", "", "%",  {    0.0f,   100.0f, 0.0f, 0.5f },    0.0f, 0.1f);
+        mix       = addExtParam ("mix",       "Mix",       "", "%",  {    0.0f,   100.0f, 0.0f, 1.0f },   50.0f, 0.1f);
         init();
     }
 

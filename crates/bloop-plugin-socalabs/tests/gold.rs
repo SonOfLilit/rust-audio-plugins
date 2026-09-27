@@ -364,7 +364,9 @@ fn levels(samples: &[f32]) -> String {
         .sqrt();
     let show = |x: f64| {
         let d = db(x);
-        if d < -120.0 {
+        if x == 0.0 {
+            "  zero".to_string()
+        } else if d < -120.0 {
             "  -inf".to_string()
         } else {
             format!("{d:>6.1}")
@@ -984,10 +986,10 @@ fn compressor() {
               R out   -6.1 pk  -24.5 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
               hash 11bc34dade2df3f9
             silence — 0.10s at 48000Hz in blocks of 64
-              L in    -inf pk   -inf rms  |                                        |
-              L out   -inf pk   -inf rms  |                                        |
-              R in    -inf pk   -inf rms  |                                        |
-              R out   -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
+              L out   zero pk   zero rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
+              R out   zero pk   zero rms  |                                        |
               hash 0a6fb8af536edb25
             prepared again — 2.00s at 44100Hz in blocks of 512
               L in    -6.1 pk  -23.8 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
@@ -1213,9 +1215,9 @@ fn delay() {
               R out   -5.9 pk  -23.0 rms  |%#+=:%#+=:@#*=-%#+=:%#*=-%#+=-@#*=-%#+=:|
               hash ff0c39db21135c73
             tail — 1.00s at 44100Hz in blocks of 512
-              L in    -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
               L out  -13.9 pk  -34.3 rms  |#**+==-:.+*++=--:. =+==-::.  -=--:..    |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -13.3 pk  -34.3 rms  |#**+==-::+*++=--:..++==-::.  ==--:..    |
               hash 968f759a103582cb
         "#]],
@@ -1233,7 +1235,7 @@ fn delay() {
             ping-pong — 2.00s at 44100Hz in blocks of 256
               L in    -6.0 pk  -55.5 rms  |%                                       |
               L out   -6.0 pk  -51.8 rms  |%   %       #       *       +       =   |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out   -9.0 pk  -57.2 rms  |        %       #       *       +       |
               hash a4a63544859e1ad9
         "#]],
@@ -1376,10 +1378,10 @@ fn delay() {
             .play("across the seam", &hits(-6.0, 0.0, 0.5, 0.05, 8), 512),
         &expect![[r#"
             two minutes — 120.00s at 44100Hz in blocks of 4096
-              L in    -inf pk   -inf rms  |                                        |
-              L out   -inf pk   -inf rms  |                                        |
-              R in    -inf pk   -inf rms  |                                        |
-              R out   -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
+              L out   zero pk   zero rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
+              R out   zero pk   zero rms  |                                        |
               hash 1c36c9bf4aa08f25
             across the seam — 4.00s at 44100Hz in blocks of 512
               L in    -6.1 pk  -23.8 rms  |%*-  %*-  %*-  %*-  %*-  %*-  %*-  %*-  |
@@ -1453,9 +1455,9 @@ fn simpleverb() {
               R out  -10.0 pk  -26.7 rms  |%%#*==-:. %%#*=--:. %%#*+=-:  %%#*==-:. |
               hash b3fce4de7dffa939
             tail — 1.00s at 44100Hz in blocks of 512
-              L in    -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
               L out  -66.7 pk  -94.0 rms  |                                        |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -68.0 pk  -93.8 rms  |                                        |
               hash 9baf8066164d3983
         "#]],
@@ -1587,7 +1589,7 @@ fn stereo_enhancer() {
             narrowed — 2.00s at 48000Hz in blocks of 1
               L in    -6.0 pk   -9.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               L out   -7.1 pk  -14.9 rms  |%#######################################|
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -12.0 pk  -15.1 rms  |########################################|
               hash ee6927cebc0eac4c
         "#]],
@@ -1621,11 +1623,11 @@ fn stereo_processor() {
             left, rotated — 0.50s at 44100Hz in blocks of 512
               L in    -6.0 pk   -9.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               L out   -6.0 pk  -11.9 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out   -9.0 pk  -12.2 rms  |#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               hash c8e26f1a25363e68
             right, rotated — 0.50s at 44100Hz in blocks of 512
-              L in    -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
               L out   -9.0 pk  -12.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               R in    -6.0 pk   -9.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               R out   -9.0 pk  -12.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
@@ -1678,7 +1680,7 @@ fn crossfeed() {
             defaults — 0.50s at 44100Hz in blocks of 512
               L in    -6.0 pk   -9.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               L out   -9.1 pk  -12.4 rms  |*#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -15.0 pk  -18.3 rms  |+*######################################|
               hash 406502282f4b4ed6
         "#]],
@@ -1728,25 +1730,25 @@ fn crossfeed() {
             48k — 0.10s at 48000Hz in blocks of 512
               L in    -6.0 pk  -42.8 rms  |%                                       |
               L out  -69.9 pk -104.0 rms  |                                        |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -69.9 pk -105.1 rms  |                                        |
               hash 00da4b54e99bdeef
             96k — 0.10s at 96000Hz in blocks of 512
               L in    -6.0 pk  -45.8 rms  |%                                       |
               L out   -6.0 pk  -45.8 rms  |%                                       |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -27.7 pk  -63.7 rms  |+                                       |
               hash a513992e8e53a7e7
             88.2k takes 96k — 0.10s at 88200Hz in blocks of 512
               L in    -6.0 pk  -45.5 rms  |%                                       |
               L out   -6.0 pk  -45.4 rms  |%                                       |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -27.7 pk  -63.4 rms  |+                                       |
               hash 57febb4f5dad2327
             22.05k takes 44.1k — 0.10s at 22050Hz in blocks of 512
               L in    -6.0 pk  -39.4 rms  |%                                       |
               L out   -6.1 pk  -39.4 rms  |%                                       |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -22.5 pk  -54.2 rms  |*                                       |
               hash a5ccc952a00e266d
         "#]],
@@ -1800,6 +1802,28 @@ fn graphic_eq() {
               R in   -12.0 pk  -15.0 rms  |########################################|
               R out   -0.1 pk  -10.6 rms  |%%#%%@@@%%%%%%#####%@@@@@%%####%%@@@@%%#|
               hash 5f0dbcab4b552065
+        "#]],
+    );
+    check(
+        &Program::new(Kind::GraphicEq)
+            .at(96000.0)
+            .set("LP", 1.0)
+            .set("LP Freq", 120.0)
+            .set("LP Slope", 1.0)
+            .set("HP", 1.0)
+            .set("HP Freq", 40.0)
+            .play(
+                "at 96kHz, cut both ends",
+                &sweep(20.0, 40000.0, -12.0, 2.0),
+                512,
+            ),
+        &expect![[r#"
+            at 96kHz, cut both ends — 2.00s at 96000Hz in blocks of 512
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out  -12.0 pk  -17.4 rms  |*=++**############%#############**+=-:. |
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out  -12.0 pk  -17.4 rms  |*=++**############%#############**+=-:. |
+              hash 654b5417c42e7f19
         "#]],
     );
     // The highpass and lowpass at both slopes, then switched off with their
@@ -2056,9 +2080,9 @@ fn plate_reverb() {
               R out   -8.6 pk  -25.1 rms  |%###****++%##****+++%##****++=%##****+++|
               hash 8983dc98a806a2e1
             tail — 2.00s at 44100Hz in blocks of 512
-              L in    -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
               L out  -31.5 pk  -53.1 rms  |===----::::...                          |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -31.9 pk  -53.2 rms  |===----:::.....                         |
               hash bd2f2fdc426808a9
         "#]],
@@ -2078,35 +2102,38 @@ fn plate_reverb() {
         &expect![[r#"
             huge, dark, wet, late — 4.00s at 48000Hz in blocks of 256
               L in    -6.0 pk  -58.8 rms  |%                                       |
-              L out   -8.5 pk  -50.7 rms  |%**==:..                                |
+              L out   -8.5 pk  -41.7 rms  |%#*+=--:...:.......   .     . .         |
               R in    -6.0 pk  -58.8 rms  |%                                       |
-              R out   -8.5 pk  -51.0 rms  |%**=-:.                                 |
-              hash 7e25b5ebc1a964ad
+              R out   -8.5 pk  -41.7 rms  |%#*+==-...:......    ...      ..        |
+              hash c91fa353e0567dec
             after a reset to 44.1kHz — 1.00s at 44100Hz in blocks of 256
               L in    -6.0 pk  -52.4 rms  |%                                       |
               L out  -16.7 pk  -44.3 rms  |  ***##***++=+=-=--:::.:... .           |
               R in    -6.0 pk  -52.4 rms  |%                                       |
               R out  -17.5 pk  -44.3 rms  |  ####*****=+===--::::......            |
-              hash 0d23e06e0671166e
+              hash c5ab8329c04c2997
         "#]],
     );
     check(
         &Program::new(Kind::PlateReverb)
             .set("Mix", 100.0)
-            .set("Size", 0.0)
-            .set("Decay", 100.0)
-            .play(
-                "decay 100% holds forever, and every hit adds to it",
-                &drums(),
-                128,
-            ),
+            .set("Size", 10.0)
+            .set("Decay", 95.0)
+            .play("the smallest plate, the longest decay", &drums(), 128)
+            .play("its tail", &silence(2.0), 128),
         &expect![[r#"
-            decay 100% holds forever, and every hit adds to it — 2.00s at 44100Hz in blocks of 128
+            the smallest plate, the longest decay — 2.00s at 44100Hz in blocks of 128
               L in    -6.1 pk  -23.8 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
-              L out   19.8 pk   11.5 rms  |@@@@%#%%%%@@@@@@@@@@@@@@@%%%%%@@@@@@@@@@|
+              L out    3.4 pk  -13.2 rms  |@@@@@@%%%%@@@@@@@%%%@@@@@@%%%%@@@@@@@%%%|
               R in    -6.1 pk  -23.9 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
-              R out   19.8 pk   11.5 rms  |@@@@%#%%%%@@@@@@@@@@@@@@@%%%%%@@@@@@@@@@|
-              hash 514b282d11571c8c
+              R out    3.7 pk  -13.2 rms  |@@@@@@%%%#@@@@@@%@%%@@@@@@%%%%@@@@@@%%%%|
+              hash 27fb01acd271ac7c
+            its tail — 2.00s at 44100Hz in blocks of 128
+              L in    zero pk   zero rms  |                                        |
+              L out  -12.5 pk  -33.6 rms  |####****++++++=====-----:::::.:.. .     |
+              R in    zero pk   zero rms  |                                        |
+              R out  -12.7 pk  -33.5 rms  |#####****+++++=====----:::::::......    |
+              hash 70eb8bcc9625c1b0
         "#]],
     );
 }
@@ -2130,9 +2157,9 @@ fn distortion() {
               R out   -6.0 pk   -9.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
               hash 12563c17754bb027
             digital black comes out as noise far under -120dB — 0.50s at 44100Hz in blocks of 512
-              L in    -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
               L out   -inf pk   -inf rms  |                                        |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out   -inf pk   -inf rms  |                                        |
               hash 3c0396e0570fed62
         "#]],
@@ -2231,17 +2258,17 @@ fn transient_shaper() {
         &expect![[r#"
             40-200Hz band, side heard, mid shaped — 2.00s at 44100Hz in blocks of 512
               L in    -6.1 pk  -23.8 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
-              L out    0.2 pk  -18.1 rms  |@%#+=+-:. @%#+=+-:. @%#+=+-:  @%#+=+-:  |
+              L out    0.2 pk  -18.2 rms  |@%#+=+-:. @%#+=+-:. @%#+=+-:  @%#+=+-:  |
               R in    -6.1 pk  -23.9 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
-              R out    0.0 pk  -18.2 rms  |@%#+=+-:. @%#+=+-:. @%#+=+-:  @%#+=+-:  |
-              hash 07c68cb3f55b94de
+              R out    0.0 pk  -18.3 rms  |@%#+=+-:. @%#+=+-:. @%#+=+-:  @%#+=+-:  |
+              hash 6ad8abe614c0ddd3
         "#]],
     );
     check(
         &Program::new(Kind::TransientShaper)
             .at(32000.0)
             .set("Attack", -4.0)
-            .set("High Cut", 20000.0)
+            .set("High Cut", 16000.0)
             .play("a high cut past the band's top is off", &drums(), 512),
         &expect![[r#"
             a high cut past the band's top is off — 2.00s at 32000Hz in blocks of 512
@@ -2259,6 +2286,29 @@ fn transient_shaper() {
 fn maximizer() {
     check(
         &Program::new(Kind::Maximizer)
+            .play("a sample at a time", &hits(-6.0, 30.0, 0.1, 0.02, 3), 1)
+            .play(
+                "in blocks that are not a power of two",
+                &hits(-6.0, 30.0, 0.1, 0.02, 3),
+                333,
+            ),
+        &expect![[r#"
+            a sample at a time — 0.30s at 44100Hz in blocks of 1
+              L in    -6.3 pk  -22.5 rms  |%%##**++==--:---:..       %%%##**+==--::|
+              L out   -0.6 pk  -16.8 rms  |      @@@%%##*++==-===--::..     @@%%##*|
+              R in    -6.4 pk  -22.5 rms  |%%##**++==-::---:..       %%%##**+==--::|
+              R out   -0.7 pk  -16.8 rms  |      @@@%%#**++==-===--::..     @@%%##*|
+              hash 9925f79c722f40ba
+            in blocks that are not a power of two — 0.30s at 44100Hz in blocks of 333
+              L in    -6.3 pk  -22.5 rms  |%%##**++==--:---:..       %%%##**+==--::|
+              L out   -0.6 pk  -16.8 rms  |*++==-@@@%%##*++==-===--::..     @@%%##*|
+              R in    -6.4 pk  -22.5 rms  |%%##**++==-::---:..       %%%##**+==--::|
+              R out   -0.7 pk  -16.8 rms  |*++==-@@@%%#**++==-===--::..     @@%%##*|
+              hash dfbd252078d18f1b
+        "#]],
+    );
+    check(
+        &Program::new(Kind::Maximizer)
             .play("defaults", &drums(), 512)
             .play("the last 50ms come out", &silence(0.1), 512),
         &expect![[r#"
@@ -2269,9 +2319,9 @@ fn maximizer() {
               R out   -0.4 pk  -18.2 rms  |@@%#+==-: @@%*+==-: @@%#+==-. @@%*+==-: |
               hash 38ec27cea73ca089
             the last 50ms come out — 0.10s at 44100Hz in blocks of 512
-              L in    -inf pk   -inf rms  |                                        |
+              L in    zero pk   zero rms  |                                        |
               L out  -65.2 pk  -76.5 rms  |                                        |
-              R in    -inf pk   -inf rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
               R out  -65.1 pk  -76.5 rms  |                                        |
               hash c961cda2b11a3255
         "#]],
@@ -2300,19 +2350,19 @@ fn maximizer() {
             .set("Threshold", -12.0)
             .set("Release", 1000.0)
             .play(
-                "half cycles longer than it holds pass unlimited",
+                "half cycles longer than it holds, held to the ceiling",
                 &tone(5.0, -3.0, 1.0),
                 512,
             )
             .reset(96000.0)
             .play("after a reset to 96kHz", &drums(), 512),
         &expect![[r#"
-            half cycles longer than it holds pass unlimited — 1.00s at 44100Hz in blocks of 512
+            half cycles longer than it holds, held to the ceiling — 1.00s at 44100Hz in blocks of 512
               L in    -3.0 pk   -6.0 rms  |%@@%%@@%@@@%@@@%@@@%@@@%@@@%@@@%@@@%@@@%|
-              L out    8.7 pk    3.1 rms  |  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+              L out   -0.3 pk   -2.2 rms  |  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
               R in    -3.0 pk   -6.0 rms  |%@@%%@@%@@@%@@@%@@@%@@@%@@@%@@@%@@@%@@@%|
-              R out    8.7 pk    3.1 rms  |  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-              hash 6c839cf05d816361
+              R out   -0.3 pk   -2.2 rms  |  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+              hash 4b7990080750e30d
             after a reset to 96kHz — 2.00s at 96000Hz in blocks of 512
               L in    -6.1 pk  -23.8 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
               L out   -0.3 pk  -17.8 rms  |*@%#+=+-:.@@%#+=+-:.@@%#+=+-: @@%#+=+-:.|
@@ -2342,15 +2392,15 @@ fn exciter() {
             .set("Frequency", 1000.0)
             .set("Drive", 8.0)
             .set("Harmonics", 100.0)
-            .set("Mix", 200.0)
+            .set("Mix", 100.0)
             .play("everything up", &drums(), 256),
         &expect![[r#"
             everything up — 2.00s at 44100Hz in blocks of 256
               L in    -6.1 pk  -23.8 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
-              L out   10.6 pk    3.2 rms  |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+              L out    5.4 pk   -2.7 rms  |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
               R in    -6.1 pk  -23.9 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
-              R out   10.3 pk    3.2 rms  |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-              hash 23406643fa6f46a5
+              R out    5.2 pk   -2.7 rms  |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+              hash 6607659c0a890644
         "#]],
     );
 }
@@ -2407,9 +2457,9 @@ fn soft_clipper() {
               hash e5dcb9a876fc3171
             below 1e-10 is silence — 0.10s at 44100Hz in blocks of 512
               L in    -inf pk   -inf rms  |                                        |
-              L out   -inf pk   -inf rms  |                                        |
+              L out   zero pk   zero rms  |                                        |
               R in    -inf pk   -inf rms  |                                        |
-              R out   -inf pk   -inf rms  |                                        |
+              R out   zero pk   zero rms  |                                        |
               hash 55a0fca3f8fc0765
         "#]],
     );
