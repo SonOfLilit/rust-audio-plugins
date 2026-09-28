@@ -3,6 +3,10 @@
 //! cost. What the audio sounds like is tests/gold.rs.
 
 #![expect(
+    clippy::expect_used,
+    reason = "a test that cannot find the knob it is about has nothing to say"
+)]
+#![expect(
     clippy::needless_raw_string_hashes,
     reason = "UPDATE_EXPECT writes r#\"…\"# whether or not the snapshot needs the hashes"
 )]
@@ -12,7 +16,7 @@ use std::cell::Cell;
 use std::fmt::Write as _;
 
 use bloop_plugin_api::{Plugin, ProcessContext};
-use bloop_plugin_socalabs::{Effect, Kind};
+use bloop_plugin_socalabs::{Effect, Kind, Recipe};
 use expect_test::{expect, Expect};
 
 #[cfg(target_arch = "wasm32")]
@@ -560,6 +564,125 @@ fn every_knob_changes_what_comes_out() {
         StereoEnhancer: Width, Freq HP, Width HP
         StereoProcessor: Width 1, Center 1, Pan 1, Rotation, Pan 2, Center 2, Width 2, Output
         TransientShaper: Attack, Sustain (with Attack 2), Smoothing (with Attack 2), Low Cut (with Attack 2), High Cut (with Attack 2), Detector (with Attack 2), Process (with Attack 2), Output (with Attack 2)
+    "#]],
+    );
+}
+
+/// The room a Delay is built with, for the time it is asked to reach:
+/// doubled from the least, never more than the original's.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_delays_room_doubles_until_it_reaches() {
+    let out: Vec<String> = [
+        0.0, 1.0, 1.9, 1.95, 2.0, 3.9, 10.0, 60.0, 119.0, 120.0, 500.0,
+    ]
+    .iter()
+    .map(|&s| format!("{s:>5} s → room {}", Recipe::room_for(s)))
+    .collect();
+    check(
+        &out.join("\n"),
+        &expect![[r#"
+                0 s → room 2
+                1 s → room 2
+              1.9 s → room 2
+             1.95 s → room 4
+                2 s → room 4
+              3.9 s → room 4
+               10 s → room 16
+               60 s → room 64
+              119 s → room 120.1
+              120 s → room 120.1
+              500 s → room 120.1"#]],
+    );
+}
+
+/// Where an impulse comes back, through a Delay with `room` seconds of
+/// line set to `time`, fully wet: the first sample that is not silent.
+fn echo_at(room: f32, time: f32) -> String {
+    let mut effect = Effect::build(
+        Recipe {
+            kind: Kind::Delay,
+            delay_room: room,
+        },
+        48000.0,
+    );
+    let names: Vec<&str> = (0..effect.param_count())
+        .map(|i| effect.param_info(i).name)
+        .collect();
+    let knob = |name: &str| names.iter().position(|n| *n == name).expect("a Delay knob");
+    effect.set_param(knob("Time"), time);
+    effect.set_param(knob("Mix"), 100.0);
+    effect.set_param(knob("Feedback"), -100.0);
+    effect.reset(48000.0, 512);
+    let seconds = 8usize;
+    let (mut left, mut right) = (vec![0.0f32; 48000 * seconds], vec![0.0f32; 48000 * seconds]);
+    left[0] = 1.0;
+    right[0] = 1.0;
+    for (l, r) in left.chunks_mut(512).zip(right.chunks_mut(512)) {
+        process(&mut effect, l, r);
+    }
+    left.iter().position(|s| s.abs() > 1e-3).map_or_else(
+        || "no echo in 8 s".to_string(),
+        |i| format!("echo at {:.3} s", i as f64 / 48000.0),
+    )
+}
+
+/// A Delay reaches as far back as its room: a time past it reads from the
+/// far end of the line, which is why the host builds it again with more.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_delay_reaches_as_far_as_its_room() {
+    let out: Vec<String> = [
+        (2.0, 1.0),
+        (2.0, 5.0),
+        (8.0, 5.0),
+        (Recipe::MAX_DELAY_ROOM, 5.0),
+    ]
+    .iter()
+    .map(|&(room, time)| format!("room {room:>5} s, Time {time} s: {}", echo_at(room, time)))
+    .collect();
+    check(
+        &out.join("\n"),
+        &expect![[r#"
+        room     2 s, Time 1 s: echo at 1.000 s
+        room     2 s, Time 5 s: echo at 2.000 s
+        room     8 s, Time 5 s: echo at 5.000 s
+        room 120.1 s, Time 5 s: echo at 5.000 s"#]],
+    );
+}
+
+/// A knob's travel, 0 to 1, as the parameter under it: skewed where the
+/// range is, stepped for a switch or a list, and back again.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_knobs_travel_is_its_parameters_range() {
+    let mut out = String::new();
+    for (kind, index) in [
+        (Kind::Delay, 1),
+        (Kind::Delay, 2),
+        (Kind::Delay, 0),
+        (Kind::Compressor, 3),
+        (Kind::GraphicEq, 11),
+    ] {
+        let effect = Effect::new(kind, 48000.0);
+        let name = effect.param_info(index).name;
+        let values: Vec<String> = [0.0, 0.25, 0.49, 0.51, 0.75, 1.0]
+            .iter()
+            .map(|&f| {
+                let v = effect.knob_value(index, f);
+                format!("{f}→{v}→{:.3}", effect.knob_fraction(index, v))
+            })
+            .collect();
+        let _ = writeln!(out, "{} {name}: {}", kind.name(), values.join("  "));
+    }
+    check(
+        &out,
+        &expect![[r#"
+        Delay Time: 0→0→0.000  0.25→1.181176→0.250  0.49→11.130163→0.490  0.51→12.717894→0.510  0.75→45.99587→0.750  1→120→1.000
+        Delay Beat: 0→0→0.000  0.25→8→0.250  0.49→16→0.500  0.51→16→0.500  0.75→24→0.750  1→32→1.000
+        Delay Sync: 0→0→0.000  0.25→0→0.000  0.49→0→0.000  0.51→1→1.000  0.75→1→1.000  1→1→1.000
+        Compressor Threshold: 0→-60→0.000  0.25→-45→0.250  0.49→-30.599998→0.490  0.51→-29.400002→0.510  0.75→-15→0.750  1→0→1.000
+        GraphicEQ LP Freq: 0→83.2131→0.000  0.25→96.17888→0.250  0.49→108.62604→0.490  0.51→109.6633→0.510  0.75→122.11045→0.750  1→135.07623→1.000
     "#]],
     );
 }

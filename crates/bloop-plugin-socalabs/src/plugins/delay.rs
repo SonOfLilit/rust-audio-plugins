@@ -65,10 +65,12 @@ pub const DELAY: [ParamSpec; 6] = [
     ),
 ];
 
-/// How long the line is, in seconds: the original's `stereoDelay { 120.1 }`,
+/// How long the original's line is, in seconds: `stereoDelay { 120.1 }`,
 /// enough for the Time knob's two minutes. At 48kHz that is 46 MB of line
-/// per Delay, allocated when the Delay is made.
-const MAX_DELAY: f64 = 120.1;
+/// per Delay, allocated when the Delay is made — which is why a host can
+/// build one with less room ([`DelayProcessor::with_room`]) and build it
+/// again with more when the time outgrows it.
+pub const MAX_DELAY: f64 = 120.1;
 
 /// The delay the other knobs resolve to: an internal parameter, eased.
 const DELAY_TIME: ParamSpec = ParamSpec::new(
@@ -99,25 +101,47 @@ pub struct DelayProcessor {
 
 impl Default for DelayProcessor {
     fn default() -> Self {
-        let mut params: Vec<Param> = DELAY.iter().copied().map(Param::new).collect();
-        params.push(Param::new(DELAY_TIME));
-        Self {
-            params,
-            delay: StereoDelay::new(MAX_DELAY),
-        }
+        Self::with_room(MAX_DELAY)
+    }
+}
+
+/// The delay a Delay's knobs ask for, in seconds: the Time knob's, or with
+/// Sync on the note the Beat knob names, at `bpm`.
+#[must_use]
+pub fn delay_seconds(sync: bool, time: f32, beat: f32, bpm: f32) -> f32 {
+    if sync {
+        let beat = beat.round().clamp(0.0, (DURATIONS.len() - 1) as f32) as usize;
+        DURATIONS[beat].to_seconds(bpm)
+    } else {
+        time
     }
 }
 
 impl DelayProcessor {
+    /// A Delay whose line holds `room` seconds. The algorithm is the
+    /// original's at any room: what the room changes is how far back it
+    /// can reach, a time past it reading from the far end, and — the line
+    /// is indexed in `f32` — how finely a fractional delay is resolved,
+    /// which only gets better with less.
+    #[must_use]
+    pub fn with_room(room: f64) -> Self {
+        let mut params: Vec<Param> = DELAY.iter().copied().map(Param::new).collect();
+        params.push(Param::new(DELAY_TIME));
+        Self {
+            params,
+            delay: StereoDelay::new(room),
+        }
+    }
+
     /// `updateInternalParams`: the delay time from the free time or from
     /// the note the Beat knob names at `bpm`.
     fn update_internal_params(&mut self, bpm: f32) {
-        let seconds = if self.params[SYNC].is_on() {
-            let beat = self.params[BEAT].user_value_int() as usize;
-            DURATIONS[beat.min(DURATIONS.len() - 1)].to_seconds(bpm)
-        } else {
-            self.params[TIME].user_value()
-        };
+        let seconds = delay_seconds(
+            self.params[SYNC].is_on(),
+            self.params[TIME].user_value(),
+            self.params[BEAT].user_value_int() as f32,
+            bpm,
+        );
         self.params[DELAY_PARAM].set_user_value(seconds);
     }
 

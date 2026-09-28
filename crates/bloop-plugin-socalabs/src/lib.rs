@@ -101,11 +101,79 @@ impl Kind {
         }
     }
 
+    /// What kind of effect it is, as the Browser's TYPE filter sorts them.
+    #[must_use]
+    pub fn category(self) -> &'static str {
+        match self {
+            Self::Compressor
+            | Self::Limiter
+            | Self::Gate
+            | Self::Expander
+            | Self::Maximizer
+            | Self::TransientShaper => "Dynamics",
+            Self::SimpleVerb | Self::PlateReverb => "Reverb",
+            Self::Delay => "Delay",
+            Self::GraphicEq => "EQ",
+            Self::Distortion | Self::BitCrusher | Self::SoftClipper | Self::Exciter => "Distortion",
+            Self::StereoEnhancer | Self::StereoProcessor | Self::Crossfeed => "Stereo",
+        }
+    }
+
     /// The effect called `name`, if there is one.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.name() == name)
     }
+}
+
+/// What an effect is built from: which one, and for a Delay how many
+/// seconds its line holds.
+///
+/// The original Delay holds two minutes, 46 MB at 48kHz, whatever its
+/// time is set to. A host that builds one with [`Recipe::new`] gets
+/// [`Recipe::MIN_DELAY_ROOM`], and builds it again with
+/// [`Recipe::room_for`] the time it is turned to, when that is more.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Recipe {
+    pub kind: Kind,
+    /// Seconds of delay line, for a Delay; nothing else has one.
+    pub delay_room: f32,
+}
+
+impl Recipe {
+    /// The least room a Delay is built with.
+    pub const MIN_DELAY_ROOM: f32 = 2.0;
+    /// The original's room, which is all a Delay can use: its Time knob
+    /// stops at 120 s.
+    pub const MAX_DELAY_ROOM: f32 = plugins::delay::MAX_DELAY as f32;
+
+    /// `kind`, with the least room.
+    #[must_use]
+    pub fn new(kind: Kind) -> Self {
+        Self {
+            kind,
+            delay_room: Self::MIN_DELAY_ROOM,
+        }
+    }
+
+    /// The room a Delay needs to reach `seconds` back: doubled from the
+    /// least until it does, so a knob turned slowly up does not build a
+    /// Delay per step, and never more than the original's.
+    #[must_use]
+    pub fn room_for(seconds: f32) -> f32 {
+        let mut room = Self::MIN_DELAY_ROOM;
+        while room < seconds + 0.1 && room < Self::MAX_DELAY_ROOM {
+            room *= 2.0;
+        }
+        room.min(Self::MAX_DELAY_ROOM)
+    }
+}
+
+/// The delay a Delay's knobs ask for, in seconds: the Time knob's, or with
+/// Sync on the note the Beat knob names, at `bpm`.
+#[must_use]
+pub fn delay_seconds(sync: bool, time: f32, beat: f32, bpm: f32) -> f32 {
+    plugins::delay::delay_seconds(sync, time, beat, bpm)
 }
 
 /// The lowest rate an effect is prepared for.
@@ -188,9 +256,27 @@ impl Effect {
     ///
     /// A rate below [`MIN_SAMPLE_RATE`], or not a number, is taken as that
     /// minimum: the delay lines are sized from it, and none can be empty.
+    ///
+    /// This is the original: a Delay holds two minutes. [`Self::build`]
+    /// makes one with the room a [`Recipe`] says.
     #[must_use]
     pub fn new(kind: Kind, sample_rate: f32) -> Self {
+        Self::build(
+            Recipe {
+                kind,
+                delay_room: Recipe::MAX_DELAY_ROOM,
+            },
+            sample_rate,
+        )
+    }
+
+    /// The effect a recipe describes, prepared for `sample_rate` as
+    /// [`Self::new`] is.
+    #[must_use]
+    pub fn build(recipe: Recipe, sample_rate: f32) -> Self {
+        let Recipe { kind, delay_room } = recipe;
         let sample_rate = playable(sample_rate);
+        let room = f64::from(delay_room.clamp(0.1, Recipe::MAX_DELAY_ROOM));
         let mut engine = match kind {
             Kind::Compressor => {
                 Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Compressor)))
@@ -198,7 +284,7 @@ impl Effect {
             Kind::Limiter => Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Limiter))),
             Kind::Gate => Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Gate))),
             Kind::Expander => Engine::Dynamics(Box::new(DynamicsProcessor::new(Flavour::Expander))),
-            Kind::Delay => Engine::Delay(Box::default()),
+            Kind::Delay => Engine::Delay(Box::new(DelayProcessor::with_room(room))),
             Kind::SimpleVerb => Engine::SimpleVerb(Box::default()),
             Kind::StereoEnhancer => Engine::StereoEnhancer(Box::default()),
             Kind::StereoProcessor => Engine::StereoProcessor(Box::default()),
@@ -239,6 +325,27 @@ impl Effect {
             .params()
             .get(index)
             .map_or("", |p| p.spec().unit)
+    }
+
+    /// Where a knob turned to `fraction` of its travel (0 to 1) puts the
+    /// parameter: its range's skew applied, and snapped to the steps a
+    /// switch or a list takes, as the original's `setValue` does.
+    #[must_use]
+    pub fn knob_value(&self, index: usize, fraction: f32) -> f32 {
+        self.engine.params().get(index).map_or(0.0, |p| {
+            let range = p.spec().range;
+            range.snap_to_legal_value(range.convert_from_0to1(fraction))
+        })
+    }
+
+    /// How far along its knob's travel (0 to 1) a parameter at `value`
+    /// is: the inverse of [`Self::knob_value`].
+    #[must_use]
+    pub fn knob_fraction(&self, index: usize, value: f32) -> f32 {
+        self.engine
+            .params()
+            .get(index)
+            .map_or(0.0, |p| p.spec().range.convert_to_0to1(value))
     }
 
     /// The skew of a parameter's range: a knob's position `p`, 0 to 1,
