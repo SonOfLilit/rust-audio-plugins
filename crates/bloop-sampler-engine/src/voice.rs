@@ -13,7 +13,7 @@
 use crate::juce::{
     approximately_equal_absolute, decibels_to_gain, jmap, IirCoefficients, IirFilter,
 };
-use crate::params::{SamplerParams, WAVETABLE_CUTOFF_HZ};
+use crate::params::{AmpEnvelope, SamplerParams, WAVETABLE_CUTOFF_HZ};
 use crate::SampleBuffer;
 
 /// `juce::MathConstants<float>::pi`.
@@ -58,6 +58,62 @@ struct VoiceContext {
     speed_moved_since_start: f32,
     /// Times the release envelope.
     speed_moved_since_release: f32,
+    /// Bloop's: where the Hold and the Decay ([`AmpShape`]) have the note,
+    /// kept so a Release lets go from it.
+    amp_level: f32,
+}
+
+/// A Decay of 0 is a millisecond, bloop's Release floor: a cut from full to
+/// silence inside one frame would click.
+const DECAY_FLOOR_MS: f32 = 1.0;
+
+/// An [`AmpEnvelope`] other than the reference's, in frames of output, as
+/// a note captured it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct AmpShape {
+    /// When the Decay begins: the Attack and the Hold, done.
+    decay_from: f32,
+    decay: f32,
+    /// Where the Decay ends: 0 for AHD, the Sustain for ADSR.
+    floor: f32,
+    /// ADSR: a note-off releases. AHD ignores it.
+    gated: bool,
+}
+
+impl AmpShape {
+    fn of(envelope: AmpEnvelope, attack: f32, rate: f32) -> Option<AmpShape> {
+        let frames = |ms: f32| ms.max(0.0) * rate / 1000.0;
+        let decay = |ms: f32| frames(ms.max(DECAY_FLOOR_MS));
+        match envelope {
+            AmpEnvelope::Reference => None,
+            AmpEnvelope::Ahd { hold_ms, decay_ms } => Some(AmpShape {
+                decay_from: attack + frames(hold_ms),
+                decay: decay(decay_ms),
+                floor: 0.0,
+                gated: false,
+            }),
+            AmpEnvelope::Adsr { decay_ms, sustain } => Some(AmpShape {
+                decay_from: attack,
+                decay: decay(decay_ms),
+                floor: sustain.clamp(0.0, 1.0),
+                gated: true,
+            }),
+        }
+    }
+
+    /// The level `moved` frames into the note, and whether it is silent for
+    /// good.
+    fn level(self, moved: f32, curve: f32) -> (f32, bool) {
+        if moved < self.decay_from {
+            return (1.0, false);
+        }
+        let through = (moved - self.decay_from) / self.decay;
+        if through >= 1.0 {
+            return (self.floor, self.floor <= 0.0);
+        }
+        let falling = SamplerVoice::exponential_curve(curve, 1.0 - through);
+        (self.floor + (1.0 - self.floor) * falling, false)
+    }
 }
 
 /// Stores the lowpass state for one channel, with a circular buffer of recent
@@ -184,6 +240,9 @@ pub struct SamplerVoice {
     attack_shape: f32,
     release_shape: f32,
     crossfade: f32,
+    /// Bloop's Hold/Decay/Sustain, as this note started with it; `None`
+    /// plays the reference's voice.
+    amp: Option<AmpShape>,
 
     vc: VoiceContext,
     midi_released: bool,
@@ -245,6 +304,7 @@ impl SamplerVoice {
             attack_shape: 0.0,
             release_shape: 0.0,
             crossfade: 0.0,
+            amp: None,
             vc: VoiceContext::default(),
             midi_released: false,
 
@@ -337,6 +397,9 @@ impl SamplerVoice {
                 1.0 - self.vc.speed_moved_since_release / self.release_smoothing,
             );
         }
+        if self.amp.is_some() {
+            gain *= self.vc.amp_level;
+        }
         gain
     }
 
@@ -415,7 +478,10 @@ impl SamplerVoice {
         self.crossfade = (params.crossfade_samples as f32)
             .min((self.sample_end - self.sample_start + 1) as f32 / 2.0 + 1.0);
 
+        self.amp = AmpShape::of(params.amp_envelope, self.attack_smoothing, rate);
+
         self.vc = VoiceContext::default();
+        self.vc.amp_level = 1.0;
         self.midi_released = false;
 
         self.do_lowpass = false;
@@ -429,9 +495,21 @@ impl SamplerVoice {
 
     /// Releases the note, letting the envelope (or the sample's end portion)
     /// play out.
+    ///
+    /// An AHD note ignores it and an ADSR note always takes it
+    /// ([`AmpEnvelope`]); otherwise it is the reference's rule.
     pub fn note_off(&mut self) {
-        if !self.play_until_end || self.is_looping {
-            self.midi_released = true;
+        match self.amp {
+            Some(shape) => {
+                if shape.gated {
+                    self.midi_released = true;
+                }
+            }
+            None => {
+                if !self.play_until_end || self.is_looping {
+                    self.midi_released = true;
+                }
+            }
         }
     }
 
@@ -745,6 +823,21 @@ impl SamplerVoice {
                 );
             }
 
+            // Bloop's Hold, Decay and Sustain. A note-off lets go from where
+            // the Decay had got to, so the level stops there — through the
+            // Release, or through a loop's end portion, which a note-off
+            // plays instead. The reference's own release near the end of the
+            // sample does not stop it, or a Release longer than the Sample
+            // would freeze the Decay from the first frame.
+            let mut spent = false;
+            if let Some(amp) = self.amp {
+                if !self.midi_released {
+                    (con.amp_level, spent) =
+                        amp.level(con.speed_moved_since_start, self.release_shape);
+                }
+                envelope *= con.amp_level;
+            }
+
             // Update the position.
             con.current_position += f64::from(self.speed);
             con.speed_moved_since_start += 1.0;
@@ -801,6 +894,7 @@ impl SamplerVoice {
 
             if con.current_position > f64::from(self.effective_end)
                 || (con.is_releasing && con.speed_moved_since_release >= self.release_smoothing)
+                || spent
             {
                 // End of playback reached.
                 con.state = VoiceState::Stopped;
