@@ -577,22 +577,22 @@ fn a_delays_room_doubles_until_it_reaches() {
         0.0, 1.0, 1.9, 1.95, 2.0, 3.9, 10.0, 60.0, 119.0, 120.0, 500.0,
     ]
     .iter()
-    .map(|&s| format!("{s:>5} s → room {}", Recipe::room_for(s)))
+    .map(|&s| format!("{s} s → room {}", Recipe::room_for(s)))
     .collect();
     check(
         &out.join("\n"),
         &expect![[r#"
-                0 s → room 2
-                1 s → room 2
-              1.9 s → room 2
-             1.95 s → room 4
-                2 s → room 4
-              3.9 s → room 4
-               10 s → room 16
-               60 s → room 64
-              119 s → room 120.1
-              120 s → room 120.1
-              500 s → room 120.1"#]],
+        0 s → room 2
+        1 s → room 2
+        1.9 s → room 2
+        1.95 s → room 4
+        2 s → room 4
+        3.9 s → room 4
+        10 s → room 16
+        60 s → room 64
+        119 s → room 120.1
+        120 s → room 120.1
+        500 s → room 120.1"#]],
     );
 }
 
