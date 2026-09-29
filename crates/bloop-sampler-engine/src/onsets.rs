@@ -41,6 +41,28 @@ const MEDIAN_RADIUS: usize = 24;
 /// along.
 const MIN_SEPARATION_RANGE: (f32, f32) = (0.5, 0.03);
 
+/// How far before the strongest rise of a hit its attack may be, in
+/// seconds. A drum's stick comes a few tens of milliseconds before its
+/// shell rings up, and the shell is often the bigger rise.
+const ATTACK_LOOKBACK: f32 = 0.06;
+
+/// How far the energy may sag between an attack and the rise it belongs
+/// to, as a share of where the attack took it. More than that, and what
+/// came before was a hit of its own that died away — a ghost note, which in
+/// the funky break falls to a tenth before the hit after it. A flam's first
+/// stroke, which in Drums_170BPM falls to a third, is the hit's attack.
+const ATTACK_HOLDS: f32 = 0.25;
+
+/// How quiet it must be just before an earlier attack, as a share of the
+/// hit's loudest, for the attack to be the hit's: a flam's first stroke
+/// comes out of silence, a ripple in a busy break does not.
+const ATTACK_FROM_QUIET: f32 = 0.05;
+
+/// How big a rise before a hit must be, as a share of the hit's own, to be
+/// its attack rather than noise ahead of it. Rises are in energy, so this is
+/// an attack at about 40% of the body's amplitude.
+const ATTACK_SHARE: f32 = 0.15;
+
 /// Where the hits are in `range`, as absolute frame positions, ascending.
 ///
 /// These are *interior* boundaries: a hit already sounding at the start of the
@@ -137,7 +159,47 @@ pub fn detect_onsets(sample: &SampleBuffer, range: (usize, usize), sensitivity: 
         kept.push(step);
     }
 
+    // Each hit is cut at its attack: an earlier stroke of the same hit — a
+    // stick before the shell, a flam's first — if one rose out of quiet
+    // shortly before the rise strongest-first picked, and the energy held
+    // up from it into that rise. The local median does not judge that
+    // stroke: the body right after it is what raises the median there.
+    let lookback = ((ATTACK_LOOKBACK * sample.sample_rate() as f32) / HOP as f32).ceil() as usize;
+    let peak_at = |step: usize| {
+        (step == 0 || flux[step - 1] <= flux[step])
+            && (step + 1 >= flux.len() || flux[step + 1] < flux[step])
+    };
+    // Where the rise through `step` began.
+    let foot = |mut step: usize| {
+        while step > 0 && flux[step - 1] > 0.0 {
+            step -= 1;
+        }
+        step
+    };
+    for step in &mut kept {
+        let strength = flux[*step];
+        let loudest = energy[*step + 1..(*step + 1 + lookback).min(energy.len())]
+            .iter()
+            .copied()
+            .fold(0.0f32, f32::max);
+        let held = |at: usize| {
+            let reached = energy[at + 1];
+            energy[at + 1..=*step]
+                .iter()
+                .all(|&level| level >= reached * ATTACK_HOLDS)
+        };
+        if let Some(attack) = (step.saturating_sub(lookback)..*step).find(|&at| {
+            peak_at(at)
+                && flux[at] >= strength * ATTACK_SHARE
+                && energy[foot(at)] <= loudest * ATTACK_FROM_QUIET
+                && held(at)
+        }) {
+            *step = attack;
+        }
+    }
+
     kept.sort_unstable();
+    kept.dedup();
     // The range's own edges are slice boundaries too, so a hit within the
     // separation of one is not a new slice — it is the start (or the end) of
     // the range arriving slightly late. Without this a break whose first
@@ -237,6 +299,69 @@ mod tests {
                23936  (nearest hit    64 frames away)
         "#]]
         .assert_eq(&report(&onsets, &at));
+    }
+
+    /// A drum's attack is often a smaller rise than its body arriving a
+    /// few tens of milliseconds later: the stick, then the shell. The cut
+    /// goes before the attack, not before the body — cut at the body and
+    /// the attack is left on the end of the Slice before. Hits at 12 000
+    /// and 30 000 whose bodies, twice as loud, follow 2 000 frames (42 ms)
+    /// later. A quieter hit that dies away before the next is its own
+    /// hit, and does not pull the next one's cut back: that is
+    /// `a_ghost_note_is_not_the_next_hits_attack`.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_cut_goes_before_the_attack_not_the_body() {
+        let bodies = hits(48_000, &[14_000, 32_000]);
+        // The stick: half the body's level, still ringing when the shell
+        // comes in.
+        let stick = |i: usize| {
+            [12_000usize, 30_000]
+                .iter()
+                .filter(|&&at| (at..at + 2_000).contains(&i))
+                .map(|&at| ((i - at) as f32 * 0.35).sin() * 0.5)
+                .sum::<f32>()
+        };
+        let drum: Vec<f32> = (0..48_000)
+            .map(|i| stick(i) + bodies.sample(0, i))
+            .collect();
+        let sample = SampleBuffer::new(vec![drum], 48_000);
+        let at = [12_000, 30_000];
+        let report = |sensitivity: f32| {
+            format!(
+                "sensitivity {sensitivity}: {}",
+                report(&detect_onsets(&sample, (0, 48_000), sensitivity), &at)
+            )
+        };
+        expect![[r#"
+            sensitivity 0.1: found 0 onsets
+            sensitivity 0.5: found 2 onsets
+               11904  (nearest hit    96 frames away)
+               29952  (nearest hit    48 frames away)
+        "#]]
+        .assert_eq(&format!("{}{}", report(0.1), report(0.5)));
+    }
+
+    /// A ghost note 50 ms before a hit, dying away before it: at a
+    /// sensitivity that keeps only the hit, the cut stays at the hit.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_ghost_note_is_not_the_next_hits_attack() {
+        let loud = hits(48_000, &[14_000, 32_000]);
+        let ghosts = hits(48_000, &[11_600, 29_600]);
+        let beat: Vec<f32> = (0..48_000)
+            .map(|i| loud.sample(0, i) + ghosts.sample(0, i) * 0.45)
+            .collect();
+        let sample = SampleBuffer::new(vec![beat], 48_000);
+        expect![[r#"
+            found 2 onsets
+               13824  (nearest hit   176 frames away)
+               31872  (nearest hit   128 frames away)
+        "#]]
+        .assert_eq(&report(
+            &detect_onsets(&sample, (0, 48_000), 0.3),
+            &[14_000, 32_000],
+        ));
     }
 
     /// Sensitivity trades hits found against noise found.
