@@ -158,6 +158,18 @@ impl SimpleVerb {
         self.pre_delay.pos = 0;
     }
 
+    /// Silence the reverb — its pre-delay, combs, allpasses and filters —
+    /// and keep its parameters. bloop's: the original has no call that
+    /// does this short of `setSampleRate`, which may allocate.
+    pub fn clear(&mut self) {
+        self.flush_pre_delay();
+        self.flush_buffers();
+        self.tmp1_lp = 0.0;
+        self.tmp2_lp = 0.0;
+        self.tmp1_hp = 0.0;
+        self.tmp2_hp = 0.0;
+    }
+
     fn flush_pre_delay(&mut self) {
         self.pre_delay.buffer.fill(0.0);
     }

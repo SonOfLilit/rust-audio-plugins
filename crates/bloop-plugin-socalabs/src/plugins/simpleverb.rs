@@ -77,6 +77,11 @@ impl Processor for SimpleVerbProcessor {
         reset_params(&mut self.params);
     }
 
+    fn clear(&mut self) {
+        self.reset();
+        self.reverb.clear();
+    }
+
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
         let samples = left.len().min(right.len());
         if any_smoothing(&self.params) {

@@ -686,3 +686,108 @@ fn a_knobs_travel_is_its_parameters_range() {
     "#]],
     );
 }
+
+/// `clear` is Choke All Notes' part in an effect: whatever it is still
+/// holding — echoes, a reverb's tank, an envelope — goes, and the effect
+/// is otherwise as it was. Each effect, wet all the way where it has a Mix
+/// or a Wet, is fed a tenth of a second of noise and cleared. Then: the
+/// loudest sample of a second of silence after it; whether a second of
+/// fresh noise then comes out as it does from the same effect that only
+/// ever heard silence (the largest difference); and what `clear`
+/// allocated.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn clear_leaves_nothing_ringing() {
+    let wet = |effect: &mut Effect| {
+        for i in 0..effect.param_count() {
+            let p = effect.param_info(i);
+            if matches!(p.name, "Mix" | "Wet") {
+                effect.set_param(i, p.max);
+            }
+        }
+    };
+    let noise = |seed: &mut u32| {
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 17;
+        *seed ^= *seed << 5;
+        #[expect(clippy::cast_precision_loss, reason = "noise, not a value")]
+        let x = *seed as f32 / u32::MAX as f32;
+        x - 0.5
+    };
+    // A second of blocks: silence, or noise from `seed`.
+    let run = |effect: &mut Effect, seed: Option<u32>| -> Vec<f32> {
+        let mut seed = seed;
+        let mut out = Vec::new();
+        for _ in 0..400 {
+            let mut left: Vec<f32> = (0..120)
+                .map(|_| seed.as_mut().map_or(0.0, &noise))
+                .collect();
+            let mut right = left.clone();
+            process(effect, &mut left, &mut right);
+            out.extend(left);
+            out.extend(right);
+        }
+        out
+    };
+    let mut out = String::new();
+    for kind in Kind::ALL {
+        let mut effect = Effect::new(kind, 48000.0);
+        wet(&mut effect);
+        let mut seed = 0x2545_f491_u32;
+        for _ in 0..40 {
+            let mut left: Vec<f32> = (0..120).map(|_| noise(&mut seed)).collect();
+            let mut right = left.clone();
+            process(&mut effect, &mut left, &mut right);
+        }
+        let allocated = allocations_during(|| effect.clear());
+        let loudest = run(&mut effect, None)
+            .iter()
+            .fold(0.0f32, |most, x| most.max(x.abs()));
+        effect.clear();
+        // The same effect that never heard the noise and was never
+        // cleared: the same knobs, and the same tenth of a second, of
+        // silence. A clear that stopped an effect working shows here.
+        let mut fresh = Effect::new(kind, 48000.0);
+        wet(&mut fresh);
+        for _ in 0..40 {
+            let (mut left, mut right) = (vec![0.0f32; 120], vec![0.0f32; 120]);
+            process(&mut fresh, &mut left, &mut right);
+        }
+        // As long as the cleared one has run: the silence it was asked
+        // for, and its own tenth of a second.
+        let _ = run(&mut fresh, None);
+        let heard = run(&mut effect, Some(7));
+        let expected = run(&mut fresh, Some(7));
+        let apart = heard
+            .iter()
+            .zip(&expected)
+            .fold(0.0f32, |most, (a, b)| most.max((a - b).abs()));
+        let _ = writeln!(
+            out,
+            "{:<16} silence after clear: {loudest:.6}, then noise off by {apart:.6}, {allocated} allocations",
+            kind.name()
+        );
+    }
+    check(
+        &out,
+        &expect![[r#"
+        BitCrusher       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Compressor       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Crossfeed        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Delay            silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Distortion       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Exciter          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Expander         silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Gate             silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        GraphicEQ        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Limiter          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Maximizer        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        PlateReverb      silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        SimpleVerb       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        SoftClipper      silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        StereoEnhancer   silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        StereoProcessor  silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        TransientShaper  silence after clear: 0.000000, then noise off by 0.000003, 0 allocations
+    "#]],
+    );
+}

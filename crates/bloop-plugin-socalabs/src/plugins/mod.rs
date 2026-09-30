@@ -27,6 +27,13 @@ pub trait Processor: Send {
     /// block.
     fn prepare(&mut self, sample_rate: f64);
     fn reset(&mut self);
+    /// Silence whatever the effect still holds and keep its knobs: bloop's
+    /// Choke All Notes. The original's `reset` does that for most effects,
+    /// so it is the default; one whose `reset` leaves its state alone says
+    /// what clearing it takes.
+    fn clear(&mut self) {
+        self.reset();
+    }
     /// `processBlock`, on a stereo pair in place.
     fn process(&mut self, left: &mut [f32], right: &mut [f32], host: Host);
 }

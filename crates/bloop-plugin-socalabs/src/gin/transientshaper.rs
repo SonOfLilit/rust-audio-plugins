@@ -107,6 +107,15 @@ impl TransientShaper {
         self.output_gain = decibels_to_gain(db);
     }
 
+    /// Silence the shaper and leave it as it would be after silence:
+    /// bloop's Choke All Notes. The same as `reset` but for the gain, which
+    /// silence brings to unity and `reset` leaves at nothing, so the next
+    /// sound would swell in from zero.
+    pub fn clear(&mut self) {
+        self.reset();
+        self.gain.2 = 1.0;
+    }
+
     pub fn reset(&mut self) {
         self.env.2 = 0.0;
         self.env_att.2 = 0.0;

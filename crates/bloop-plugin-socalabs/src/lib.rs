@@ -237,6 +237,10 @@ impl Engine {
     fn prepare(&mut self, sample_rate: f32) {
         dispatch!(self, p => p.prepare(f64::from(sample_rate)));
     }
+
+    fn clear(&mut self) {
+        dispatch!(self, p => p.clear());
+    }
 }
 
 /// One SocaLabs effect, as a bloop Plug-in.
@@ -309,6 +313,14 @@ impl Effect {
     #[must_use]
     pub fn kind(&self) -> Kind {
         self.kind
+    }
+
+    /// Silence what the effect is still holding — a Delay's echoes, a
+    /// reverb's tank, an envelope follower — and keep its knobs where they
+    /// are: `reset` without `prepareToPlay`. Allocates nothing, at any
+    /// rate, so the audio thread can call it (Choke All Notes).
+    pub fn clear(&mut self) {
+        self.engine.clear();
     }
 
     /// The rate the effect is prepared for: the last of [`Self::new`] and

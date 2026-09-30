@@ -69,6 +69,11 @@ impl OnePole {
         self.z
     }
 
+    /// The filter's memory only, its coefficients kept (bloop's `clear`).
+    fn clear(&mut self) {
+        self.z = 0.0;
+    }
+
     /// The original's reset clears the coefficients too: nothing passes
     /// until the cutoff is set again.
     fn reset(&mut self) {
@@ -324,6 +329,18 @@ impl Tank {
         self.damping.reset();
         self.lfo.reset();
     }
+
+    /// The tank's audio, and nothing else: the lines, the damping
+    /// filter's memory and what it last fed across to the other tank.
+    /// The LFO runs on, as it would have through silence.
+    fn clear(&mut self) {
+        self.apf1.line.reset();
+        self.apf2.line.reset();
+        self.del1.reset();
+        self.del2.reset();
+        self.damping.clear();
+        self.out = 0.0;
+    }
 }
 
 /// `(I) std::ceil (x)`.
@@ -519,5 +536,19 @@ impl PlateReverb {
         }
         self.left.reset();
         self.right.reset();
+    }
+
+    /// Silence the reverb and leave it as it would be after silence:
+    /// bloop's Choke All Notes. The original's `reset` also zeroes the
+    /// filters' coefficients, which only a changed knob sets again, so a
+    /// reverb reset mid-stream stays wrong until someone turns one.
+    pub fn clear(&mut self) {
+        self.predelay_line.reset();
+        self.lowpass.clear();
+        for d in &mut self.diffusers {
+            d.line.reset();
+        }
+        self.left.clear();
+        self.right.clear();
     }
 }

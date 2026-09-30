@@ -101,6 +101,11 @@ impl Processor for PlateReverbProcessor {
         self.reverb.reset();
     }
 
+    fn clear(&mut self) {
+        reset_params(&mut self.params);
+        self.reverb.clear();
+    }
+
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
         let samples = left.len().min(right.len());
         let [mix, predelay, lowpass, decay, size, damping] = read(&mut self.params, samples);
@@ -222,6 +227,11 @@ impl Processor for TransientShaperProcessor {
     fn reset(&mut self) {
         reset_params(&mut self.params);
         self.shaper.reset();
+    }
+
+    fn clear(&mut self) {
+        reset_params(&mut self.params);
+        self.shaper.clear();
     }
 
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
