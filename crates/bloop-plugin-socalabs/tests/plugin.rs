@@ -675,16 +675,26 @@ fn a_knobs_travel_is_its_parameters_range() {
             .collect();
         let _ = writeln!(out, "{} {name}: {}", kind.name(), values.join("  "));
     }
-    check(
-        &out,
-        &expect![[r#"
+    // A skewed knob's travel is a power, and `gold` swaps the port's math
+    // from `libm` to glibc's, as the C++ it is compared with links: the two
+    // disagree in the last places of a float, so each has its snapshot.
+    #[cfg(not(feature = "gold"))]
+    let expected = expect![[r#"
         Delay Time: 0→0→0.000  0.25→1.181176→0.250  0.49→11.130163→0.490  0.51→12.717894→0.510  0.75→45.99587→0.750  1→120→1.000
         Delay Beat: 0→0→0.000  0.25→8→0.250  0.49→16→0.500  0.51→16→0.500  0.75→24→0.750  1→32→1.000
         Delay Sync: 0→0→0.000  0.25→0→0.000  0.49→0→0.000  0.51→1→1.000  0.75→1→1.000  1→1→1.000
         Compressor Threshold: 0→-60→0.000  0.25→-45→0.250  0.49→-30.599998→0.490  0.51→-29.400002→0.510  0.75→-15→0.750  1→0→1.000
         GraphicEQ LP Freq: 0→83.2131→0.000  0.25→96.17888→0.250  0.49→108.62604→0.490  0.51→109.6633→0.510  0.75→122.11045→0.750  1→135.07623→1.000
-    "#]],
-    );
+    "#]];
+    #[cfg(feature = "gold")]
+    let expected = expect![[r#"
+        Delay Time: 0→0→0.000  0.25→1.181176→0.250  0.49→11.130163→0.490  0.51→12.717894→0.510  0.75→45.995865→0.750  1→120→1.000
+        Delay Beat: 0→0→0.000  0.25→8→0.250  0.49→16→0.500  0.51→16→0.500  0.75→24→0.750  1→32→1.000
+        Delay Sync: 0→0→0.000  0.25→0→0.000  0.49→0→0.000  0.51→1→1.000  0.75→1→1.000  1→1→1.000
+        Compressor Threshold: 0→-60→0.000  0.25→-45→0.250  0.49→-30.599998→0.490  0.51→-29.400002→0.510  0.75→-15→0.750  1→0→1.000
+        GraphicEQ LP Freq: 0→83.2131→0.000  0.25→96.17888→0.250  0.49→108.62604→0.490  0.51→109.6633→0.510  0.75→122.11045→0.750  1→135.07623→1.000
+    "#]];
+    check(&out, &expected);
 }
 
 /// `clear` is Choke All Notes' part in an effect: whatever it is still
