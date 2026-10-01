@@ -51,6 +51,7 @@ namespace gin
 #include <gin_dsp/dsp/gin_bitcrusher.h>
 #include <gin_dsp/dsp/gin_exciter.h>
 #include <gin_dsp/dsp/gin_maximizer.h>
+#include <gin_dsp/dsp/gin_modulation.h>
 #include <gin_dsp/dsp/gin_softclipper.h>
 #include <gin_dsp/dsp/gin_transientshaper.h>
 

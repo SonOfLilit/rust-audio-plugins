@@ -112,6 +112,12 @@ fn every_effect_describes_itself() {
                0. Bits               1 to 16            default 16        skew 1
                1. Rate             500 to 48000     Hz  default 48000     skew 0.3
                2. Dirty              0 to 1             default 0         skew 1
+            Chorus by SocaLabs, Effect, 2 in 2 out
+               0. Delay            0.1 to 30        ms  default 1         skew 1
+               1. Depth            0.1 to 20        ms  default 1         skew 1
+               2. Speed            0.1 to 10        Hz  default 3         skew 1
+               3. Width              0 to 100       %   default 50        skew 1
+               4. Mix                0 to 100       %   default 50        skew 1
             Compressor by SocaLabs, Effect, 2 in 2 out
                0. Attack             1 to 200       ms  default 1         skew 0.4
                1. Release            1 to 2000      ms  default 5         skew 0.4
@@ -306,6 +312,15 @@ fn knobs_snap_and_hold_to_their_range() {
         Enable 0.51 → 1
         Enable 0 → 0"#]],
     );
+    check(
+        &after_setting(Kind::Chorus, 0, &[0.0, 0.1, 15.0, 30.0, 45.0]),
+        &expect![[r#"
+            Delay 0 → 0.1
+            Delay 0.1 → 0.1
+            Delay 15 → 15
+            Delay 30 → 30
+            Delay 45 → 30"#]],
+    );
 }
 
 #[test]
@@ -330,6 +345,7 @@ fn a_knob_past_the_last_is_nothing() {
         &out,
         &expect![[r#"
             BitCrusher: 3 knobs; knob 3 is "" 0..0 reading 0
+            Chorus: 5 knobs; knob 5 is "" 0..0 reading 0
             Compressor: 7 knobs; knob 7 is "" 0..0 reading 0
             Crossfeed: 1 knobs; knob 1 is "" 0..0 reading 0
             Delay: 6 knobs; knob 6 is "" 0..0 reading 0
@@ -548,6 +564,7 @@ fn every_knob_changes_what_comes_out() {
         &out,
         &expect![[r#"
         BitCrusher: Bits, Rate, Dirty
+        Chorus: Delay, Depth, Speed, Width, Mix
         Compressor: Attack, Release, Ratio, Threshold, Knee, Input, Output
         Crossfeed: Enable
         Delay: Sync (with Beat 1, Mix 100), Time (with Mix 100), Beat (with Sync 1, Mix 100), Feedback (with Time 0.05, Mix 100), Crossfeed (with Time 0.05, Mix 100), Mix
@@ -663,6 +680,7 @@ fn a_knobs_travel_is_its_parameters_range() {
         (Kind::Delay, 0),
         (Kind::Compressor, 3),
         (Kind::GraphicEq, 11),
+        (Kind::Chorus, 2),
     ] {
         let effect = Effect::new(kind, 48000.0);
         let name = effect.param_info(index).name;
@@ -685,6 +703,7 @@ fn a_knobs_travel_is_its_parameters_range() {
         Delay Sync: 0→0→0.000  0.25→0→0.000  0.49→0→0.000  0.51→1→1.000  0.75→1→1.000  1→1→1.000
         Compressor Threshold: 0→-60→0.000  0.25→-45→0.250  0.49→-30.599998→0.490  0.51→-29.400002→0.510  0.75→-15→0.750  1→0→1.000
         GraphicEQ LP Freq: 0→83.2131→0.000  0.25→96.17888→0.250  0.49→108.62604→0.490  0.51→109.6633→0.510  0.75→122.11045→0.750  1→135.07623→1.000
+        Chorus Speed: 0→0.1→0.000  0.25→2.5749998→0.250  0.49→4.9509997→0.490  0.51→5.1489997→0.510  0.75→7.5249996→0.750  1→10→1.000
     "#]];
     #[cfg(feature = "gold")]
     let expected = expect![[r#"
@@ -693,6 +712,7 @@ fn a_knobs_travel_is_its_parameters_range() {
         Delay Sync: 0→0→0.000  0.25→0→0.000  0.49→0→0.000  0.51→1→1.000  0.75→1→1.000  1→1→1.000
         Compressor Threshold: 0→-60→0.000  0.25→-45→0.250  0.49→-30.599998→0.490  0.51→-29.400002→0.510  0.75→-15→0.750  1→0→1.000
         GraphicEQ LP Freq: 0→83.2131→0.000  0.25→96.17888→0.250  0.49→108.62604→0.490  0.51→109.6633→0.510  0.75→122.11045→0.750  1→135.07623→1.000
+        Chorus Speed: 0→0.1→0.000  0.25→2.5749998→0.250  0.49→4.9509997→0.490  0.51→5.1489997→0.510  0.75→7.5249996→0.750  1→10→1.000
     "#]];
     check(&out, &expected);
 }
@@ -782,6 +802,7 @@ fn clear_leaves_nothing_ringing() {
         &out,
         &expect![[r#"
         BitCrusher       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        Chorus           silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
         Compressor       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
         Crossfeed        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
         Delay            silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
@@ -800,4 +821,19 @@ fn clear_leaves_nothing_ringing() {
         TransientShaper  silence after clear: 0.000000, then noise off by 0.000003, 0 allocations
     "#]],
     );
+}
+
+/// The provenance comment in Cargo.toml names the revisions the License
+/// pages cite, so the two cannot drift apart.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn cargo_toml_cites_the_ported_revisions() {
+    let manifest = include_str!("../Cargo.toml");
+    for rev in [
+        bloop_plugin_socalabs::PORTED_FROM_SLPLUGINS_REV,
+        bloop_plugin_socalabs::PORTED_FROM_GIN_REV,
+        bloop_plugin_socalabs::PORTED_FROM_WAVETABLE_REV,
+    ] {
+        assert!(manifest.contains(rev), "Cargo.toml must cite {rev}");
+    }
 }

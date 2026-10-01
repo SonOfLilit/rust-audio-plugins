@@ -2464,3 +2464,177 @@ fn soft_clipper() {
         "#]],
     );
 }
+
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn chorus() {
+    check(
+        &Program::new(Kind::Chorus).play(
+            "defaults: 1 ms back, swept 1 ms deep three times a second, half wet",
+            &tone(440.0, -12.0, 1.0),
+            512,
+        ),
+        &expect![[r#"
+            defaults: 1 ms back, swept 1 ms deep three times a second, half wet — 1.00s at 44100Hz in blocks of 512
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out   -9.6 pk  -16.6 rms  |%%%#*+*+*#%%%%%%##+**+##%%%%%%#+**+*#%%%|
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out   -9.6 pk  -16.6 rms  |#+##%%%%%%#***+*#%%%%%%#*+*+*#%%%%%%##+*|
+              hash b5435c6cdca2693b
+        "#]],
+    );
+    check(
+        &Program::new(Kind::Chorus)
+            .set("Delay", 20.0)
+            .set("Depth", 10.0)
+            .set("Speed", 0.5)
+            .reset(44100.0)
+            .play(
+                "a slow chorus at the widest, Width 50%: the two ears sweep opposite ways",
+                &sweep(100.0, 8000.0, -12.0, 2.0),
+                256,
+            )
+            .set("Width", 100.0)
+            .play(
+                "Width 100%, once it has settled: the sweeps a whole cycle apart, in step again",
+                &sweep(100.0, 8000.0, -12.0, 2.0),
+                256,
+            )
+            .play(
+                "one ear in: the other lets out only the last passage's tail",
+                &left_only(tone(220.0, -6.0, 0.5)),
+                100,
+            ),
+        &expect![[r#"
+            a slow chorus at the widest, Width 50%: the two ears sweep opposite ways — 2.00s at 44100Hz in blocks of 256
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out   -8.9 pk  -15.1 rms  |%%%%%%#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out   -8.9 pk  -15.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
+              hash 69a51d08689d269b
+            Width 100%, once it has settled: the sweeps a whole cycle apart, in step again — 2.00s at 44100Hz in blocks of 256
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out   -8.9 pk  -14.9 rms  |%%%%#%%#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out   -8.9 pk  -15.0 rms  |%%%%#%%#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
+              hash 81529d035afc6cdb
+            one ear in: the other lets out only the last passage's tail — 0.50s at 44100Hz in blocks of 100
+              L in    -6.0 pk   -9.0 rms  |%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%|
+              L out   -3.0 pk  -10.4 rms  |@@#%%%@@@@@@@@@@@@@@%%%%###*+=+**#######|
+              R in    zero pk   zero rms  |                                        |
+              R out  -14.5 pk  -30.9 rms  |##                                      |
+              hash 43500ed277d2f34e
+        "#]],
+    );
+    check(
+        &Program::new(Kind::Chorus)
+            .set("Delay", 30.0)
+            .set("Depth", 20.0)
+            .set("Speed", 10.0)
+            .set("Width", 100.0)
+            .set("Mix", 100.0)
+            .reset(44100.0)
+            .play(
+                "every knob at its top: all wet, as far as 50 ms back",
+                &drums(),
+                512,
+            )
+            .play("and what it still holds after", &silence(0.1), 512)
+            .reset(44100.0)
+            .play(
+                "prepared again at the same rate: nothing left",
+                &silence(0.1),
+                512,
+            ),
+        &expect![[r#"
+            every knob at its top: all wet, as far as 50 ms back — 2.00s at 44100Hz in blocks of 512
+              L in    -6.1 pk  -23.8 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
+              L out   -3.2 pk  -22.2 rms  |@@#*==-:  @@#*==-:  @@#*==-:. @@#*==-:. |
+              R in    -6.1 pk  -23.9 rms  |%#*=--:.  %#*=--:.  %#*=--:.  %#*=--:.  |
+              R out   -3.3 pk  -22.3 rms  |@@#*===:. @@#*===:  @@#*==-:. @%#*==-:. |
+              hash d425d2557fefd912
+            and what it still holds after — 0.10s at 44100Hz in blocks of 512
+              L in    zero pk   zero rms  |                                        |
+              L out  -70.8 pk  -85.8 rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
+              R out  -71.3 pk  -85.9 rms  |                                        |
+              hash 31b27063013ee182
+            prepared again at the same rate: nothing left — 0.10s at 44100Hz in blocks of 512
+              L in    zero pk   zero rms  |                                        |
+              L out   zero pk   zero rms  |                                        |
+              R in    zero pk   zero rms  |                                        |
+              R out   zero pk   zero rms  |                                        |
+              hash 55a0fca3f8fc0765
+        "#]],
+    );
+    check(
+        &Program::new(Kind::Chorus)
+            .set("Delay", 0.1)
+            .set("Depth", 0.1)
+            .set("Speed", 0.1)
+            .set("Width", 0.0)
+            .set("Mix", 100.0)
+            .reset(44100.0)
+            .play(
+                "every knob at its bottom but Mix: all wet, 0.1 to 0.2 ms back",
+                &tone(440.0, -12.0, 0.5),
+                512,
+            ),
+        &expect![[r#"
+            every knob at its bottom but Mix: all wet, 0.1 to 0.2 ms back — 0.50s at 44100Hz in blocks of 512
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out  -12.0 pk  -15.0 rms  |##%##%#%#%##%#%############%#%#%#######%|
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out  -12.0 pk  -15.0 rms  |##%##%#%#%##%#%############%#%#%#######%|
+              hash ba34aa97a7e0de35
+        "#]],
+    );
+    check(
+        &Program::new(Kind::Chorus)
+            .at(48000.0)
+            .set("Depth", 20.0)
+            .set("Mix", 100.0)
+            .play(
+                "at 48 kHz, a sample at a time",
+                &tone(330.0, -12.0, 0.25),
+                1,
+            )
+            .reset(96000.0)
+            .play(
+                "prepared again at 96 kHz with the depth moved",
+                &tone(330.0, -12.0, 0.25),
+                333,
+            ),
+        &expect![[r#"
+            at 48 kHz, a sample at a time — 0.25s at 48000Hz in blocks of 1
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out   -9.0 pk  -15.0 rms  |%%%%%#%%###################%########%###|
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out  -11.5 pk  -15.4 rms  |######%%################################|
+              hash ef4c2376eaa039e0
+            prepared again at 96 kHz with the depth moved — 0.25s at 96000Hz in blocks of 333
+              L in   -12.0 pk  -15.0 rms  |########################################|
+              L out  -12.0 pk  -15.4 rms  |   #############%#######################|
+              R in   -12.0 pk  -15.0 rms  |########################################|
+              R out  -12.0 pk  -15.0 rms  |########################################|
+              hash 3baa14d5f2505f7f
+        "#]],
+    );
+}
+
+/// Mix at 0 is the input, bit for bit: the dry gain is exactly 1 and the
+/// wet exactly 0, so nothing of the line gets in.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_dry_chorus_is_the_input() {
+    let program = Program::new(Kind::Chorus)
+        .set("Mix", 0.0)
+        .set("Depth", 20.0)
+        .reset(44100.0)
+        .play("dry", &drums(), 512);
+    let played = run_rust(&program);
+    let same = played
+        .iter()
+        .all(|p| p.input.left == p.output.left && p.input.right == p.output.right);
+    assert!(same, "a chorus at Mix 0 changed its input");
+}

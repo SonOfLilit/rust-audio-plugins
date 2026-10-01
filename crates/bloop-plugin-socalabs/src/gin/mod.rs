@@ -12,6 +12,7 @@ pub mod exciter;
 pub mod filter;
 pub mod graphiceq;
 pub mod maximizer;
+pub mod modulation;
 pub mod noteduration;
 pub mod oversampler;
 pub mod param;

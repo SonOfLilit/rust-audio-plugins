@@ -9,7 +9,10 @@ license = "BSD-3-Clause AND MIT AND ISC AND WTFPL"
 # Ported from slPlugins rev 034facd9cf74fa4a7a6312a8ebf4cbde1d357dac and
 # Gin rev c983c0db166c6482b94d6227dacf9a35b8b9d59c — the revisions pinned by
 # the vendor/slplugins and vendor/gin submodules, which the gold tests
-# compile. LICENSE carries every licence the port inherits.
+# compile. The Chorus's knobs are SocaLabs Wavetable's, at Wavetable rev
+# 5f932ff87c453d32cebee233af1fde946f53ac89 (BSD-3-Clause), whose Gin
+# submodule is that same Gin rev. LICENSE carries every licence the port
+# inherits.
 #
 # No JUCE code is ported. What the originals take from JUCE (decibels,
 # parameter ranges, float comparison) is rewritten from its documented

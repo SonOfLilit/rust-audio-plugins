@@ -3,7 +3,9 @@
 //! A Rust port of the effect processors in Roland Rabien's slPlugins, of
 //! the Gin DSP they are built from, and of the Gin effects slPlugins does
 //! not ship as plug-ins (PlateReverb, Distortion, TransientShaper,
-//! Maximizer, Exciter, SoftClipper), behind knobs of bloop's choosing. [`Effect`] is the Plug-in; `plugins`
+//! Maximizer, Exciter, SoftClipper), behind knobs of bloop's choosing, and
+//! of the chorus SocaLabs Wavetable builds from Gin, behind Wavetable's
+//! knobs. [`Effect`] is the Plug-in; `plugins`
 //! holds the ported processors and `gin` the ported DSP, each module named
 //! for the file it came from.
 //!
@@ -22,8 +24,8 @@ use plugins::crossfeed::CrossfeedProcessor;
 use plugins::delay::DelayProcessor;
 use plugins::dynamics::{DynamicsProcessor, Flavour};
 use plugins::extras::{
-    DistortionProcessor, ExciterProcessor, MaximizerProcessor, PlateReverbProcessor,
-    SoftClipperProcessor, TransientShaperProcessor,
+    ChorusProcessor, DistortionProcessor, ExciterProcessor, MaximizerProcessor,
+    PlateReverbProcessor, SoftClipperProcessor, TransientShaperProcessor,
 };
 use plugins::graphiceq::GraphicEqProcessor;
 use plugins::simpleverb::SimpleVerbProcessor;
@@ -32,6 +34,16 @@ use plugins::{Host, Processor};
 
 /// The vendor every effect here reports.
 pub const VENDOR: &str = "SocaLabs";
+
+/// The slPlugins revision the effect processors are ported from: the one
+/// `vendor/slplugins` pins, and the one the License pages cite.
+pub const PORTED_FROM_SLPLUGINS_REV: &str = "034facd9cf74fa4a7a6312a8ebf4cbde1d357dac";
+/// The Gin revision the DSP is ported from: the one `vendor/gin` pins.
+pub const PORTED_FROM_GIN_REV: &str = "c983c0db166c6482b94d6227dacf9a35b8b9d59c";
+/// The Wavetable revision whose chorus knobs the Chorus has. Its Gin
+/// submodule is pinned at [`PORTED_FROM_GIN_REV`], so the `gin::Modulation`
+/// it runs is the one ported here.
+pub const PORTED_FROM_WAVETABLE_REV: &str = "5f932ff87c453d32cebee233af1fde946f53ac89";
 
 /// Which effect.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -53,12 +65,14 @@ pub enum Kind {
     Maximizer,
     Exciter,
     SoftClipper,
+    Chorus,
 }
 
 impl Kind {
     /// Every effect, in the order the Browser lists them.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::BitCrusher,
+        Self::Chorus,
         Self::Compressor,
         Self::Crossfeed,
         Self::Delay,
@@ -98,6 +112,7 @@ impl Kind {
             Self::Maximizer => "Maximizer",
             Self::Exciter => "Exciter",
             Self::SoftClipper => "SoftClipper",
+            Self::Chorus => "Chorus",
         }
     }
 
@@ -116,6 +131,7 @@ impl Kind {
             Self::GraphicEq => "EQ",
             Self::Distortion | Self::BitCrusher | Self::SoftClipper | Self::Exciter => "Distortion",
             Self::StereoEnhancer | Self::StereoProcessor | Self::Crossfeed => "Stereo",
+            Self::Chorus => "Modulation",
         }
     }
 
@@ -202,6 +218,7 @@ enum Engine {
     Maximizer(Box<MaximizerProcessor>),
     Exciter(Box<ExciterProcessor>),
     SoftClipper(Box<SoftClipperProcessor>),
+    Chorus(Box<ChorusProcessor>),
 }
 
 macro_rules! dispatch {
@@ -221,6 +238,7 @@ macro_rules! dispatch {
             Engine::Maximizer($p) => $body,
             Engine::Exciter($p) => $body,
             Engine::SoftClipper($p) => $body,
+            Engine::Chorus($p) => $body,
         }
     };
 }
@@ -301,6 +319,7 @@ impl Effect {
             Kind::Maximizer => Engine::Maximizer(Box::default()),
             Kind::Exciter => Engine::Exciter(Box::default()),
             Kind::SoftClipper => Engine::SoftClipper(Box::default()),
+            Kind::Chorus => Engine::Chorus(Box::default()),
         };
         engine.prepare(sample_rate);
         Self {
