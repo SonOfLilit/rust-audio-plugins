@@ -33,6 +33,12 @@ use plugins::{Host, Processor};
 /// The vendor every effect here reports.
 pub const VENDOR: &str = "SocaLabs";
 
+/// The slPlugins revision the effect processors are ported from: the one
+/// `vendor/slplugins` pins, and the one the License pages cite.
+pub const PORTED_FROM_SLPLUGINS_REV: &str = "034facd9cf74fa4a7a6312a8ebf4cbde1d357dac";
+/// The Gin revision the DSP is ported from: the one `vendor/gin` pins.
+pub const PORTED_FROM_GIN_REV: &str = "c983c0db166c6482b94d6227dacf9a35b8b9d59c";
+
 /// Which effect.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
