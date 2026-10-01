@@ -7,6 +7,7 @@ use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::delay::StereoDelay;
 use crate::gin::noteduration::DURATIONS;
 use crate::gin::param::{any_smoothing, Conversion, Param, ParamSpec, Smoothing};
+use crate::gin::text::Text;
 use crate::juce::NormalisableRange as Range;
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
@@ -22,7 +23,8 @@ pub const DELAY: [ParamSpec; 6] = [
         0.0,
         Smoothing::None,
         Conversion::Identity,
-    ),
+    )
+    .with_text(Text::OnOff),
     ParamSpec::new(
         "Time",
         "s",
@@ -38,7 +40,8 @@ pub const DELAY: [ParamSpec; 6] = [
         13.0,
         Smoothing::None,
         Conversion::Identity,
-    ),
+    )
+    .with_text(Text::Duration),
     ParamSpec::new(
         "Feedback",
         "dB",

@@ -6,7 +6,9 @@
 //! ranges are the ones each class documents, short of the ends that are
 //! only good for hurting someone (each wrapper says which); percentages
 //! and milliseconds are converted where the knobs are read, once a block,
-//! on both sides.
+//! on both sides. A frequency knob prints the way slPlugins' own do, in Hz
+//! below a thousand and kHz above (`Text::Frequency`); the text reaches no
+//! audio, so the C++ twins do not carry it.
 
 use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::distortion::AirWindowsDistortion;
@@ -15,6 +17,7 @@ use crate::gin::maximizer::Maximizer;
 use crate::gin::param::{Conversion, Param, ParamSpec, Smoothing};
 use crate::gin::platereverb::PlateReverb;
 use crate::gin::softclipper::SoftClipper;
+use crate::gin::text::Text;
 use crate::gin::transientshaper::TransientShaper;
 use crate::juce::{decibels_to_gain, jlimit, NormalisableRange as Range};
 
@@ -55,7 +58,8 @@ pub const PLATE_REVERB: [ParamSpec; 6] = [
         "Hz",
         Range::new(16.0, 20000.0, 0.0, 0.3),
         10000.0,
-    ),
+    )
+    .with_text(Text::Frequency),
     knob("Decay", "%", Range::new(0.0, 95.0, 0.0, 1.0), 50.0),
     knob("Size", "%", Range::new(10.0, 200.0, 0.0, 1.0), 100.0),
     knob(
@@ -63,7 +67,8 @@ pub const PLATE_REVERB: [ParamSpec; 6] = [
         "Hz",
         Range::new(16.0, 20000.0, 0.0, 0.3),
         10000.0,
-    ),
+    )
+    .with_text(Text::Frequency),
 ];
 
 #[derive(Clone, Debug)]
@@ -182,13 +187,14 @@ pub const TRANSIENT_SHAPER: [ParamSpec; 8] = [
     knob("Attack", "", Range::new(-4.0, 4.0, 0.0, 1.0), 0.0),
     knob("Sustain", "", Range::new(-8.0, 8.0, 0.0, 1.0), 0.0),
     knob("Smoothing", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
-    stepped("Low Cut", "Hz", Range::new(0.0, 2000.0, 0.0, 0.5), 0.0),
+    stepped("Low Cut", "Hz", Range::new(0.0, 2000.0, 0.0, 0.5), 0.0).with_text(Text::Frequency),
     stepped(
         "High Cut",
         "Hz",
         Range::new(20.0, 20000.0, 0.0, 0.3),
         20000.0,
-    ),
+    )
+    .with_text(Text::Frequency),
     knob("Detector", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
     knob("Process", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
     knob("Output", "dB", Range::new(-24.0, 12.0, 0.0, 1.0), 0.0),
@@ -321,7 +327,8 @@ pub const EXCITER: [ParamSpec; 4] = [
         "Hz",
         Range::new(1000.0, 16000.0, 0.0, 0.5),
         7000.0,
-    ),
+    )
+    .with_text(Text::Frequency),
     knob("Drive", "", Range::new(1.0, 8.0, 0.0, 1.0), 1.0),
     knob("Harmonics", "%", Range::new(0.0, 100.0, 0.0, 0.5), 0.0),
     knob("Mix", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),

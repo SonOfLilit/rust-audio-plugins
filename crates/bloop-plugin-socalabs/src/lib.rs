@@ -339,6 +339,36 @@ impl Effect {
             .map_or("", |p| p.spec().unit)
     }
 
+    /// A parameter at `value`, as the original prints it over its knob:
+    /// its own text function where it has one ("On", "1/8d", "12.0 kHz"),
+    /// Gin's number format and its unit where it does not.
+    #[must_use]
+    pub fn param_text(&self, index: usize, value: f32) -> String {
+        self.engine
+            .params()
+            .get(index)
+            .map_or_else(String::new, |p| {
+                let spec = p.spec();
+                spec.text.show(value, spec.unit, spec.range.interval)
+            })
+    }
+
+    /// How many values a parameter that steps can take, ends included —
+    /// a switch is two, the Delay's Beat a note length each — and `None`
+    /// for one that turns continuously.
+    ///
+    /// Also `None` for steps through a skewed range: they are not evenly
+    /// spread along the knob, and a host stopping at even positions would
+    /// land between them. No effect has one.
+    #[must_use]
+    pub fn param_steps(&self, index: usize) -> Option<usize> {
+        let range = self.engine.params().get(index)?.spec().range;
+        #[expect(clippy::float_cmp, reason = "a skew of exactly one is no skew")]
+        let even = range.skew == 1.0;
+        (range.interval > 0.0 && even)
+            .then(|| ((range.end - range.start) / range.interval).round() as usize + 1)
+    }
+
     /// Where a knob turned to `fraction` of its travel (0 to 1) puts the
     /// parameter: its range's skew applied, and snapped to the steps a
     /// switch or a list takes, as the original's `setValue` does.

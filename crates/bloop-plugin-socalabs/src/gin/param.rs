@@ -7,6 +7,7 @@
 //! notification, text, automation — is left behind; what is kept is the
 //! value a processor sees, step by step, which is all that reaches audio.
 
+use crate::gin::text::Text;
 use crate::juce::{approximately_equal, jlimit, NormalisableRange};
 use crate::math::{std_max, std_min};
 
@@ -239,6 +240,8 @@ pub struct ParamSpec {
     pub default: f32,
     pub smoothing: Smoothing,
     pub conversion: Conversion,
+    /// How the value prints: `addExtParam`'s text function, or Gin's own.
+    pub text: Text,
 }
 
 impl ParamSpec {
@@ -258,7 +261,15 @@ impl ParamSpec {
             default,
             smoothing,
             conversion,
+            text: Text::Number,
         }
+    }
+
+    /// The same parameter, printed with one of the originals' text
+    /// functions rather than Gin's own.
+    #[must_use]
+    pub const fn with_text(self, text: Text) -> Self {
+        Self { text, ..self }
     }
 }
 

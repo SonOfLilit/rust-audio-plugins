@@ -9,6 +9,7 @@ use crate::gin::graphiceq::{GraphicEq, BANDS};
 use crate::gin::param::{
     any_smoothing, midi_note_from_hertz, Conversion, Param, ParamSpec, Smoothing,
 };
+use crate::gin::text::Text;
 use crate::juce::NormalisableRange as Range;
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
@@ -41,8 +42,9 @@ pub fn specs() -> [ParamSpec; BANDS + 7] {
             Conversion::Identity,
         )
     };
-    let switch =
-        |name| ParamSpec::new(name, "", SWITCH, 0.0, Smoothing::None, Conversion::Identity);
+    let switch = |name, text| {
+        ParamSpec::new(name, "", SWITCH, 0.0, Smoothing::None, Conversion::Identity).with_text(text)
+    };
     let freq = |name, low: f32, high: f32, default: f32| {
         let (low, high) = (midi_note_from_hertz(low), midi_note_from_hertz(high));
         ParamSpec::new(
@@ -53,6 +55,7 @@ pub fn specs() -> [ParamSpec; BANDS + 7] {
             SMOOTH,
             Conversion::MidiNoteToHertz,
         )
+        .with_text(Text::NoteFrequency)
     };
     let bands = BAND_NAMES.map(band);
     [
@@ -66,12 +69,12 @@ pub fn specs() -> [ParamSpec; BANDS + 7] {
         bands[7],
         bands[8],
         bands[9],
-        switch("LP"),
+        switch("LP", Text::OnOff),
         freq("LP Freq", 1000.0, 20000.0, 20000.0),
-        switch("LP Slope"),
-        switch("HP"),
+        switch("LP Slope", Text::Slope),
+        switch("HP", Text::OnOff),
         freq("HP Freq", 20.0, 2000.0, 20.0),
-        switch("HP Slope"),
+        switch("HP Slope", Text::Slope),
         ParamSpec::new(
             "Output",
             "dB",

@@ -9,6 +9,7 @@
 use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::param::{any_smoothing, Conversion, Param, ParamSpec, Smoothing};
 use crate::gin::stereo::{StereoEnhancer, StereoProcessor};
+use crate::gin::text::Text;
 use crate::juce::NormalisableRange as Range;
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
@@ -16,7 +17,7 @@ const UNIT: Range = Range::new(0.0, 1.0, 0.0, 1.0);
 const BIPOLAR: Range = Range::new(-1.0, 1.0, 0.0, 1.0);
 
 const fn fader(name: &'static str, range: Range, default: f32) -> ParamSpec {
-    ParamSpec::new(name, "%", range, default, SMOOTH, Conversion::Identity)
+    ParamSpec::new(name, "%", range, default, SMOOTH, Conversion::Identity).with_text(Text::Percent)
 }
 
 pub const STEREO_ENHANCER: [ParamSpec; 3] = [

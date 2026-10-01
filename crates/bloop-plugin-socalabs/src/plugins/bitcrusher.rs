@@ -7,6 +7,7 @@
 use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::bitcrusher::BitCrusher;
 use crate::gin::param::{Conversion, Param, ParamSpec, Smoothing};
+use crate::gin::text::Text;
 use crate::juce::NormalisableRange as Range;
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
@@ -28,7 +29,8 @@ pub const BITCRUSHER: [ParamSpec; 3] = [
         48000.0,
         SMOOTH,
         Conversion::Identity,
-    ),
+    )
+    .with_text(Text::Frequency),
     ParamSpec::new(
         "Dirty",
         "",
@@ -36,7 +38,8 @@ pub const BITCRUSHER: [ParamSpec; 3] = [
         0.0,
         Smoothing::None,
         Conversion::Identity,
-    ),
+    )
+    .with_text(Text::OnOff),
 ];
 
 #[derive(Clone, Debug)]

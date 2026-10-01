@@ -19,4 +19,5 @@ pub mod platereverb;
 pub mod simpleverb;
 pub mod softclipper;
 pub mod stereo;
+pub mod text;
 pub mod transientshaper;

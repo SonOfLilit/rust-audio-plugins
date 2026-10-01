@@ -5,12 +5,14 @@
 use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::param::{any_smoothing, Conversion, Param, ParamSpec, Smoothing};
 use crate::gin::simpleverb::SimpleVerb;
+use crate::gin::text::Text;
 use crate::juce::NormalisableRange as Range;
 
 const UNIT: Range = Range::new(0.0, 1.0, 0.0, 1.0);
 
 const fn fader(name: &'static str, default: f32, smoothing: Smoothing) -> ParamSpec {
     ParamSpec::new(name, "%", UNIT, default, smoothing, Conversion::Identity)
+        .with_text(Text::Percent)
 }
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);

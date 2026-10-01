@@ -9,6 +9,7 @@
 use super::{reset_params, Host, Processor};
 use crate::gin::crossfeed::Crossfeed;
 use crate::gin::param::{Conversion, Param, ParamSpec, Smoothing};
+use crate::gin::text::Text;
 use crate::juce::{LinearSmoothedValue, NormalisableRange as Range};
 
 pub const CROSSFEED: [ParamSpec; 1] = [ParamSpec::new(
@@ -18,7 +19,8 @@ pub const CROSSFEED: [ParamSpec; 1] = [ParamSpec::new(
     1.0,
     Smoothing::None,
     Conversion::Identity,
-)];
+)
+.with_text(Text::OnOff)];
 
 /// The rate with a kernel nearest `sample_rate`.
 fn nearest_kernel_rate(sample_rate: f64) -> i32 {
