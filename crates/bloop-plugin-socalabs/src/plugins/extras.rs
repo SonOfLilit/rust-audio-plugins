@@ -1,5 +1,5 @@
 //! The Gin effects slPlugins does not ship as plug-ins, each behind knobs
-//! of bloop's choosing.
+//! of bloop's choosing — or, for the Chorus, of SocaLabs Wavetable's.
 //!
 //! Every wrapper here has a C++ twin in `tests/cpp_harness/extras/`, knob
 //! for knob, which is what the gold tests run the port against. The
@@ -12,6 +12,7 @@ use super::{prepare_params, reset_params, Host, Processor};
 use crate::gin::distortion::AirWindowsDistortion;
 use crate::gin::exciter::Exciter;
 use crate::gin::maximizer::Maximizer;
+use crate::gin::modulation::Modulation;
 use crate::gin::param::{Conversion, Param, ParamSpec, Smoothing};
 use crate::gin::platereverb::PlateReverb;
 use crate::gin::softclipper::SoftClipper;
@@ -420,6 +421,86 @@ impl Processor for SoftClipperProcessor {
         self.clipper.set_knee(knee / 100.0);
         self.clipper.set_ceiling(ceiling);
         self.clipper
+            .process(&mut left[..samples], &mut right[..samples]);
+    }
+}
+
+/// Wavetable's chorus (`ChorusParams::setup`): its five knobs, ranges and
+/// defaults, with Width and Mix as percentages where Wavetable has 0 to 1,
+/// smoothed as the other extras' are. The twin is
+/// `tests/cpp_harness/extras/Chorus.cpp`.
+///
+/// Width is how far apart the two ears' sweeps are, as a share of a
+/// cycle: at 50% they go opposite ways, which is as wide as it gets, and
+/// at 100% they are a whole cycle apart — in step, as at 0%. That is the
+/// class's arithmetic, and Wavetable's knob.
+pub const CHORUS: [ParamSpec; 5] = [
+    knob("Delay", "ms", Range::new(0.1, 30.0, 0.0, 1.0), 1.0),
+    knob("Depth", "ms", Range::new(0.1, 20.0, 0.0, 1.0), 1.0),
+    knob("Speed", "Hz", Range::new(0.1, 10.0, 0.0, 1.0), 3.0),
+    knob("Width", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
+    knob("Mix", "%", Range::new(0.0, 100.0, 0.0, 1.0), 50.0),
+];
+
+/// The longest delay the line is built for, in seconds: Wavetable's
+/// `gin::Modulation chorus { 0.5f }`. The knobs reach 50 ms of it.
+const CHORUS_MAX_DELAY: f32 = 0.5;
+
+#[derive(Clone, Debug)]
+pub struct ChorusProcessor {
+    params: Vec<Param>,
+    chorus: Modulation,
+}
+
+impl Default for ChorusProcessor {
+    fn default() -> Self {
+        Self {
+            params: params(&CHORUS),
+            chorus: Modulation::new(CHORUS_MAX_DELAY),
+        }
+    }
+}
+
+impl Processor for ChorusProcessor {
+    fn params(&self) -> &[Param] {
+        &self.params
+    }
+
+    fn params_mut(&mut self) -> &mut [Param] {
+        &mut self.params
+    }
+
+    /// The line is sized from the class's defaults, not the knobs, so a
+    /// reset at the same rate does not build it again (`Modulation::prepare`).
+    fn prepare(&mut self, sample_rate: f64) {
+        prepare_params(&mut self.params, sample_rate);
+        self.chorus.prepare(sample_rate);
+        self.reset();
+    }
+
+    fn reset(&mut self) {
+        reset_params(&mut self.params);
+        self.chorus.reset();
+    }
+
+    /// The echoes go and the sweep runs on, so a cleared Chorus is one
+    /// that only ever heard silence.
+    fn clear(&mut self) {
+        reset_params(&mut self.params);
+        self.chorus.clear();
+    }
+
+    fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
+        let samples = left.len().min(right.len());
+        let [delay, depth, speed, width, mix] = read(&mut self.params, samples);
+        self.chorus.set_params(
+            delay / 1000.0,
+            speed,
+            depth / 1000.0,
+            width / 100.0,
+            mix / 100.0,
+        );
+        self.chorus
             .process(&mut left[..samples], &mut right[..samples]);
     }
 }

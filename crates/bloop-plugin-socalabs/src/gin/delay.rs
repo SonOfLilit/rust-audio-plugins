@@ -80,6 +80,13 @@ impl DelayLine {
 
     pub fn clear(&mut self) {
         self.write_pos = 0;
+        self.silence();
+    }
+
+    /// Zeros where the audio was, the write position where it is: the
+    /// line as silence would have left it. Not in the original, whose
+    /// `clear` also rewinds.
+    pub fn silence(&mut self) {
         for c in &mut self.channels {
             c.fill(0.0);
         }
