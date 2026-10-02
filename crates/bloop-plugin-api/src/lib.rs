@@ -57,8 +57,8 @@ pub trait Plugin: Send {
     }
 }
 
-/// How many voices a [`Watch`] can show: the FM synth's polyphony, which
-/// is the most any plug-in here has (its crate asserts the two agree).
+/// How many voices a [`Watch`] can show: room for the most any plug-in
+/// here has (a plug-in that fills one asserts its voices fit).
 pub const WATCH_VOICES: usize = 8;
 /// How many operators a voice has in a [`Watch`].
 pub const WATCH_OPS: usize = 6;
@@ -89,9 +89,9 @@ pub enum EnvStage {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct OpWatch {
     pub stage: EnvStage,
-    /// Where the envelope is, in the patch's own level units — 0 to 99 for
-    /// the FM synth, the scale its L1..L4 are written in — so a dot drawn
-    /// at it sits on the envelope the patch draws. Exactly the patch's
+    /// Where the envelope is, in the patch's own level units — the scale
+    /// its levels are written in — so a dot drawn at it sits on the
+    /// envelope the patch draws. Exactly the patch's
     /// level while the envelope holds one (`Sustain`, `End`, and a level
     /// the envelope is waiting at); between levels, the level the engine's
     /// own envelope is at, read back to that scale.
@@ -108,12 +108,13 @@ pub struct OpWatch {
     /// modulation), as a linear gain where 1.0 is an operator at full
     /// output level and full envelope level struck at a velocity its
     /// sensitivity leaves alone. A loud hit on a velocity-sensitive
-    /// operator goes past 1.0 (the FM synth's limit is about 1.83).
+    /// operator can go past 1.0.
     ///
     /// The gain at the end of the last chunk the engine rendered. Exactly
-    /// 0.0 when the engine is not rendering the operator — switched off, at
-    /// output level 0, or fallen below the level it skips — and for a voice
-    /// struck too late in the block to have rendered yet.
+    /// 0.0 when, at that chunk's end, the engine would not render the
+    /// operator — switched off, at output level 0, or below the level it
+    /// skips — and for a voice struck too late in the block to have
+    /// rendered yet.
     ///
     /// This is the gain the operator's sine is multiplied by. In an
     /// algorithm where it modulates another operator, that is its
@@ -128,7 +129,8 @@ pub struct VoiceWatch {
     /// field of an inactive voice is its default.
     pub active: bool,
     /// Which note-on of this plug-in instance started the voice: 1 for its
-    /// first since it was built, and on, wrapping at `u32::MAX`. Stable
+    /// first since it was built, and on, wrapping from `u32::MAX` through
+    /// 0 (a screen colouring by it modulo 3 sees one seam). Stable
     /// for the voice's life, so a screen can colour it by this and have
     /// the colour stay put while voices start and stop around it. Nothing
     /// more: another plug-in on the track keeps its own count.

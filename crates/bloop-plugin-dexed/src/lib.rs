@@ -572,6 +572,12 @@ impl Plugin for DexedPlugin {
     /// Each voice as of the last chunk rendered. A voice is active on the
     /// same terms `render_chunk` renders it; its `note_on` is the serial
     /// that voice stealing already orders voices by.
+    ///
+    /// Levels are the DX7's 0..99, the scale of the patch's L1..L4. An
+    /// amp of 1.0 is the gain of an operator at output level 99 and
+    /// envelope level 99 at a velocity its sensitivity leaves alone
+    /// (about 100); velocity 127 at sensitivity 7 adds 0.875 doublings, so
+    /// the most an amp reads is about 1.83.
     fn watch(&self, out: &mut Watch) {
         for (slot, seen) in out.voices.iter_mut().enumerate() {
             *seen = match self.voices.get(slot) {
@@ -1994,10 +2000,10 @@ mod watch_tests {
                 @ 250   669ms v0 #1 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
                 @ 374  1000ms v0 #1 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
                 @ 376  1005ms v0 #1 up   | 1:R4 61.5 0.0425 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 400  1069ms v0 #1 up   | 1:R4 56.0 0.0263 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 450  1202ms v0 #1 up   | 1:R4 44.5 0.0097 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 550  1469ms v0 #1 up   | 1:R4 21.6 0.0013 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 700  1869ms v0 #1 up   | 1:R4  3.5 0.0001 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 400  1069ms v0 #1 up   | 1:R4 55.9 0.0263 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 450  1202ms v0 #1 up   | 1:R4 44.3 0.0097 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 550  1469ms v0 #1 up   | 1:R4 20.9 0.0013 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 700  1869ms v0 #1 up   | 1:R4  2.3 0.0001 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
                 @ 800  2136ms (silent)
                 @ 900  2402ms (silent)"#]],
         );
@@ -2036,7 +2042,7 @@ mod watch_tests {
                 @  20    56ms v0 #1 down | 1:S  99.0 1.0000
                               v1 #2 down | 1:S  99.0 1.0000
                               v2 #3 down | 1:R3 99.0 1.0000
-                @  31    85ms v0 #1 up   | 1:R4 94.3 0.7273
+                @  31    85ms v0 #1 up   | 1:R4 95.3 0.7273
                               v1 #2 down | 1:S  99.0 1.0000
                               v2 #3 down | 1:S  99.0 1.0000
                 @ 199   533ms v1 #2 down | 1:S  99.0 1.0000
@@ -2122,7 +2128,7 @@ mod watch_tests {
                 @  20    56ms v0 #1 down | 1:S  90.0 0.5000
                               v1 #2 down | 1:S  90.0 0.0001
                 @  41   112ms v0 #1 up   | 1:R4 88.6 0.4437
-                              v1 #2 up   | 1:R4 88.6 0.0001
+                              v1 #2 up   | 1:R4 83.5 0.0001
                 @ 300   802ms v0 #1 up   | 1:E  50.0 0.0156
                               v1 #2 up   | 1:E  50.0 0     
                 @1500  4002ms v0 #1 up   | 1:E  50.0 0.0156
@@ -2154,7 +2160,7 @@ mod watch_tests {
                 @  30    82ms v0 #1 down | 1:S  99.0 1.0000
                 @  60   162ms v0 #1 down | 1:S  99.0 1.0000
                               v1 #2 down | 1:S  50.0 0.0156
-                @  79   213ms v0 #1 up   | 1:R4 97.7 0.9785
+                @  79   213ms v0 #1 up   | 1:R4 98.7 0.9785
                               v1 #2 down | 1:S  50.0 0.0156
                 @  80   216ms v1 #2 down | 1:S  50.0 0.0156"#]],
         );

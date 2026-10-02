@@ -186,6 +186,10 @@ impl Env {
             // while it is down the envelope sits where stage 2 left it.
             3 if self.down => EnvStage::Sustain,
             3 => EnvStage::Rate4,
+            // L4 the same as L3 leaves rate 4 nothing to do, and the
+            // engine runs on to the end with the key still down: that is
+            // still the sustain.
+            _ if self.down => EnvStage::Sustain,
             _ => EnvStage::End,
         }
     }
@@ -204,12 +208,15 @@ impl Env {
     /// it is. A dot glides from level to level without a step.
     ///
     /// The floor `advance` clamps every target to (16) is where any level
-    /// too quiet for this operator's output level ends up, so at the floor
-    /// the level is only known to be at most the floor's: the read is the
-    /// lower of that and the level the segment is heading for.
+    /// too quiet for this operator's output level ends up. A segment
+    /// heading there is corrected the same way, so the dot carries on
+    /// down past the floor's own reading and arrives on the level the
+    /// patch asks for. Waiting at the floor to rise, the level is only
+    /// known to be at most the floor's: the read is the lowest of that,
+    /// where the envelope came from, and where it is going.
     pub fn level_units(&self) -> f32 {
         let held = match self.ix {
-            3 if self.down => Some(2),
+            ix if ix >= 3 && self.down => Some(2),
             ix if ix >= 4 => Some(3),
             ix if self.staticcount != 0 => Some(ix),
             _ => None,
@@ -220,8 +227,10 @@ impl Env {
                 let heading = self.levels[self.ix] as f32;
                 let read = self.units_of(self.level.max(FLOOR));
                 if self.level <= FLOOR {
-                    read.min(heading)
-                } else if self.targetlevel > FLOOR {
+                    // About to rise from the floor: no higher than where
+                    // it came from, nor than where it is going.
+                    read.min(self.from_units).min(heading)
+                } else {
                     let from = self.from_level.max(FLOOR);
                     let at_start = self.from_units - self.units_of(from);
                     let at_end = heading - self.units_of(self.targetlevel);
@@ -232,8 +241,6 @@ impl Env {
                         ((self.level - from) as f32 / span as f32).clamp(0.0, 1.0)
                     };
                     read + at_start + (at_end - at_start) * along
-                } else {
-                    read
                 }
             }
         };
@@ -496,13 +503,14 @@ mod tests {
             OL30: 0>47.5_/0.0 1>47.5_/1.0 5>47.5_/5.0 10>47.5_/10.0 15>47.5_/15.0 19>47.5_/19.0 20>47.5_/20.0 21>47.5_/21.0 40>47.5_/40.0 62>62.0/47.5 63>62.0/47.5 80>80.0/47.5 98>98.0/47.5 99>98.0/47.5"#]].assert_eq(&lines.join("\n"));
     }
 
-    /// Run one envelope for `chunks`, letting go at `keyup_at`, and print
+    /// Run one envelope at output level `output` for `chunks`, letting go
+    /// at `keyup_at`, and print
     /// its stage and level whenever the stage changes, for the three
     /// chunks after that, and whenever the level crosses a multiple of 10.
-    fn check_stages(levels: [i32; 4], keyup_at: usize, chunks: usize, expect: Expect) {
+    fn check_stages(output: i32, levels: [i32; 4], keyup_at: usize, chunks: usize, expect: Expect) {
         let t = Tables::new(44100.0);
         let mut env = Env::default();
-        let outlevel = Env::scaleoutlevel(99) << 5;
+        let outlevel = Env::scaleoutlevel(output) << 5;
         env.init(&t, [70, 50, 50, 50], levels, outlevel, 0);
         let mut lines = vec![format!(
             "struck   : {:?} {:.1}",
@@ -529,12 +537,13 @@ mod tests {
 
     /// The stage follows the segment; the level is exact while it holds
     /// (sustain, end), moves in between, and arrives on each level
-    /// without a step. L1=99 is odd, so leaving it the read starts one
-    /// below (99 and 98 are one internal level).
+    /// without a step — even leaving the odd L1=99, which is one internal
+    /// level with 98.
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn stage_and_level_follow_the_envelope() {
         check_stages(
+            99,
             [99, 70, 41, 10],
             1000,
             1350,
@@ -572,12 +581,134 @@ mod tests {
         );
     }
 
+    /// A quieter operator, whose floor is higher up its scale: at output
+    /// level 50 the floor reads about 27, so the release from L3=80 to
+    /// L4=0 heads for a level the engine clamps to the floor. The dot
+    /// still glides all the way down to 0 and arrives there, rather than
+    /// stopping at the floor's reading and jumping.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_release_below_the_floor_glides_to_its_level() {
+        check_stages(
+            50,
+            [99, 70, 80, 0],
+            700,
+            1400,
+            expect![[r#"
+            struck   : Rate1 27.5
+            chunk    0: Rate1 91.5
+            chunk    1: Rate2 99.0
+            chunk    2: Rate2 98.9
+            chunk    3: Rate2 98.7
+            chunk   71: Rate2 89.9
+            chunk  148: Rate2 80.0
+            chunk  225: Rate3 70.0
+            chunk  226: Sustain 80.0
+            chunk  227: Sustain 80.0
+            chunk  228: Sustain 80.0
+            chunk  700: keyup
+            chunk  700: Rate4 79.8
+            chunk  701: Rate4 79.6
+            chunk  702: Rate4 79.4
+            chunk  752: Rate4 69.9
+            chunk  805: Rate4 59.8
+            chunk  857: Rate4 49.9
+            chunk  910: Rate4 39.8
+            chunk  962: Rate4 29.9
+            chunk 1015: Rate4 19.8
+            chunk 1067: Rate4 9.9
+            chunk 1119: End 0.0
+            chunk 1120: End 0.0
+            chunk 1121: End 0.0"#]],
+        );
+    }
+
+    /// At output level 30 the floor reads 47.5: the decay to L2=40 heads
+    /// below it and must arrive on 40, and the climb to L3=70 sets out
+    /// from there.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_decay_below_the_floor_glides_to_its_level() {
+        check_stages(
+            30,
+            [99, 40, 70, 0],
+            700,
+            1400,
+            expect![[r#"
+            struck   : Rate1 47.5
+            chunk    0: Rate2 99.0
+            chunk    1: Rate2 98.9
+            chunk    2: Rate2 98.7
+            chunk   62: Rate2 89.9
+            chunk  131: Rate2 79.9
+            chunk  199: Rate2 69.9
+            chunk  268: Rate2 59.9
+            chunk  336: Rate2 49.9
+            chunk  404: Rate3 40.0
+            chunk  405: Sustain 70.0
+            chunk  406: Sustain 70.0
+            chunk  407: Sustain 70.0
+            chunk  700: keyup
+            chunk  700: Rate4 69.6
+            chunk  701: Rate4 69.2
+            chunk  702: Rate4 68.8
+            chunk  725: Rate4 59.9
+            chunk  751: Rate4 49.8
+            chunk  777: Rate4 39.7
+            chunk  802: Rate4 29.9
+            chunk  828: Rate4 19.8
+            chunk  854: Rate4 9.7
+            chunk  879: End 0.0
+            chunk  880: End 0.0
+            chunk  881: End 0.0"#]],
+        );
+    }
+
+    /// With L3 equal to L4 the envelope has nowhere to go after its third
+    /// rate, and the engine moves on to its end with the key still down.
+    /// That is still the sustain, and reads so — until the key comes up.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_held_key_sustains_when_l3_is_l4() {
+        check_stages(
+            99,
+            [99, 99, 60, 60],
+            900,
+            1000,
+            expect![[r#"
+            struck   : Rate1 1.4
+            chunk    0: Rate1 42.2
+            chunk    1: Rate1 51.2
+            chunk    3: Rate1 65.3
+            chunk    4: Rate1 71.4
+            chunk    6: Rate1 80.5
+            chunk    9: Rate1 90.6
+            chunk   13: Rate2 99.0
+            chunk   14: Rate2 99.0
+            chunk   15: Rate2 99.0
+            chunk  117: Rate3 98.9
+            chunk  118: Rate3 98.7
+            chunk  119: Rate3 98.6
+            chunk  187: Rate3 89.9
+            chunk  265: Rate3 79.9
+            chunk  343: Rate3 69.9
+            chunk  420: Sustain 60.0
+            chunk  421: Sustain 60.0
+            chunk  422: Sustain 60.0
+            chunk  900: keyup
+            chunk  900: Rate4 60.0
+            chunk  901: Rate4 60.0
+            chunk  902: Rate4 60.0"#]],
+        );
+    }
+
     /// A key let go mid-attack releases from where the attack got to, not
     /// from L3.
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn a_key_let_go_mid_attack_releases_from_there() {
         check_stages(
+            99,
             [99, 70, 40, 10],
             5,
             320,
