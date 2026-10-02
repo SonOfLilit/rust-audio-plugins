@@ -15,6 +15,10 @@ mod patch;
 mod pitchenv;
 mod tables;
 
+/// The 32 algorithms' routing bytes, the ones the engine renders with —
+/// for a picture of an algorithm that cannot disagree with its sound.
+pub use fm_core::ALGORITHMS;
+
 pub use patch::{
     init_voice, Bank, BankError, BankInfo, BANKS, BANK_SIZE, NUM_BANKS, NUM_LIBRARY_VOICES,
     PACKED_VOICE_SIZE, VOICE_SIZE,
