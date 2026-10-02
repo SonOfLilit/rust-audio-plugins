@@ -138,6 +138,9 @@ pub struct VoiceWatch {
     /// Whether its key is still down (as opposed to ringing out its
     /// release).
     pub key_down: bool,
+    /// The key it sounds, as a MIDI note number: the key struck, moved by
+    /// the patch's own transpose; pitch bend and modulation are not in it.
+    pub pitch: u8,
     /// Its operators, in the order the patch's own pages number them: index
     /// 0 is operator 1.
     pub ops: [OpWatch; WATCH_OPS],

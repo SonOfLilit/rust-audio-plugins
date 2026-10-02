@@ -253,6 +253,8 @@ pub fn preset_positions(preset: usize) -> [f32; PARAM_COUNT] {
 struct Voice {
     note: Dx7Note,
     midinote: u8,
+    /// The key it sounds: `midinote` transposed.
+    pitch: u8,
     keydown: bool,
     /// Allocation order, for oldest-first stealing.
     serial: u32,
@@ -351,6 +353,7 @@ impl DexedPlugin {
         let voice = &mut self.voices[slot];
         voice.note.init(&self.tables, &self.patch, note, vel);
         voice.midinote = midinote;
+        voice.pitch = u8::try_from(note).unwrap_or(midinote);
         voice.keydown = true;
         voice.serial = self.serial;
         self.lfo.keydown();
@@ -595,6 +598,7 @@ impl Plugin for DexedPlugin {
                         active: true,
                         note_on: voice.serial,
                         key_down: voice.keydown,
+                        pitch: voice.pitch,
                         ops,
                     }
                 }
@@ -1917,6 +1921,7 @@ mod watch_tests {
                 active: true,
                 note_on: 999,
                 key_down: true,
+                pitch: 1,
                 ops: [junk_op; WATCH_OPS],
             };
             let mut watch = Watch {
@@ -1942,8 +1947,9 @@ mod watch_tests {
                     })
                     .collect();
                 voices.push(format!(
-                    "v{slot} #{} {key} | {}",
+                    "v{slot} #{} key {} {key} | {}",
                     voice.note_on,
+                    voice.pitch,
                     shown.join(" | ")
                 ));
             }
@@ -1993,21 +1999,21 @@ mod watch_tests {
             ],
             &[1, 2, 3, 4],
             expect![[r#"
-                @   0     2ms v0 #1 down | 1:R1 38.7 0.0056 | 2:R3 99.0 0.0811 | 3:R3 99.0 0      | 4:R3 99.0 0     
-                @   1     5ms v0 #1 down | 1:R1 44.9 0.0096 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @   3    10ms v0 #1 down | 1:R1 55.7 0.0242 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @  10    29ms v0 #1 down | 1:R1 81.1 0.2140 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @  30    82ms v0 #1 down | 1:R2 96.7 0.8277 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @  60   162ms v0 #1 down | 1:R2 89.4 0.4556 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @ 100   269ms v0 #1 down | 1:R3 79.8 0.2061 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @ 150   402ms v0 #1 down | 1:R3 68.3 0.0762 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @ 250   669ms v0 #1 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @ 374  1000ms v0 #1 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
-                @ 376  1005ms v0 #1 up   | 1:R4 61.5 0.0425 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 400  1069ms v0 #1 up   | 1:R4 55.9 0.0263 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 450  1202ms v0 #1 up   | 1:R4 44.3 0.0097 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 550  1469ms v0 #1 up   | 1:R4 20.9 0.0013 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
-                @ 700  1869ms v0 #1 up   | 1:R4  2.3 0.0001 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @   0     2ms v0 #1 key 60 down | 1:R1 38.7 0.0056 | 2:R3 99.0 0.0811 | 3:R3 99.0 0      | 4:R3 99.0 0     
+                @   1     5ms v0 #1 key 60 down | 1:R1 44.9 0.0096 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @   3    10ms v0 #1 key 60 down | 1:R1 55.7 0.0242 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @  10    29ms v0 #1 key 60 down | 1:R1 81.1 0.2140 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @  30    82ms v0 #1 key 60 down | 1:R2 96.7 0.8277 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @  60   162ms v0 #1 key 60 down | 1:R2 89.4 0.4556 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 100   269ms v0 #1 key 60 down | 1:R3 79.8 0.2061 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 150   402ms v0 #1 key 60 down | 1:R3 68.3 0.0762 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 250   669ms v0 #1 key 60 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 374  1000ms v0 #1 key 60 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 376  1005ms v0 #1 key 60 up   | 1:R4 61.5 0.0425 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 400  1069ms v0 #1 key 60 up   | 1:R4 55.9 0.0263 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 450  1202ms v0 #1 key 60 up   | 1:R4 44.3 0.0097 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 550  1469ms v0 #1 key 60 up   | 1:R4 20.9 0.0013 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 700  1869ms v0 #1 key 60 up   | 1:R4  2.3 0.0001 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
                 @ 800  2136ms (silent)
                 @ 900  2402ms (silent)"#]],
         );
@@ -2040,36 +2046,36 @@ mod watch_tests {
             &[0, 10, 20, 31, 199, 200, 310, 320],
             &[1],
             expect![[r#"
-                @   0     2ms v0 #1 down | 1:R3 99.0 1.0000
-                @  10    29ms v0 #1 down | 1:S  99.0 1.0000
-                              v1 #2 down | 1:R3 99.0 1.0000
-                @  20    56ms v0 #1 down | 1:S  99.0 1.0000
-                              v1 #2 down | 1:S  99.0 1.0000
-                              v2 #3 down | 1:R3 99.0 1.0000
-                @  31    85ms v0 #1 up   | 1:R4 95.3 0.7273
-                              v1 #2 down | 1:S  99.0 1.0000
-                              v2 #3 down | 1:S  99.0 1.0000
-                @ 199   533ms v1 #2 down | 1:S  99.0 1.0000
-                              v2 #3 down | 1:S  99.0 1.0000
-                @ 200   536ms v0 #4 down | 1:R3 99.0 1.0000
-                              v1 #2 down | 1:S  99.0 1.0000
-                              v2 #3 down | 1:S  99.0 1.0000
-                @ 310   829ms v0 #4 down | 1:S  99.0 1.0000
-                              v1 #2 down | 1:S  99.0 1.0000
-                              v2 #3 down | 1:S  99.0 1.0000
-                              v3 #5 down | 1:S  99.0 1.0000
-                              v4 #6 down | 1:S  99.0 1.0000
-                              v5 #7 down | 1:S  99.0 1.0000
-                              v6 #8 down | 1:S  99.0 1.0000
-                              v7 #9 down | 1:S  99.0 1.0000
-                @ 320   856ms v0 #4 down | 1:S  99.0 1.0000
-                              v1 #10 down | 1:R3 99.0 1.0000
-                              v2 #3 down | 1:S  99.0 1.0000
-                              v3 #5 down | 1:S  99.0 1.0000
-                              v4 #6 down | 1:S  99.0 1.0000
-                              v5 #7 down | 1:S  99.0 1.0000
-                              v6 #8 down | 1:S  99.0 1.0000
-                              v7 #9 down | 1:S  99.0 1.0000"#]],
+                @   0     2ms v0 #1 key 60 down | 1:R3 99.0 1.0000
+                @  10    29ms v0 #1 key 60 down | 1:S  99.0 1.0000
+                              v1 #2 key 64 down | 1:R3 99.0 1.0000
+                @  20    56ms v0 #1 key 60 down | 1:S  99.0 1.0000
+                              v1 #2 key 64 down | 1:S  99.0 1.0000
+                              v2 #3 key 67 down | 1:R3 99.0 1.0000
+                @  31    85ms v0 #1 key 60 up   | 1:R4 95.3 0.7273
+                              v1 #2 key 64 down | 1:S  99.0 1.0000
+                              v2 #3 key 67 down | 1:S  99.0 1.0000
+                @ 199   533ms v1 #2 key 64 down | 1:S  99.0 1.0000
+                              v2 #3 key 67 down | 1:S  99.0 1.0000
+                @ 200   536ms v0 #4 key 72 down | 1:R3 99.0 1.0000
+                              v1 #2 key 64 down | 1:S  99.0 1.0000
+                              v2 #3 key 67 down | 1:S  99.0 1.0000
+                @ 310   829ms v0 #4 key 72 down | 1:S  99.0 1.0000
+                              v1 #2 key 64 down | 1:S  99.0 1.0000
+                              v2 #3 key 67 down | 1:S  99.0 1.0000
+                              v3 #5 key 74 down | 1:S  99.0 1.0000
+                              v4 #6 key 75 down | 1:S  99.0 1.0000
+                              v5 #7 key 76 down | 1:S  99.0 1.0000
+                              v6 #8 key 77 down | 1:S  99.0 1.0000
+                              v7 #9 key 78 down | 1:S  99.0 1.0000
+                @ 320   856ms v0 #4 key 72 down | 1:S  99.0 1.0000
+                              v1 #10 key 84 down | 1:R3 99.0 1.0000
+                              v2 #3 key 67 down | 1:S  99.0 1.0000
+                              v3 #5 key 74 down | 1:S  99.0 1.0000
+                              v4 #6 key 75 down | 1:S  99.0 1.0000
+                              v5 #7 key 76 down | 1:S  99.0 1.0000
+                              v6 #8 key 77 down | 1:S  99.0 1.0000
+                              v7 #9 key 78 down | 1:S  99.0 1.0000"#]],
         );
     }
 
@@ -2093,14 +2099,33 @@ mod watch_tests {
             &[0, 20, 60, 400],
             &[1],
             expect![[r#"
-                @   0     2ms v0 #1 down | 1:R1 25.8 0.0034
-                              v1 #2 down | 1:R1 60.9 0.0034
-                @  20    56ms v0 #1 down | 1:R1 38.6 0.0102
-                              v1 #2 down | 1:R1 73.8 0.0102
-                @  60   162ms v0 #1 down | 1:R1 58.4 0.0559
-                              v1 #2 down | 1:R1 93.7 0.0559
-                @ 400  1069ms v0 #1 down | 1:S  99.0 1.8340
-                              v1 #2 down | 1:S  99.0 0.0884"#]],
+                @   0     2ms v0 #1 key 60 down | 1:R1 25.8 0.0034
+                              v1 #2 key 64 down | 1:R1 60.9 0.0034
+                @  20    56ms v0 #1 key 60 down | 1:R1 38.6 0.0102
+                              v1 #2 key 64 down | 1:R1 73.8 0.0102
+                @  60   162ms v0 #1 key 60 down | 1:R1 58.4 0.0559
+                              v1 #2 key 64 down | 1:R1 93.7 0.0559
+                @ 400  1069ms v0 #1 key 60 down | 1:S  99.0 1.8340
+                              v1 #2 key 64 down | 1:S  99.0 0.0884"#]],
+        );
+    }
+
+    /// The key a voice says is the one it sounds: the struck key moved by
+    /// the patch's transpose, here an octave up (36; 24 is none), and no
+    /// further than the top of the keyboard.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_voice_says_the_key_it_sounds() {
+        let mut patch = eg(1, [99, 99, 99, 99], [99, 99, 99, 0], 99);
+        patch.push((PARAM_VOICE_BASE + 144, 36.0));
+        check_watch(
+            &patch,
+            &[(0, Key::On(60, 1.0)), (0, Key::On(120, 1.0))],
+            &[0],
+            &[1],
+            expect![[r#"
+                @   0     2ms v0 #1 key 72 down | 1:R3 99.0 1.0000
+                              v1 #2 key 127 down | 1:R3 99.0 1.0000"#]],
         );
     }
 
@@ -2129,14 +2154,14 @@ mod watch_tests {
             &[20, 41, 300, 1500],
             &[1],
             expect![[r#"
-                @  20    56ms v0 #1 down | 1:S  90.0 0.5000
-                              v1 #2 down | 1:S  90.0 0.0001
-                @  41   112ms v0 #1 up   | 1:R4 88.6 0.4437
-                              v1 #2 up   | 1:R4 83.5 0.0001
-                @ 300   802ms v0 #1 up   | 1:E  50.0 0.0156
-                              v1 #2 up   | 1:E  50.0 0     
-                @1500  4002ms v0 #1 up   | 1:E  50.0 0.0156
-                              v1 #2 up   | 1:E  50.0 0     "#]],
+                @  20    56ms v0 #1 key 48 down | 1:S  90.0 0.5000
+                              v1 #2 key 96 down | 1:S  90.0 0.0001
+                @  41   112ms v0 #1 key 48 up   | 1:R4 88.6 0.4437
+                              v1 #2 key 96 up   | 1:R4 83.5 0.0001
+                @ 300   802ms v0 #1 key 48 up   | 1:E  50.0 0.0156
+                              v1 #2 key 96 up   | 1:E  50.0 0     
+                @1500  4002ms v0 #1 key 48 up   | 1:E  50.0 0.0156
+                              v1 #2 key 96 up   | 1:E  50.0 0     "#]],
         );
     }
 
@@ -2160,13 +2185,13 @@ mod watch_tests {
             &[29, 30, 60, 79, 80],
             &[1],
             expect![[r#"
-                @  29    80ms v0 #1 down | 1:S  99.0 1.0000
-                @  30    82ms v0 #1 down | 1:S  99.0 1.0000
-                @  60   162ms v0 #1 down | 1:S  99.0 1.0000
-                              v1 #2 down | 1:S  50.0 0.0156
-                @  79   213ms v0 #1 up   | 1:R4 98.7 0.9785
-                              v1 #2 down | 1:S  50.0 0.0156
-                @  80   216ms v1 #2 down | 1:S  50.0 0.0156"#]],
+                @  29    80ms v0 #1 key 60 down | 1:S  99.0 1.0000
+                @  30    82ms v0 #1 key 60 down | 1:S  99.0 1.0000
+                @  60   162ms v0 #1 key 60 down | 1:S  99.0 1.0000
+                              v1 #2 key 64 down | 1:S  50.0 0.0156
+                @  79   213ms v0 #1 key 60 up   | 1:R4 98.7 0.9785
+                              v1 #2 key 64 down | 1:S  50.0 0.0156
+                @  80   216ms v1 #2 key 64 down | 1:S  50.0 0.0156"#]],
         );
     }
 
@@ -2189,13 +2214,13 @@ mod watch_tests {
             &[20, 30, 40, 50, 60, 70, 80],
             &[1],
             expect![[r#"
-                @  20    56ms v0 #1 down | 1:S  99.0 0.8205
-                @  30    82ms v0 #1 down | 1:S  99.0 0.0137
-                @  40   109ms v0 #1 down | 1:S  99.0 0.6219
-                @  50   136ms v0 #1 down | 1:S  99.0 0.1673
-                @  60   162ms v0 #1 down | 1:S  99.0 0.3197
-                @  70   189ms v0 #1 down | 1:S  99.0 0.4749
-                @  80   216ms v0 #1 down | 1:S  99.0 0.0647"#]],
+                @  20    56ms v0 #1 key 60 down | 1:S  99.0 0.8205
+                @  30    82ms v0 #1 key 60 down | 1:S  99.0 0.0137
+                @  40   109ms v0 #1 key 60 down | 1:S  99.0 0.6219
+                @  50   136ms v0 #1 key 60 down | 1:S  99.0 0.1673
+                @  60   162ms v0 #1 key 60 down | 1:S  99.0 0.3197
+                @  70   189ms v0 #1 key 60 down | 1:S  99.0 0.4749
+                @  80   216ms v0 #1 key 60 down | 1:S  99.0 0.0647"#]],
         );
     }
 
@@ -2215,30 +2240,30 @@ mod watch_tests {
             &[19, 20, 21],
             &[1],
             expect![[r#"
-            @  19    53ms v0 #1 down | 1:S  99.0 1.0000
-                          v1 #2 down | 1:S  99.0 1.0000
-                          v2 #3 down | 1:S  99.0 1.0000
-                          v3 #4 down | 1:S  99.0 1.0000
-                          v4 #5 down | 1:S  99.0 1.0000
-                          v5 #6 down | 1:S  99.0 1.0000
-                          v6 #7 down | 1:S  99.0 1.0000
-                          v7 #8 down | 1:S  99.0 1.0000
-            @  20    56ms v0 #9 down | 1:R1  1.4 0     
-                          v1 #2 down | 1:S  99.0 1.0000
-                          v2 #3 down | 1:S  99.0 1.0000
-                          v3 #4 down | 1:S  99.0 1.0000
-                          v4 #5 down | 1:S  99.0 1.0000
-                          v5 #6 down | 1:S  99.0 1.0000
-                          v6 #7 down | 1:S  99.0 1.0000
-                          v7 #8 down | 1:S  99.0 1.0000
-            @  21    58ms v0 #9 down | 1:R3 99.0 1.0000
-                          v1 #2 down | 1:S  99.0 1.0000
-                          v2 #3 down | 1:S  99.0 1.0000
-                          v3 #4 down | 1:S  99.0 1.0000
-                          v4 #5 down | 1:S  99.0 1.0000
-                          v5 #6 down | 1:S  99.0 1.0000
-                          v6 #7 down | 1:S  99.0 1.0000
-                          v7 #8 down | 1:S  99.0 1.0000"#]],
+                @  19    53ms v0 #1 key 60 down | 1:S  99.0 1.0000
+                              v1 #2 key 61 down | 1:S  99.0 1.0000
+                              v2 #3 key 62 down | 1:S  99.0 1.0000
+                              v3 #4 key 63 down | 1:S  99.0 1.0000
+                              v4 #5 key 64 down | 1:S  99.0 1.0000
+                              v5 #6 key 65 down | 1:S  99.0 1.0000
+                              v6 #7 key 66 down | 1:S  99.0 1.0000
+                              v7 #8 key 67 down | 1:S  99.0 1.0000
+                @  20    56ms v0 #9 key 80 down | 1:R1  1.4 0     
+                              v1 #2 key 61 down | 1:S  99.0 1.0000
+                              v2 #3 key 62 down | 1:S  99.0 1.0000
+                              v3 #4 key 63 down | 1:S  99.0 1.0000
+                              v4 #5 key 64 down | 1:S  99.0 1.0000
+                              v5 #6 key 65 down | 1:S  99.0 1.0000
+                              v6 #7 key 66 down | 1:S  99.0 1.0000
+                              v7 #8 key 67 down | 1:S  99.0 1.0000
+                @  21    58ms v0 #9 key 80 down | 1:R3 99.0 1.0000
+                              v1 #2 key 61 down | 1:S  99.0 1.0000
+                              v2 #3 key 62 down | 1:S  99.0 1.0000
+                              v3 #4 key 63 down | 1:S  99.0 1.0000
+                              v4 #5 key 64 down | 1:S  99.0 1.0000
+                              v5 #6 key 65 down | 1:S  99.0 1.0000
+                              v6 #7 key 66 down | 1:S  99.0 1.0000
+                              v7 #8 key 67 down | 1:S  99.0 1.0000"#]],
         );
     }
 }
