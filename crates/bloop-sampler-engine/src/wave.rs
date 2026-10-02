@@ -20,6 +20,11 @@
 /// snapshot-able regardless of the device's screen width.
 pub const WAVE_COLUMNS: usize = 96;
 
+/// The most frames a view carries its samples for. A view spanning more is
+/// drawn as columns; one spanning this many or fewer is close enough to
+/// draw as a line through its samples, and carries them.
+pub const MOST_SAMPLES: usize = 512;
+
 /// A waveform reduced for display: one min/max pair per column, plus the
 /// marks drawn over it.
 ///
@@ -30,6 +35,12 @@ pub struct WaveView {
     /// Per column, the lowest and highest sample in it, each in -1.0..=1.0.
     /// Empty means "no audio loaded".
     pub peaks: Vec<(f32, f32)>,
+    /// Per column, its loudness: the root of the mean of its squares.
+    pub rms: Vec<f32>,
+    /// The view's own samples, every channel mixed, when it spans at most
+    /// [`MOST_SAMPLES`] frames — zoomed in far enough to draw a line
+    /// through them. Empty otherwise.
+    pub samples: Vec<f32>,
     /// The portion of the whole sample this view spans, as fractions in
     /// 0.0..=1.0. Zooming in narrows it.
     pub view: (f32, f32),
@@ -102,16 +113,20 @@ impl WaveView {
         }
 
         let mut peaks = Vec::with_capacity(columns);
+        let mut rms = Vec::with_capacity(columns);
         for column in 0..columns {
             let start = from + span * column / columns;
             let end = (from + span * (column + 1) / columns).max(start + 1);
 
             let mut low = f32::MAX;
             let mut high = f32::MIN;
+            let (mut squares, mut count) = (0.0f64, 0usize);
             for channel in channels.clone() {
                 for value in channel.get(start..end.min(channel.len())).unwrap_or(&[]) {
                     low = low.min(*value);
                     high = high.max(*value);
+                    squares += f64::from(*value) * f64::from(*value);
+                    count += 1;
                 }
             }
             // A column past the end of every channel reads as silence.
@@ -120,10 +135,37 @@ impl WaveView {
                 high = 0.0;
             }
             peaks.push((low, high));
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a level is a few digits; f32 is the screen's precision"
+            )]
+            rms.push(if count == 0 {
+                0.0
+            } else {
+                libm::sqrt(squares / count as f64) as f32
+            });
         }
+
+        // Zoomed in, the samples themselves: each frame, its channels mixed.
+        let samples = if span <= MOST_SAMPLES {
+            let mixed = channels.clone().count().max(1) as f32;
+            (from..to)
+                .map(|frame| {
+                    channels
+                        .clone()
+                        .map(|channel| channel.get(frame).copied().unwrap_or(0.0))
+                        .sum::<f32>()
+                        / mixed
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         Self {
             peaks,
+            rms,
+            samples,
             view: (
                 from as f32 / total_frames as f32,
                 to as f32 / total_frames as f32,
@@ -245,6 +287,66 @@ mod tests {
                       #
                       #"#]]
         .assert_eq(&view.to_text(7).join("\n"));
+    }
+
+    /// Each column carries its loudness beside its peaks, every channel
+    /// counted: a full-scale square wave is as loud as it is high, a sine
+    /// about 0.71 of it, and silence nothing. A view of at most
+    /// `MOST_SAMPLES` frames carries the frames themselves, channels mixed
+    /// to one; a wider one carries none.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_view_carries_its_loudness_and_zoomed_in_its_samples() {
+        let square: Vec<f32> = (0..960)
+            .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+            .collect();
+        let silence = vec![0.0f32; 960];
+        let audio = sine(960);
+        let rms = |view: &WaveView| {
+            view.rms
+                .iter()
+                .map(|r| format!("{r:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let whole = WaveView::reduce([audio.as_slice()].into_iter(), (0, 960), 960, 4);
+        let squared = WaveView::reduce([square.as_slice()].into_iter(), (0, 960), 960, 2);
+        let mixed = WaveView::reduce(
+            [square.as_slice(), silence.as_slice()].into_iter(),
+            (0, 960),
+            960,
+            2,
+        );
+        let near = WaveView::reduce(
+            [square.as_slice(), silence.as_slice()].into_iter(),
+            (100, 106),
+            960,
+            3,
+        );
+        let edge = WaveView::reduce([audio.as_slice()].into_iter(), (0, MOST_SAMPLES), 960, 4);
+        let past = WaveView::reduce(
+            [audio.as_slice()].into_iter(),
+            (0, MOST_SAMPLES + 1),
+            960,
+            4,
+        );
+        expect![[r#"
+            sine rms 0.71 0.71 0.71 0.71, 0 samples
+            square rms 1.00 1.00
+            square and silence rms 0.71 0.71
+            six frames, mixed: [0.5, -0.5, 0.5, -0.5, 0.5, -0.5]
+            512 frames: 512 samples; one more: 0"#]]
+        .assert_eq(&format!(
+            "sine rms {}, {} samples\nsquare rms {}\nsquare and silence rms {}\n\
+             six frames, mixed: {:?}\n{MOST_SAMPLES} frames: {} samples; one more: {}",
+            rms(&whole),
+            whole.samples.len(),
+            rms(&squared),
+            rms(&mixed),
+            near.samples,
+            edge.samples.len(),
+            past.samples.len(),
+        ));
     }
 
     /// Zooming in reduces a sub-range, and reports which part of the whole it
