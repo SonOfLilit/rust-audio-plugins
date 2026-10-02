@@ -20,10 +20,12 @@
 /// snapshot-able regardless of the device's screen width.
 pub const WAVE_COLUMNS: usize = 96;
 
-/// The most frames a view carries its samples for. A view spanning more is
-/// drawn as columns; one spanning this many or fewer is close enough to
-/// draw as a line through its samples, and carries them.
-pub const MOST_SAMPLES: usize = 512;
+/// The most frames a view carries its samples for: three a point across
+/// the widest display there is. A view spanning more is drawn as columns
+/// whatever the screen; one spanning this many or fewer carries its
+/// samples, and the screen decides by its own width whether it is close
+/// enough to draw as a line through them.
+pub const MOST_SAMPLES: usize = 2048;
 
 /// A waveform reduced for display: one min/max pair per column, plus the
 /// marks drawn over it.
@@ -37,9 +39,11 @@ pub struct WaveView {
     pub peaks: Vec<(f32, f32)>,
     /// Per column, its loudness: the root of the mean of its squares.
     pub rms: Vec<f32>,
-    /// The view's own samples, every channel mixed, when it spans at most
+    /// The view's own samples, one a frame, when it spans at most
     /// [`MOST_SAMPLES`] frames — zoomed in far enough to draw a line
-    /// through them. Empty otherwise.
+    /// through them. Empty otherwise. Each is the frame's loudest channel,
+    /// as the peaks count every channel: a stereo take with one side quiet
+    /// is as tall zoomed in as it is zoomed out.
     pub samples: Vec<f32>,
     /// The portion of the whole sample this view spans, as fractions in
     /// 0.0..=1.0. Zooming in narrows it.
@@ -146,16 +150,23 @@ impl WaveView {
             });
         }
 
-        // Zoomed in, the samples themselves: each frame, its channels mixed.
+        // Zoomed in, the samples themselves: each frame, its loudest channel.
         let samples = if span <= MOST_SAMPLES {
-            let mixed = channels.clone().count().max(1) as f32;
             (from..to)
                 .map(|frame| {
                     channels
                         .clone()
                         .map(|channel| channel.get(frame).copied().unwrap_or(0.0))
-                        .sum::<f32>()
-                        / mixed
+                        .fold(
+                            0.0f32,
+                            |loudest, v| {
+                                if v.abs() > loudest.abs() {
+                                    v
+                                } else {
+                                    loudest
+                                }
+                            },
+                        )
                 })
                 .collect()
         } else {
@@ -292,8 +303,8 @@ mod tests {
     /// Each column carries its loudness beside its peaks, every channel
     /// counted: a full-scale square wave is as loud as it is high, a sine
     /// about 0.71 of it, and silence nothing. A view of at most
-    /// `MOST_SAMPLES` frames carries the frames themselves, channels mixed
-    /// to one; a wider one carries none.
+    /// `MOST_SAMPLES` frames carries the frames themselves, each its
+    /// loudest channel's; a wider one carries none.
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn a_view_carries_its_loudness_and_zoomed_in_its_samples() {
@@ -323,22 +334,28 @@ mod tests {
             960,
             3,
         );
-        let edge = WaveView::reduce([audio.as_slice()].into_iter(), (0, MOST_SAMPLES), 960, 4);
+        let long = sine(MOST_SAMPLES + 1);
+        let edge = WaveView::reduce(
+            [long.as_slice()].into_iter(),
+            (0, MOST_SAMPLES),
+            long.len(),
+            4,
+        );
         let past = WaveView::reduce(
-            [audio.as_slice()].into_iter(),
+            [long.as_slice()].into_iter(),
             (0, MOST_SAMPLES + 1),
-            960,
+            long.len(),
             4,
         );
         expect![[r#"
-            sine rms 0.71 0.71 0.71 0.71, 0 samples
+            sine rms 0.71 0.71 0.71 0.71, 960 samples
             square rms 1.00 1.00
             square and silence rms 0.71 0.71
-            six frames, mixed: [0.5, -0.5, 0.5, -0.5, 0.5, -0.5]
-            512 frames: 512 samples; one more: 0"#]]
+            six frames, the louder channel's: [1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
+            2048 frames: 2048 samples; one more: 0"#]]
         .assert_eq(&format!(
             "sine rms {}, {} samples\nsquare rms {}\nsquare and silence rms {}\n\
-             six frames, mixed: {:?}\n{MOST_SAMPLES} frames: {} samples; one more: {}",
+             six frames, the louder channel's: {:?}\n{MOST_SAMPLES} frames: {} samples; one more: {}",
             rms(&whole),
             whole.samples.len(),
             rms(&squared),
