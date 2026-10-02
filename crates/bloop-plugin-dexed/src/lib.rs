@@ -28,7 +28,10 @@ pub const PORTED_FROM_DEXED_REV: &str = "2e182b3db85c09083ab13c8b9b00565ce7d9ff8
 pub const PORTED_FROM_MSFA_REV: &str = "f67d41d313b7dc85f6fb99e79e515cc9d208cfff";
 
 use bloop_events::NoteEvent;
-use bloop_plugin_api::{ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext};
+use bloop_plugin_api::{
+    OpWatch, ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext, VoiceWatch, Watch,
+    WATCH_OPS, WATCH_VOICES,
+};
 use dx7note::{Controllers, Dx7Note};
 use fm_core::{FmCore, N};
 use lfo::Lfo;
@@ -565,7 +568,36 @@ impl Plugin for DexedPlugin {
         // round-trip. Only the LFO re-seeds (its tables may have changed).
         self.reset_lfo();
     }
+
+    /// Each voice as of the last chunk rendered. A voice is active on the
+    /// same terms `render_chunk` renders it; its `note_on` is the serial
+    /// that voice stealing already orders voices by.
+    fn watch(&self, out: &mut Watch) {
+        for (slot, seen) in out.voices.iter_mut().enumerate() {
+            *seen = match self.voices.get(slot) {
+                Some(voice) if voice.keydown || voice.note.is_playing() => {
+                    let mut ops = [OpWatch::default(); WATCH_OPS];
+                    for (user, op) in ops.iter_mut().enumerate() {
+                        // The patch stores operator 6 first.
+                        *op = voice.note.watch_op(WATCH_OPS - 1 - user);
+                    }
+                    VoiceWatch {
+                        active: true,
+                        note_on: voice.serial,
+                        key_down: voice.keydown,
+                        ops,
+                    }
+                }
+                _ => VoiceWatch::default(),
+            };
+        }
+    }
 }
+
+const _: () = assert!(
+    NUM_VOICES <= WATCH_VOICES,
+    "a Watch must have room for every voice"
+);
 
 fn event_time(event: &NoteEvent) -> u32 {
     match *event {
@@ -1741,6 +1773,462 @@ mod tests {
         assert!(
             manifest.contains(&PORTED_FROM_MSFA_REV[..8]),
             "Cargo.toml must cite the msfa revision {PORTED_FROM_MSFA_REV}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod watch_tests {
+    //! What the voices report to a screen while they play (`Plugin::watch`).
+
+    use super::*;
+    use bloop_events::EventBuffer;
+    use bloop_plugin_api::EnvStage;
+    use expect_test::{expect, Expect};
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::*;
+
+    const BLOCK: usize = 128;
+    const SR: f32 = 48000.0;
+
+    /// Where one byte of operator `op` (1-6) lives among the params. The
+    /// patch stores operator 6 first; `field` is the offset in its 21.
+    fn op_param(op: usize, field: usize) -> usize {
+        PARAM_VOICE_BASE + (6 - op) * 21 + field
+    }
+
+    /// An operator's envelope rates and levels, and its output level.
+    fn eg(op: usize, rates: [u8; 4], levels: [u8; 4], output: u8) -> Vec<(usize, f32)> {
+        let mut edits: Vec<(usize, f32)> = (0..4)
+            .flat_map(|i| {
+                [
+                    (op_param(op, i), f32::from(rates[i])),
+                    (op_param(op, 4 + i), f32::from(levels[i])),
+                ]
+            })
+            .collect();
+        edits.push((op_param(op, 16), f32::from(output)));
+        edits
+    }
+
+    /// The switch of operator `op` (1-6).
+    fn op_switch(op: usize) -> usize {
+        PARAM_OP_ENABLE_BASE + 6 - op
+    }
+
+    #[derive(Clone, Copy)]
+    enum Key {
+        On(u8, f32),
+        /// Struck at sample 100 of its block: after the block's last
+        /// 64-sample chunk has started, so it sounds from the next block.
+        Late(u8),
+        Off(u8),
+        /// A parameter set before the block renders.
+        Param(usize, f32),
+    }
+
+    fn short(stage: EnvStage) -> &'static str {
+        match stage {
+            EnvStage::Rate1 => "R1",
+            EnvStage::Rate2 => "R2",
+            EnvStage::Rate3 => "R3",
+            EnvStage::Sustain => "S",
+            EnvStage::Rate4 => "R4",
+            EnvStage::End => "E",
+        }
+    }
+
+    /// The INIT voice with `patch` edits on it, played by `keys` (each at
+    /// the start of its 128-sample block), and the Watch after each block
+    /// in `look_at`: per sounding voice its slot, note-on count and key,
+    /// and for each operator in `ops` (1-6) its stage, level in patch
+    /// units and amp. Every voice not shown must be all default.
+    fn check_watch(
+        patch: &[(usize, f32)],
+        keys: &[(usize, Key)],
+        look_at: &[usize],
+        ops: &[usize],
+        expect: Expect,
+    ) {
+        let mut synth = DexedPlugin::new();
+        synth.reset(SR, 1024);
+        synth.set_param(PARAM_PRESET, PRESET_INIT as f32);
+        for &(param, value) in patch {
+            synth.set_param(param, value);
+        }
+        let last = look_at.iter().copied().max().unwrap_or(0);
+        let mut lines = Vec::new();
+        for block in 0..=last {
+            let mut events = EventBuffer::new();
+            for &(_, key) in keys.iter().filter(|(at, _)| *at == block) {
+                let note = bloop_core::Note::new;
+                let (time, n, velocity) = match key {
+                    Key::On(n, velocity) => (0, n, velocity),
+                    Key::Late(n) => (100, n, 1.0),
+                    Key::Off(n) => {
+                        events.push(NoteEvent::NoteOff {
+                            time: 0,
+                            channel: 0,
+                            note: note(n),
+                        });
+                        continue;
+                    }
+                    Key::Param(param, value) => {
+                        synth.set_param(param, value);
+                        continue;
+                    }
+                };
+                events.push(NoteEvent::NoteOn {
+                    time,
+                    channel: 0,
+                    note: note(n),
+                    velocity,
+                });
+            }
+            let (mut left, mut right) = ([0.0f32; BLOCK], [0.0f32; BLOCK]);
+            let mut outputs: [&mut [f32]; 2] = [&mut left, &mut right];
+            synth.process(&mut ProcessContext {
+                outputs: &mut outputs,
+                input_events: &events,
+                sample_rate: SR,
+                tempo: 120.0,
+                is_playing: false,
+            });
+            if !look_at.contains(&block) {
+                continue;
+            }
+            // Filled with junk first: `watch` must overwrite all of it.
+            let junk_op = OpWatch {
+                stage: EnvStage::Rate3,
+                level: -1.0,
+                amp: -1.0,
+            };
+            let junk = VoiceWatch {
+                active: true,
+                note_on: 999,
+                key_down: true,
+                ops: [junk_op; WATCH_OPS],
+            };
+            let mut watch = Watch {
+                voices: [junk; WATCH_VOICES],
+            };
+            synth.watch(&mut watch);
+            let ms = (block + 1) * BLOCK * 1000 / SR as usize;
+            let mut voices = Vec::new();
+            for (slot, voice) in watch.active() {
+                let key = if voice.key_down { "down" } else { "up  " };
+                let shown: Vec<String> = ops
+                    .iter()
+                    .map(|&op| {
+                        let o = voice.ops[op - 1];
+                        // An exact nought, which the engine is not
+                        // rendering, apart from one that rounds to it.
+                        let amp = if o.amp == 0.0 {
+                            "0".to_string()
+                        } else {
+                            format!("{:.4}", o.amp)
+                        };
+                        format!("{op}:{:<2} {:>4.1} {amp:<6}", short(o.stage), o.level)
+                    })
+                    .collect();
+                voices.push(format!(
+                    "v{slot} #{} {key} | {}",
+                    voice.note_on,
+                    shown.join(" | ")
+                ));
+            }
+            assert!(
+                watch
+                    .voices
+                    .iter()
+                    .all(|v| v.active || *v == VoiceWatch::default()),
+                "an inactive voice carried state"
+            );
+            if voices.is_empty() {
+                voices.push("(silent)".to_string());
+            }
+            lines.push(format!(
+                "@{block:>4} {ms:>5}ms {}",
+                voices.join("\n              ")
+            ));
+        }
+        expect.assert_eq(&lines.join("\n"));
+    }
+
+    /// One voice from note-on to silence. OP1 (a carrier in algorithm 1)
+    /// climbs at R1=60 to L1=99, falls at R2=50 to L2=80, at R3=50 to
+    /// L3=62, sustains there, and releases at R4=50 to L4=0 once the key
+    /// comes up a second in. OP2 (OP1's modulator) is at output level 70
+    /// on an instant envelope that sustains at 99. OP3 is at full output
+    /// level but switched off; OP4 is at output level 0.
+    ///
+    /// What to check: OP1's level walks 99 → 80 → 62 and holds at exactly
+    /// 62 in sustain, with amp 2^-4.5 ≈ 0.044 there (L62 is 18 steps of
+    /// 1/4 doubling under L99 in the engine's mapping); OP2 reads 99 with
+    /// amp 2^-3.625 ≈ 0.081 (output level 70 is 29 steps of 1/8 doubling
+    /// under 99); OP3 and OP4 keep time but never have any amp; at the end
+    /// the voice is gone.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn one_voice_from_strike_to_silence() {
+        let mut patch = eg(1, [60, 50, 50, 50], [99, 80, 62, 0], 99);
+        patch.extend(eg(2, [99, 99, 99, 99], [99, 99, 99, 0], 70));
+        patch.extend(eg(3, [99, 99, 99, 99], [99, 99, 99, 0], 99));
+        patch.push((op_switch(3), 0.0));
+        check_watch(
+            &patch,
+            &[(0, Key::On(60, 1.0)), (375, Key::Off(60))],
+            &[
+                0, 1, 3, 10, 30, 60, 100, 150, 250, 374, 376, 400, 450, 550, 700, 800, 900,
+            ],
+            &[1, 2, 3, 4],
+            expect![[r#"
+                @   0     2ms v0 #1 down | 1:R1 38.7 0.0056 | 2:R3 99.0 0.0811 | 3:R3 99.0 0      | 4:R3 99.0 0     
+                @   1     5ms v0 #1 down | 1:R1 44.9 0.0096 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @   3    10ms v0 #1 down | 1:R1 55.7 0.0242 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @  10    29ms v0 #1 down | 1:R1 81.1 0.2140 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @  30    82ms v0 #1 down | 1:R2 96.7 0.8277 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @  60   162ms v0 #1 down | 1:R2 89.4 0.4556 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 100   269ms v0 #1 down | 1:R3 79.8 0.2061 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 150   402ms v0 #1 down | 1:R3 68.3 0.0762 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 250   669ms v0 #1 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 374  1000ms v0 #1 down | 1:S  62.0 0.0442 | 2:S  99.0 0.0811 | 3:S  99.0 0      | 4:S  99.0 0     
+                @ 376  1005ms v0 #1 up   | 1:R4 61.5 0.0425 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 400  1069ms v0 #1 up   | 1:R4 56.0 0.0263 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 450  1202ms v0 #1 up   | 1:R4 44.5 0.0097 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 550  1469ms v0 #1 up   | 1:R4 21.6 0.0013 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 700  1869ms v0 #1 up   | 1:R4  3.5 0.0001 | 2:E   0.0 0      | 3:E   0.0 0      | 4:E   0.0 0     
+                @ 800  2136ms (silent)
+                @ 900  2402ms (silent)"#]],
+        );
+    }
+
+    /// Voices come and go. Three notes struck in turn, the first let go;
+    /// once it has finished it is inactive, and the next note takes its
+    /// slot with the next note-on count. With all eight voices held, a
+    /// ninth steals the oldest: its slot, a new count. OP1 releases at
+    /// R4=70 so that a released voice is over within the run.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn voices_count_their_note_ons_and_free_their_slots() {
+        let patch = eg(1, [99, 99, 99, 70], [99, 99, 99, 0], 99);
+        let mut keys = vec![
+            (0, Key::On(60, 1.0)),
+            (10, Key::On(64, 1.0)),
+            (20, Key::On(67, 1.0)),
+            (30, Key::Off(60)),
+            (200, Key::On(72, 1.0)),
+        ];
+        // Five more fill all eight voices; then a ninth.
+        for (i, note) in (74..79).enumerate() {
+            keys.push((300 + i, Key::On(note, 1.0)));
+        }
+        keys.push((320, Key::On(84, 1.0)));
+        check_watch(
+            &patch,
+            &keys,
+            &[0, 10, 20, 31, 199, 200, 310, 320],
+            &[1],
+            expect![[r#"
+                @   0     2ms v0 #1 down | 1:R3 99.0 1.0000
+                @  10    29ms v0 #1 down | 1:S  99.0 1.0000
+                              v1 #2 down | 1:R3 99.0 1.0000
+                @  20    56ms v0 #1 down | 1:S  99.0 1.0000
+                              v1 #2 down | 1:S  99.0 1.0000
+                              v2 #3 down | 1:R3 99.0 1.0000
+                @  31    85ms v0 #1 up   | 1:R4 94.3 0.7273
+                              v1 #2 down | 1:S  99.0 1.0000
+                              v2 #3 down | 1:S  99.0 1.0000
+                @ 199   533ms v1 #2 down | 1:S  99.0 1.0000
+                              v2 #3 down | 1:S  99.0 1.0000
+                @ 200   536ms v0 #4 down | 1:R3 99.0 1.0000
+                              v1 #2 down | 1:S  99.0 1.0000
+                              v2 #3 down | 1:S  99.0 1.0000
+                @ 310   829ms v0 #4 down | 1:S  99.0 1.0000
+                              v1 #2 down | 1:S  99.0 1.0000
+                              v2 #3 down | 1:S  99.0 1.0000
+                              v3 #5 down | 1:S  99.0 1.0000
+                              v4 #6 down | 1:S  99.0 1.0000
+                              v5 #7 down | 1:S  99.0 1.0000
+                              v6 #8 down | 1:S  99.0 1.0000
+                              v7 #9 down | 1:S  99.0 1.0000
+                @ 320   856ms v0 #4 down | 1:S  99.0 1.0000
+                              v1 #10 down | 1:R3 99.0 1.0000
+                              v2 #3 down | 1:S  99.0 1.0000
+                              v3 #5 down | 1:S  99.0 1.0000
+                              v4 #6 down | 1:S  99.0 1.0000
+                              v5 #7 down | 1:S  99.0 1.0000
+                              v6 #8 down | 1:S  99.0 1.0000
+                              v7 #9 down | 1:S  99.0 1.0000"#]],
+        );
+    }
+
+    /// The amp is how loud the operator is, and so it moves with
+    /// velocity; the level is where the envelope is. OP1 at full output
+    /// level with velocity sensitivity 7 and a slow attack (R1=40), struck
+    /// at velocity 127 and at 38. Held, both sit at exactly 99; full
+    /// velocity is louder than the neutral 1.0 (2^0.875 ≈ 1.83), the soft
+    /// one 3.5 doublings quieter (≈ 0.088). On the way up the two are
+    /// equally loud — an attack climbs through loudness, the same for
+    /// both, until each reaches its own top — and so the soft note, whose
+    /// top is lower, is further up its own scale: its dot runs ahead.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn velocity_moves_the_amp_and_not_the_level() {
+        let mut patch = eg(1, [40, 99, 99, 99], [99, 99, 99, 0], 99);
+        patch.push((op_param(1, 15), 7.0));
+        check_watch(
+            &patch,
+            &[(0, Key::On(60, 1.0)), (0, Key::On(64, 0.3))],
+            &[0, 20, 60, 400],
+            &[1],
+            expect![[r#"
+                @   0     2ms v0 #1 down | 1:R1 25.8 0.0034
+                              v1 #2 down | 1:R1 60.9 0.0034
+                @  20    56ms v0 #1 down | 1:R1 38.6 0.0102
+                              v1 #2 down | 1:R1 73.8 0.0102
+                @  60   162ms v0 #1 down | 1:R1 58.4 0.0559
+                              v1 #2 down | 1:R1 93.7 0.0559
+                @ 400  1069ms v0 #1 down | 1:S  99.0 1.8340
+                              v1 #2 down | 1:S  99.0 0.0884"#]],
+        );
+    }
+
+    /// Keyboard level scaling is in the amp too, not in the level: a
+    /// right depth of 99 on a falling linear curve above a breakpoint of
+    /// C3 makes a high note quieter than a low one at the same level. And
+    /// a carrier whose L4 is above nought rings on after its key is up —
+    /// at End, at exactly L4, active for ever.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn keyboard_scaling_is_in_the_amp_and_a_nonzero_l4_rings_on() {
+        let mut patch = eg(1, [99, 99, 99, 60], [99, 99, 90, 50], 99);
+        patch.extend([
+            (op_param(1, 8), 39.0),  // breakpoint C3
+            (op_param(1, 10), 99.0), // right depth
+            (op_param(1, 12), 0.0),  // right curve: -LIN
+        ]);
+        check_watch(
+            &patch,
+            &[
+                (0, Key::On(48, 1.0)),
+                (0, Key::On(96, 1.0)),
+                (40, Key::Off(48)),
+                (40, Key::Off(96)),
+            ],
+            &[20, 41, 300, 1500],
+            &[1],
+            expect![[r#"
+                @  20    56ms v0 #1 down | 1:S  90.0 0.5000
+                              v1 #2 down | 1:S  90.0 0.0001
+                @  41   112ms v0 #1 up   | 1:R4 88.6 0.4437
+                              v1 #2 up   | 1:R4 88.6 0.0001
+                @ 300   802ms v0 #1 up   | 1:E  50.0 0.0156
+                              v1 #2 up   | 1:E  50.0 0     
+                @1500  4002ms v0 #1 up   | 1:E  50.0 0.0156
+                              v1 #2 up   | 1:E  50.0 0     "#]],
+        );
+    }
+
+    /// Each voice plays the patch it was struck with, and shows it. With a
+    /// note held in sustain at L3=99, L3 is turned to 50: the held note
+    /// stays at 99, the next note sustains at 50. Then a program change:
+    /// what was let go stops at once, what is held plays on.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn an_edit_is_shown_on_the_next_note_and_a_program_change_ends_released_ones() {
+        let patch = eg(1, [99, 99, 99, 30], [99, 99, 99, 0], 99);
+        check_watch(
+            &patch,
+            &[
+                (0, Key::On(60, 1.0)),
+                (30, Key::Param(op_param(1, 6), 50.0)),
+                (40, Key::On(64, 1.0)),
+                (70, Key::Off(60)),
+                (80, Key::Param(PARAM_PRESET, 0.0)),
+            ],
+            &[29, 30, 60, 79, 80],
+            &[1],
+            expect![[r#"
+                @  29    80ms v0 #1 down | 1:S  99.0 1.0000
+                @  30    82ms v0 #1 down | 1:S  99.0 1.0000
+                @  60   162ms v0 #1 down | 1:S  99.0 1.0000
+                              v1 #2 down | 1:S  50.0 0.0156
+                @  79   213ms v0 #1 up   | 1:R4 97.7 0.9785
+                              v1 #2 down | 1:S  50.0 0.0156
+                @  80   216ms v1 #2 down | 1:S  50.0 0.0156"#]],
+        );
+    }
+
+    /// Amplitude modulation is in the amp and not in the level: the LFO
+    /// at full depth (AMD 99) on an operator with AMS 3 swings the amp
+    /// while the envelope sits at exactly 99.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn amplitude_modulation_moves_the_amp_and_not_the_level() {
+        let mut patch = eg(1, [99, 99, 99, 99], [99, 99, 99, 0], 99);
+        patch.extend([
+            (op_param(1, 14), 3.0),         // amp mod sensitivity
+            (PARAM_VOICE_BASE + 137, 70.0), // LFO speed
+            (PARAM_VOICE_BASE + 138, 0.0),  // LFO delay
+            (PARAM_VOICE_BASE + 140, 99.0), // amp mod depth
+        ]);
+        check_watch(
+            &patch,
+            &[(0, Key::On(60, 1.0))],
+            &[20, 30, 40, 50, 60, 70, 80],
+            &[1],
+            expect![[r#"
+                @  20    56ms v0 #1 down | 1:S  99.0 0.8205
+                @  30    82ms v0 #1 down | 1:S  99.0 0.0137
+                @  40   109ms v0 #1 down | 1:S  99.0 0.6219
+                @  50   136ms v0 #1 down | 1:S  99.0 0.1673
+                @  60   162ms v0 #1 down | 1:S  99.0 0.3197
+                @  70   189ms v0 #1 down | 1:S  99.0 0.4749
+                @  80   216ms v0 #1 down | 1:S  99.0 0.0647"#]],
+        );
+    }
+
+    /// A note struck after its block's last chunk has started has not
+    /// sounded by the end of that block. Its slot was a loud voice's — the
+    /// ninth of nine sustained notes steals the oldest — but it shows no
+    /// amp until it renders, a block later.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_voice_shows_no_amp_before_it_has_sounded() {
+        let patch = eg(1, [99, 99, 99, 99], [99, 99, 99, 0], 99);
+        let mut keys: Vec<(usize, Key)> = (0..8).map(|i| (i, Key::On(60 + i as u8, 1.0))).collect();
+        keys.push((20, Key::Late(80)));
+        check_watch(
+            &patch,
+            &keys,
+            &[19, 20, 21],
+            &[1],
+            expect![[r#"
+            @  19    53ms v0 #1 down | 1:S  99.0 1.0000
+                          v1 #2 down | 1:S  99.0 1.0000
+                          v2 #3 down | 1:S  99.0 1.0000
+                          v3 #4 down | 1:S  99.0 1.0000
+                          v4 #5 down | 1:S  99.0 1.0000
+                          v5 #6 down | 1:S  99.0 1.0000
+                          v6 #7 down | 1:S  99.0 1.0000
+                          v7 #8 down | 1:S  99.0 1.0000
+            @  20    56ms v0 #9 down | 1:R1  1.4 0     
+                          v1 #2 down | 1:S  99.0 1.0000
+                          v2 #3 down | 1:S  99.0 1.0000
+                          v3 #4 down | 1:S  99.0 1.0000
+                          v4 #5 down | 1:S  99.0 1.0000
+                          v5 #6 down | 1:S  99.0 1.0000
+                          v6 #7 down | 1:S  99.0 1.0000
+                          v7 #8 down | 1:S  99.0 1.0000
+            @  21    58ms v0 #9 down | 1:R3 99.0 1.0000
+                          v1 #2 down | 1:S  99.0 1.0000
+                          v2 #3 down | 1:S  99.0 1.0000
+                          v3 #4 down | 1:S  99.0 1.0000
+                          v4 #5 down | 1:S  99.0 1.0000
+                          v5 #6 down | 1:S  99.0 1.0000
+                          v6 #7 down | 1:S  99.0 1.0000
+                          v7 #8 down | 1:S  99.0 1.0000"#]],
         );
     }
 }

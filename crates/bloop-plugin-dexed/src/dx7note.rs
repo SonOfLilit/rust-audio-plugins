@@ -9,11 +9,17 @@
 //! kept intact.
 
 use crate::env::Env;
-use crate::fm_core::{FmCore, FmOpParams, N};
+use crate::fm_core::{FmCore, FmOpParams, LEVEL_THRESH, N};
 use crate::pitchenv::PitchEnv;
 use crate::tables::Tables;
+use bloop_plugin_api::OpWatch;
 
 const FEEDBACK_BITDEPTH: i32 = 8;
+
+/// An operator's gain (Q24) at full output level, full envelope level and
+/// a velocity its sensitivity leaves alone: envelope level 3840 << 16,
+/// 15 doublings, less the 14 `FmCore::render` takes off — 2.0.
+const FULL_GAIN: f32 = (2u32 << 24) as f32;
 
 const COARSEMUL: [i32; 32] = [
     -16777216, 0, 16777216, 26591258, 33554432, 38955489, 43368474, 47099600, 50331648, 53182516,
@@ -172,12 +178,16 @@ pub struct Dx7Note {
     algorithm: usize,
     pitchmoddepth: i32,
     pitchmodsens: i32,
+    /// Whether a chunk has been rendered since `init`. Until one has, each
+    /// operator's `gain_out` is still the previous note's on this voice.
+    rendered: bool,
 }
 
 impl Dx7Note {
     /// Start the voice from an unpacked 156-byte patch.
     pub fn init(&mut self, t: &Tables, patch: &[u8; 156], midinote: i32, velocity: i32) {
         self.initialised = true;
+        self.rendered = false;
         for op in 0..6 {
             let off = op * 21;
             let mut rates = [0i32; 4];
@@ -247,6 +257,7 @@ impl Dx7Note {
         lfo_delay: i32,
         ctrls: &Controllers,
     ) {
+        self.rendered = true;
         // ==== PITCH ====
         let pmd = u32::wrapping_mul(self.pitchmoddepth as u32, lfo_delay as u32); // Q32
         let senslfo = self.pitchmodsens * (lfo_val - (1 << 23));
@@ -323,6 +334,25 @@ impl Dx7Note {
             self.env[op].keydown(t, false);
         }
         self.pitchenv.keydown(t, false);
+    }
+
+    /// Operator `op` (0 = operator 6 … 5 = operator 1, the patch's order)
+    /// as a screen sees it, as of the last chunk rendered: its gain at the
+    /// end of that chunk, which is where the next one ramps from.
+    pub fn watch_op(&self, op: usize) -> OpWatch {
+        let env = &self.env[op];
+        let gain = self.params[op].gain_out;
+        OpWatch {
+            stage: env.stage(),
+            level: env.level_units(),
+            // A note struck after the block's last chunk has not sounded
+            // yet; and `FmCore::render` skips an operator this quiet.
+            amp: if !self.rendered || gain < LEVEL_THRESH {
+                0.0
+            } else {
+                gain as f32 / FULL_GAIN
+            },
+        }
     }
 
     /// A note is playing if it has been initialised and any carrier's amp
