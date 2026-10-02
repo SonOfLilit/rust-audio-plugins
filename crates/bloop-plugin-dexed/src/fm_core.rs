@@ -11,6 +11,10 @@ use crate::tables::Tables;
 pub const N: usize = 64;
 pub const LG_N: i32 = 6;
 
+/// The gain (Q24) below which an operator is not rendered at all, at
+/// either end of a chunk.
+pub const LEVEL_THRESH: i32 = 1120;
+
 // Flag bits: 0-1 output bus number, 2 add-to-bus, 4-5 input bus number,
 // 6 feedback in, 7 feedback out.
 const OUT_BUS_ADD: u8 = 1 << 2;
@@ -187,7 +191,6 @@ impl FmCore {
         fb_buf: &mut [i32; 2],
         feedback_shift: i32,
     ) {
-        const LEVEL_THRESH: i32 = 1120;
         let alg = ALGORITHMS[algorithm & 31];
         let mut has_contents = [true, false, false];
         for op in 0..6 {
