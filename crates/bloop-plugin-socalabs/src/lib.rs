@@ -334,6 +334,30 @@ impl Effect {
         self.kind
     }
 
+    /// The longest the effect's output can be silent while it still holds
+    /// something it will play later, in seconds at `bpm`: a Delay's time,
+    /// when its echo is heard at all (Mix above zero) — the gap between a
+    /// note and its first echo. Zero for every other effect, whose tails
+    /// sound without a gap. A host that stops running an effect after a
+    /// silence must wait at least this long, or the echo is lost.
+    #[must_use]
+    pub fn quiet_gap_seconds(&self, bpm: f32) -> f32 {
+        use plugins::delay::{BEAT, MIX, SYNC, TIME};
+        let Engine::Delay(delay) = &self.engine else {
+            return 0.0;
+        };
+        let value = |index: usize| {
+            delay
+                .params()
+                .get(index)
+                .map_or(0.0, gin::param::Param::user_value)
+        };
+        if value(MIX) <= 0.0 {
+            return 0.0;
+        }
+        delay_seconds(value(SYNC) >= 0.5, value(TIME), value(BEAT), bpm)
+    }
+
     /// Silence what the effect is still holding — a Delay's echoes, a
     /// reverb's tank, an envelope follower — and keep its knobs where they
     /// are: `reset` without `prepareToPlay`. Allocates nothing, at any

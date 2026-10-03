@@ -85,12 +85,12 @@ const DELAY_TIME: ParamSpec = ParamSpec::new(
     Conversion::Identity,
 );
 
-const SYNC: usize = 0;
-const TIME: usize = 1;
-const BEAT: usize = 2;
+pub(crate) const SYNC: usize = 0;
+pub(crate) const TIME: usize = 1;
+pub(crate) const BEAT: usize = 2;
 const FEEDBACK: usize = 3;
 const CROSSFEED: usize = 4;
-const MIX: usize = 5;
+pub(crate) const MIX: usize = 5;
 /// Where the internal delay time sits after the six knobs.
 const DELAY_PARAM: usize = 6;
 
