@@ -10,10 +10,9 @@
 //! keeps both apps' painters dumb: they turn min/max pairs into rectangles
 //! and know nothing about audio.
 //!
-//! Lifted out of `bloop-menu-framework`, where it was written for the
-//! legacy sampler page, when the spec-driven app needed the same picture.
-//! It has no UI dependency of any kind, so the two apps share the
-//! arithmetic and a waveform cannot mean two different things in them.
+//! It has no UI dependency of any kind, so the app and the manual's gold
+//! tables share the arithmetic and a waveform cannot mean two different
+//! things in them.
 
 /// Horizontal resolution a waveform is reduced to before it reaches the
 /// screen. Columns rather than pixels, so the reduction is deterministic and

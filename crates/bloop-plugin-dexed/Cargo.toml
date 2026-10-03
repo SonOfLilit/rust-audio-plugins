@@ -9,8 +9,7 @@ license = "Apache-2.0"
 # 2e182b3db85c09083ab13c8b9b00565ce7d9ff85) with the packed-voice unpacker
 # from Google's original repo (rev f67d41d313b7dc85f6fb99e79e515cc9d208cfff).
 # The manual's License page cites these exact revisions — keep them in sync
-# (see the `license_page_cites_the_pinned_msfa_revisions` test in
-# bloop-menu-pages).
+# (see `every_notice_cites_its_pinned_revision` in bloop-synths).
 
 [dependencies]
 bloop-core = { workspace = true }

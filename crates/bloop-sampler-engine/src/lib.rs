@@ -42,7 +42,7 @@ pub use wave::{MarkKind, WaveMark, WaveView, WAVE_COLUMNS};
 /// The Just-a-Sample revision this crate's voice is a port of.
 ///
 /// The manual's License page cites this exact revision — keep them in sync (see
-/// the `license_page_cites_the_pinned_jas_revision` test in bloop-menu-pages).
+/// `every_notice_cites_its_pinned_revision` in bloop-synths).
 pub const PORTED_FROM_JAS_REV: &str = "bc97747a514755ca686f8b1e5cd223e5b44866b4";
 
 /// The left and right gains for a Zone's pan, -1 (left) to 1 (right).

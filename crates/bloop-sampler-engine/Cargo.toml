@@ -8,7 +8,7 @@ license = "MIT"
 # in BASIC playback mode (github.com/BOBONA/Just-a-Sample, MIT, rev pinned in
 # `PORTED_FROM_JAS_REV`). The FX chain and the Bungee (ADVANCED) playback mode
 # are deliberately not ported — see the crate docs. The manual's License page
-# cites the pinned revision (test-guarded in bloop-menu-pages).
+# cites the pinned revision (`every_notice_cites_its_pinned_revision` in bloop-synths).
 
 [dependencies]
 # The voice's transcendentals go through libm rather than std so that the
