@@ -5,6 +5,8 @@
 #[cfg(test)]
 extern crate alloc;
 
+pub mod midi;
+
 use bloop_core::Note;
 
 /// Events that flow between sequencer, plugins, and audio graph.
