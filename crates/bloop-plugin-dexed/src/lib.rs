@@ -289,6 +289,46 @@ pub struct DexedPlugin {
     extra: [f32; N],
     extra_len: usize,
     extra_pos: usize,
+    /// Dexed's output DC filter.
+    dc: DcBlock,
+}
+
+/// The "very basic DC filter" Dexed runs its output through
+/// (`PluginFx::process`): a one-pole high-pass with its pole at
+/// `1 - 126 / rate`, a corner of about 20 Hz. The DX7's output stage is
+/// AC-coupled; MSFA's voices are not, and a patch whose carrier is phase
+/// modulated by an operator at its own ratio comes out well off zero.
+/// Its arithmetic is Dexed's, in `f32`.
+#[derive(Clone, Copy)]
+struct DcBlock {
+    pole: f32,
+    last_in: f32,
+    last_out: f32,
+}
+
+impl DcBlock {
+    fn new(sample_rate: f64) -> DcBlock {
+        DcBlock {
+            pole: (1.0 - 126.0 / sample_rate) as f32,
+            last_in: 0.0,
+            last_out: 0.0,
+        }
+    }
+
+    fn process(&mut self, samples: &mut [f32]) {
+        for sample in samples {
+            let input = *sample;
+            *sample = input - self.last_in + self.pole * self.last_out;
+            self.last_in = input;
+            self.last_out = *sample;
+        }
+        // Silence decays the feedback towards zero through the subnormals,
+        // which x86 does slowly; Dexed lets it. Far below anything a
+        // 24-bit output resolves.
+        if self.last_out.abs() < 1e-20 {
+            self.last_out = 0.0;
+        }
+    }
 }
 
 impl Default for DexedPlugin {
@@ -313,6 +353,7 @@ impl DexedPlugin {
             extra: [0.0; N],
             extra_len: 0,
             extra_pos: 0,
+            dc: DcBlock::new(48000.0),
         };
         plugin.load_preset(0);
         plugin
@@ -432,7 +473,11 @@ impl DexedPlugin {
             // Same headroom/clip staging as MSFA's synth_unit: >>4 then
             // clamp to ±2^24, mapped here to ±1.0 floats.
             let val = (v >> 4).clamp(-(1 << 24), 1 << 24);
-            *out = val as f32 / 16_777_216.0 * volume; // ±2^24 → ±1.0
+            *out = val as f32 / 16_777_216.0; // ±2^24 → ±1.0
+        }
+        self.dc.process(&mut self.extra);
+        for out in &mut self.extra {
+            *out *= volume;
         }
         self.extra_len = N;
         self.extra_pos = 0;
@@ -596,6 +641,7 @@ impl Plugin for DexedPlugin {
         self.voices = [Voice::default(); NUM_VOICES];
         self.extra_len = 0;
         self.extra_pos = 0;
+        self.dc = DcBlock::new(sample_rate);
         // The patch is the live state — do NOT reload the preset here, or
         // voice edits would vanish on every sample-rate change and synth
         // round-trip. Only the LFO re-seeds (its tables may have changed).
@@ -852,11 +898,11 @@ mod tests {
             ],
             64,
             expect![[r#"
-                w 0 peak=0.0692
-                w 1 peak=0.0682
-                w 2 peak=0.0359
-                w 3 peak=0.0321
-                w 4 peak=0.0337
+                w 0 peak=0.0695
+                w 1 peak=0.0683
+                w 2 peak=0.0364
+                w 3 peak=0.0323
+                w 4 peak=0.0342
                 w 5 peak=0.0000
                 w 6 peak=0.0000
                 w 7 peak=0.0000"#]],
@@ -922,14 +968,14 @@ mod tests {
             &[(0, note_on(60, 1.0)), (48, note_off(60))],
             64,
             expect![[r#"
-                w 0 peak=0.1619
-                w 1 peak=0.0892
-                w 2 peak=0.0625
-                w 3 peak=0.0469
-                w 4 peak=0.0323
-                w 5 peak=0.0227
-                w 6 peak=0.0141
-                w 7 peak=0.0044"#]],
+                w 0 peak=0.1616
+                w 1 peak=0.0797
+                w 2 peak=0.0615
+                w 3 peak=0.0493
+                w 4 peak=0.0302
+                w 5 peak=0.0220
+                w 6 peak=0.0140
+                w 7 peak=0.0046"#]],
         );
     }
 
@@ -945,14 +991,14 @@ mod tests {
             &[(0, note_on(69, 1.0)), (48, note_off(69))],
             64,
             expect![[r#"
-                w 0 peak=0.3422
-                w 1 peak=0.3590
-                w 2 peak=0.3847
-                w 3 peak=0.3919
-                w 4 peak=0.3879
-                w 5 peak=0.3601
-                w 6 peak=0.2762
-                w 7 peak=0.1340"#]],
+                w 0 peak=0.3394
+                w 1 peak=0.3204
+                w 2 peak=0.3483
+                w 3 peak=0.3680
+                w 4 peak=0.3696
+                w 5 peak=0.3603
+                w 6 peak=0.3102
+                w 7 peak=0.1395"#]],
         );
     }
 
@@ -966,18 +1012,18 @@ mod tests {
             &[(0, note_on(69, 1.0)), (48, note_off(69))],
             96,
             expect![[r#"
-                w 0 peak=0.3422
-                w 1 peak=0.3590
-                w 2 peak=0.3847
-                w 3 peak=0.3919
-                w 4 peak=0.3879
-                w 5 peak=0.3601
-                w 6 peak=0.2762
-                w 7 peak=0.1340
-                w 8 peak=0.0918
-                w 9 peak=0.0522
-                w10 peak=0.0264
-                w11 peak=0.0111"#]],
+                w 0 peak=0.3394
+                w 1 peak=0.3204
+                w 2 peak=0.3483
+                w 3 peak=0.3680
+                w 4 peak=0.3696
+                w 5 peak=0.3603
+                w 6 peak=0.3102
+                w 7 peak=0.1395
+                w 8 peak=0.0937
+                w 9 peak=0.0471
+                w10 peak=0.0235
+                w11 peak=0.0100"#]],
         );
     }
 
@@ -990,16 +1036,16 @@ mod tests {
             &[(0, note_on(60, 1.0)), (56, note_off(60))],
             80,
             expect![[r#"
-                w 0 peak=0.5228
-                w 1 peak=0.5315
-                w 2 peak=0.5162
-                w 3 peak=0.5097
-                w 4 peak=0.5131
-                w 5 peak=0.5306
-                w 6 peak=0.5276
-                w 7 peak=0.4786
-                w 8 peak=0.0825
-                w 9 peak=0.0215"#]],
+                w 0 peak=0.5393
+                w 1 peak=0.5473
+                w 2 peak=0.4980
+                w 3 peak=0.4912
+                w 4 peak=0.4992
+                w 5 peak=0.5176
+                w 6 peak=0.5181
+                w 7 peak=0.4690
+                w 8 peak=0.0873
+                w 9 peak=0.0214"#]],
         );
     }
 
@@ -1013,18 +1059,18 @@ mod tests {
             &[(0, note_on(60, 1.0))],
             96,
             expect![[r#"
-            w 0 peak=0.2137
-            w 1 peak=0.2078
-            w 2 peak=0.1957
-            w 3 peak=0.1821
-            w 4 peak=0.1713
-            w 5 peak=0.1596
-            w 6 peak=0.1446
-            w 7 peak=0.1282
-            w 8 peak=0.1150
-            w 9 peak=0.1057
-            w10 peak=0.0964
-            w11 peak=0.0822"#]],
+                w 0 peak=0.2246
+                w 1 peak=0.2063
+                w 2 peak=0.1966
+                w 3 peak=0.1849
+                w 4 peak=0.1702
+                w 5 peak=0.1622
+                w 6 peak=0.1437
+                w 7 peak=0.1282
+                w 8 peak=0.1170
+                w 9 peak=0.1043
+                w10 peak=0.0981
+                w11 peak=0.0838"#]],
         );
     }
 
@@ -1068,10 +1114,10 @@ mod tests {
             })
             .collect();
         expect![[r#"
-            vel 1.0: peak=0.3919
-            vel 0.7: peak=0.2568
-            vel 0.4: peak=0.2539
-            vel 0.1: peak=0.1959"#]]
+            vel 1.0: peak=0.3680
+            vel 0.7: peak=0.2596
+            vel 0.4: peak=0.2579
+            vel 0.1: peak=0.1972"#]]
         .assert_eq(&lines.join("\n"));
     }
 
@@ -1180,23 +1226,23 @@ mod tests {
             ],
             136,
             expect![[r#"
-                w 0 peak=0.5228
-                w 1 peak=0.5315
-                w 2 peak=0.5162
-                w 3 peak=0.5097
-                w 4 peak=0.5333
-                w 5 peak=0.5331
-                w 6 peak=0.5275
-                w 7 peak=0.3637
-                w 8 peak=0.2349
-                w 9 peak=0.2175
-                w10 peak=0.1950
-                w11 peak=0.1815
-                w12 peak=0.1714
-                w13 peak=0.1596
-                w14 peak=0.1446
+                w 0 peak=0.5393
+                w 1 peak=0.5473
+                w 2 peak=0.4980
+                w 3 peak=0.4912
+                w 4 peak=0.5191
+                w 5 peak=0.5200
+                w 6 peak=0.5184
+                w 7 peak=0.3596
+                w 8 peak=0.2592
+                w 9 peak=0.2121
+                w10 peak=0.1978
+                w11 peak=0.1843
+                w12 peak=0.1702
+                w13 peak=0.1622
+                w14 peak=0.1437
                 w15 peak=0.1282
-                w16 peak=0.1150"#]],
+                w16 peak=0.1170"#]],
         );
     }
 
@@ -1235,6 +1281,77 @@ mod tests {
         expect!["first_nonzero=Some(129)"].assert_eq(&format!("first_nonzero={onset:?}"));
     }
 
+    /// A note held for a second and let go, in quarter-second windows:
+    /// its offset from zero (`dc`) beside what it plays (`ac`, the RMS
+    /// around that offset).
+    fn check_dc(preset: usize, expect: Expect) {
+        let mut synth = DexedPlugin::new();
+        synth.set_param(PARAM_PRESET, preset as f32);
+        let quarter = (SR as usize / 4) / BLOCK;
+        let out = render_blocks(
+            &mut synth,
+            quarter * 8,
+            &[(0, note_on(60, 1.0)), (quarter * 4, note_off(60))],
+        );
+        let lines: Vec<String> = out
+            .chunks(quarter * BLOCK)
+            .enumerate()
+            .map(|(i, window)| {
+                let n = window.len() as f64;
+                let dc = window.iter().map(|&x| f64::from(x)).sum::<f64>() / n;
+                let ac = (window
+                    .iter()
+                    .map(|&x| (f64::from(x) - dc).powi(2))
+                    .sum::<f64>()
+                    / n)
+                    .sqrt();
+                format!(
+                    "{:.2}-{:.2}s  dc {dc:+.4}  ac {ac:.4}",
+                    i as f64 / 4.0,
+                    (i + 1) as f64 / 4.0
+                )
+            })
+            .collect();
+        expect.assert_eq(&format!("{}\n{}", preset_name(preset), lines.join("\n")));
+    }
+
+    /// Dexed runs its output through a DC filter (`PluginFx::process`,
+    /// a one-pole high-pass at about 20 Hz), as the DX7's own output stage
+    /// is AC-coupled. Some patches need it: SYN-LEAD 1, the kit's Lead,
+    /// has OP2 and OP3 at OP1's ratio, so OP1's phase modulation is
+    /// lopsided and its output sits well off zero for as long as the
+    /// note is held — a step at every note-on and note-off.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_held_note_sits_on_zero() {
+        check_dc(
+            13,
+            expect![[r#"
+            1A SYN-LEAD 1
+            0.00-0.25s  dc -0.0013  ac 0.0665
+            0.25-0.50s  dc -0.0006  ac 0.0793
+            0.50-0.75s  dc +0.0005  ac 0.0814
+            0.75-1.00s  dc +0.0011  ac 0.0731
+            1.00-1.25s  dc +0.0003  ac 0.0108
+            1.25-1.50s  dc -0.0000  ac 0.0000
+            1.50-1.75s  dc +0.0000  ac 0.0000
+            1.75-2.00s  dc +0.0000  ac 0.0000"#]],
+        );
+        check_dc(
+            1,
+            expect![[r#"
+            1A BRASS   2
+            0.00-0.25s  dc +0.0009  ac 0.1399
+            0.25-0.50s  dc +0.0029  ac 0.1571
+            0.50-0.75s  dc -0.0001  ac 0.1585
+            0.75-1.00s  dc -0.0010  ac 0.1151
+            1.00-1.25s  dc -0.0027  ac 0.0168
+            1.25-1.50s  dc +0.0000  ac 0.0000
+            1.50-1.75s  dc +0.0000  ac 0.0000
+            1.75-2.00s  dc +0.0000  ac 0.0000"#]],
+        );
+    }
+
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn volume_param_scales_output() {
@@ -1243,10 +1360,10 @@ mod tests {
             &[(0, Ev::Param(PARAM_VOLUME, 0.25)), (0, note_on(69, 1.0))],
             32,
             expect![[r#"
-                w 0 peak=0.0690
-                w 1 peak=0.0693
-                w 2 peak=0.0701
-                w 3 peak=0.0708"#]],
+                w 0 peak=0.0727
+                w 1 peak=0.0730
+                w 2 peak=0.0726
+                w 3 peak=0.0707"#]],
         );
     }
 
@@ -1519,11 +1636,11 @@ mod tests {
             h4 -
             h5 -
             ---
-            w 0 peak=0.1250
+            w 0 peak=0.1257
             w 1 peak=0.1250
             w 2 peak=0.1250
             w 3 peak=0.1250
-            w 4 peak=0.0980
+            w 4 peak=0.0998
             w 5 peak=0.0000"#]]
         .assert_eq(&lines.join("\n"));
     }
@@ -1589,17 +1706,17 @@ mod tests {
             ],
             96,
             expect![[r#"
-                w 0 peak=0.1250
-                w 1 peak=0.1250
+                w 0 peak=0.1257
+                w 1 peak=0.1251
                 w 2 peak=0.1250
                 w 3 peak=0.1250
-                w 4 peak=0.1249
-                w 5 peak=0.1227
-                w 6 peak=0.1206
-                w 7 peak=0.1186
+                w 4 peak=0.1250
+                w 5 peak=0.1228
+                w 6 peak=0.1207
+                w 7 peak=0.1187
                 w 8 peak=0.1166
                 w 9 peak=0.1145
-                w10 peak=0.1125
+                w10 peak=0.1126
                 w11 peak=0.1106"#]],
         );
     }
@@ -1627,15 +1744,15 @@ mod tests {
             ],
             72,
             expect![[r#"
-                w 0 peak=0.1250
-                w 1 peak=0.1250
-                w 2 peak=0.1219
-                w 3 peak=0.0000
+                w 0 peak=0.1257
+                w 1 peak=0.1251
+                w 2 peak=0.1210
+                w 3 peak=0.0002
                 w 4 peak=0.0000
                 w 5 peak=0.0000
-                w 6 peak=0.1250
-                w 7 peak=0.1250
-                w 8 peak=0.1041"#]],
+                w 6 peak=0.1266
+                w 7 peak=0.1251
+                w 8 peak=0.1010"#]],
         );
     }
 
@@ -1734,8 +1851,8 @@ mod tests {
         let (muted_f0, muted_tine) =
             mags(&[(0, Ev::Param(op2_enable, 0.0)), (0, note_on(69, 1.0))]);
         expect![[r#"
-            stock:   f0 0.190  tine band 0.0326
-            op2 off: f0 0.192  tine band 0.0018
+            stock:   f0 0.189  tine band 0.0327
+            op2 off: f0 0.191  tine band 0.0017
             tine collapses (>10x): true  fundamental survives: true"#]]
         .assert_eq(&format!(
             "stock:   f0 {stock_f0:.3}  tine band {stock_tine:.4}\n\
