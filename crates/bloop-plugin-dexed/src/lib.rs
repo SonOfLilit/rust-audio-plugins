@@ -368,6 +368,14 @@ impl DexedPlugin {
         self.lfo.keydown();
     }
 
+    /// Both wheels back at rest: the pitch wheel in the middle, the mod
+    /// wheel down. For a synth handed out again from a pool, which the
+    /// host takes to be at rest.
+    pub fn wheels_at_rest(&mut self) {
+        self.ctrls.pitch_bend = Controllers::default().pitch_bend;
+        self.ctrls.pitch_mod = 0;
+    }
+
     fn note_off(&mut self, midinote: u8) {
         for voice in &mut self.voices {
             if voice.keydown && voice.midinote == midinote {
