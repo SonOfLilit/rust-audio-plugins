@@ -266,6 +266,9 @@ pub struct SamplerVoice {
     tail_off: usize,
 
     do_lowpass: bool,
+    /// The sample rate, cutoff and channels the lowpass was last designed
+    /// for.
+    lowpass_key: Option<(i32, u32, usize)>,
     /// Three lowpass sets (one per channel each), addressed through `assignment`
     /// so "swapping main and loop" is an index swap.
     lowpass: [Vec<LowpassStream>; 3],
@@ -324,6 +327,7 @@ impl SamplerVoice {
             tail_off: TAIL_OFF,
 
             do_lowpass: false,
+            lowpass_key: None,
             lowpass: [
                 vec![LowpassStream::new(); channels],
                 vec![LowpassStream::new(); channels],
@@ -668,13 +672,18 @@ impl SamplerVoice {
             }
         }
 
-        if self.do_lowpass {
+        // Designed again only when it would come out different: a render
+        // runs this every call, and with modulated pitch that is every few
+        // dozen frames.
+        let key = (sample_rate, frequency.to_bits(), sample.num_channels());
+        if self.do_lowpass && self.lowpass_key != Some(key) {
             for ch in 0..sample.num_channels() {
                 for set in [StreamSet::Main, StreamSet::Loop, StreamSet::End] {
                     self.stream_mut(set, ch)
                         .set_coefficients(sample_rate, frequency);
                 }
             }
+            self.lowpass_key = Some(key);
         }
     }
 

@@ -22,11 +22,11 @@ impl ParamRange {
 /// `PluginParameters::WAVETABLE_CUTOFF_HZ`.
 pub const WAVETABLE_CUTOFF_HZ: f32 = 20.0;
 
-/// Reference ranges, in the order they appear in `createParameterLayout`.
 /// Where a steady lowpass ([`SamplerParams::steady_lowpass`]) cuts at most,
 /// as a share of the Sample's Nyquist: 21.6 kHz of a 48 kHz Sample's 24.
 pub const STEADY_LOWPASS_OF_NYQUIST: f32 = 0.9;
 
+/// Reference ranges, in the order they appear in `createParameterLayout`.
 pub mod ranges {
     use super::ParamRange;
 
