@@ -9,6 +9,11 @@ pub mod midi;
 
 use bloop_core::Note;
 
+/// The controller number of the modulation wheel, MIDI's CC 1: a
+/// [`NoteEvent::CC`] with it carries the wheel, 0 at rest to 1 all the way
+/// up.
+pub const CC_MOD_WHEEL: u8 = 1;
+
 /// Events that flow between sequencer, plugins, and audio graph.
 /// Sorted by `time` within a buffer.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -45,6 +45,15 @@ use tables::Tables;
 /// more (roadmap).
 pub const NUM_VOICES: usize = 8;
 
+/// The DX7 function's MOD WHEEL RANGE, as Dexed's wheel `FmMod` holds it
+/// (0–99 on the panel, a percentage of the wheel), with the wheel assigned
+/// to PITCH only — not AMP, not EG BIAS. Fixed, as the function settings
+/// are the instrument's and not the patch's, and bloop has no page for
+/// them. Half: the patch's pitch sensitivity then sets the depth, from
+/// none (PMS 0) to about ±1.3 semitones at PMS 4 with the wheel all the
+/// way up.
+pub const MOD_WHEEL_RANGE: i32 = 50;
+
 pub const PARAM_VOLUME: usize = 0;
 pub const PARAM_PRESET: usize = 1;
 /// Params `PARAM_VOICE_BASE + o` map 1:1 onto unpacked-voice bytes
@@ -379,6 +388,15 @@ impl DexedPlugin {
             NoteEvent::Choke { note, .. } => self.note_off(note.as_u8()),
             NoteEvent::PitchBend { value, .. } => {
                 self.ctrls.pitch_bend = (value * 16383.0).round().clamp(0.0, 16383.0) as i32;
+            }
+            // The DX7's mod wheel, as Dexed's `Controllers::refresh` turns
+            // it into a modulation total: the wheel's 0–127 times the
+            // function's MOD WHEEL RANGE, assigned to pitch. The voice
+            // multiplies it by the patch's own pitch sensitivity and the
+            // LFO, so a patch with none does not wobble.
+            NoteEvent::CC { cc, value, .. } if cc == bloop_events::CC_MOD_WHEEL => {
+                let wheel = (value * 127.0).round().clamp(0.0, 127.0) as i32;
+                self.ctrls.pitch_mod = wheel * MOD_WHEEL_RANGE / 100;
             }
             _ => {}
         }

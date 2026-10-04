@@ -129,8 +129,9 @@ fn osc_freq(midinote: i32, mode: i32, coarse: i32, fine: i32, detune: i32) -> i3
 
 /// The controller state a voice reads while rendering. A trimmed-down port
 /// of `controllers.h`: pitch bend plus the modulation totals the CC mapping
-/// layer would produce (we have no CC sources wired yet, so `amp_mod` and
-/// `pitch_mod` stay 0 and `eg_mod` stays 127 = no EG attenuation).
+/// layer would produce. The mod wheel is the one source wired: it sets
+/// `pitch_mod` ([`crate::MOD_WHEEL_RANGE`]); `amp_mod` stays 0 and
+/// `eg_mod` 127 = no EG attenuation.
 #[derive(Clone, Copy)]
 pub struct Controllers {
     /// Raw 14-bit pitch bend, 0..16383, center 8192.
