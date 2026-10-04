@@ -23,6 +23,10 @@ impl ParamRange {
 pub const WAVETABLE_CUTOFF_HZ: f32 = 20.0;
 
 /// Reference ranges, in the order they appear in `createParameterLayout`.
+/// Where a steady lowpass ([`SamplerParams::steady_lowpass`]) cuts at most,
+/// as a share of the Sample's Nyquist: 21.6 kHz of a 48 kHz Sample's 24.
+pub const STEADY_LOWPASS_OF_NYQUIST: f32 = 0.9;
+
 pub mod ranges {
     use super::ParamRange;
 
@@ -111,6 +115,14 @@ pub struct SamplerParams {
     /// reference's Attack. [`AmpEnvelope::Reference`] leaves the voice
     /// exactly the reference's.
     pub amp_envelope: AmpEnvelope,
+    /// Bloop's, not the reference's: keep the antialiasing lowpass running
+    /// whatever the speed, its cutoff never above [`STEADY_LOWPASS_OF_NYQUIST`]
+    /// of the Sample's Nyquist, for a voice whose pitch is modulated. The
+    /// reference switches it on only once the speed passes 1, and a pitch
+    /// that rises through 1 mid-note then starts an eighth-order filter at
+    /// a hair under Nyquist under a sounding note, which clicks. Off, the
+    /// voice is the reference's.
+    pub steady_lowpass: bool,
 
     // Output
     pub gain_db: f32,
@@ -156,6 +168,7 @@ impl Default for SamplerParams {
             release_shape: 2.0,
             crossfade_samples: 1000,
             amp_envelope: AmpEnvelope::Reference,
+            steady_lowpass: false,
 
             gain_db: 0.0,
             mono_output: false,

@@ -34,7 +34,9 @@ pub use buffer::{SampleBuffer, SharedSample};
 pub use decode::{decode, ImportError, SampleDecoder, IMPORTABLE_EXTENSIONS};
 pub use edit::{reverse, trim};
 pub use onsets::detect_onsets;
-pub use params::{ranges, AmpEnvelope, ParamRange, SamplerParams, WAVETABLE_CUTOFF_HZ};
+pub use params::{
+    ranges, AmpEnvelope, ParamRange, SamplerParams, STEADY_LOWPASS_OF_NYQUIST, WAVETABLE_CUTOFF_HZ,
+};
 pub use record::{RecordState, Recorder};
 pub use voice::{SamplerVoice, VoiceState, MAX_CHANNELS};
 pub use wave::{MarkKind, WaveMark, WaveView, WAVE_COLUMNS};

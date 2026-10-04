@@ -13,7 +13,7 @@
 use crate::juce::{
     approximately_equal_absolute, decibels_to_gain, jmap, IirCoefficients, IirFilter,
 };
-use crate::params::{AmpEnvelope, SamplerParams, WAVETABLE_CUTOFF_HZ};
+use crate::params::{AmpEnvelope, SamplerParams, STEADY_LOWPASS_OF_NYQUIST, WAVETABLE_CUTOFF_HZ};
 use crate::SampleBuffer;
 
 /// `juce::MathConstants<float>::pi`.
@@ -66,6 +66,12 @@ struct VoiceContext {
 /// A Decay of 0 is a millisecond, bloop's Release floor: a cut from full to
 /// silence inside one frame would click.
 const DECAY_FLOOR_MS: f32 = 1.0;
+
+/// How far back of a sounding note a steady lowpass
+/// ([`SamplerParams::steady_lowpass`]) starts when it is switched on
+/// mid-note: long enough for its eighth-order Butterworth to settle and
+/// the interpolation window to have its past.
+const LOWPASS_WARM_FRAMES: i32 = 64;
 
 /// An [`AmpEnvelope`] other than the reference's, in frames of output, as
 /// a note captured it.
@@ -640,10 +646,22 @@ impl SamplerVoice {
         let filter_limit = sample_rate as f32 / 2.0 - 10.0;
 
         let was_lowpass = self.do_lowpass;
-        self.do_lowpass = self.speed > 1.0 && frequency < filter_limit;
+        let frequency = if params.steady_lowpass {
+            frequency.min(sample_rate as f32 / 2.0 * STEADY_LOWPASS_OF_NYQUIST)
+        } else {
+            frequency
+        };
+        self.do_lowpass = params.steady_lowpass || (self.speed > 1.0 && frequency < filter_limit);
 
         if !was_lowpass && self.do_lowpass {
-            let position = self.vc.current_position as i32;
+            let mut position = self.vc.current_position as i32;
+            // Bloop's: switched on under a sounding note, it starts a
+            // little way back and runs up to the note, rather than from
+            // silence with nothing behind the interpolation window. The
+            // reference starts at the position, as a note's start does.
+            if params.steady_lowpass && position > self.sample_start {
+                position = (position - LOWPASS_WARM_FRAMES).max(self.sample_start);
+            }
             for ch in 0..sample.num_channels() {
                 self.stream_mut(StreamSet::Main, ch)
                     .reset_processing(position);
