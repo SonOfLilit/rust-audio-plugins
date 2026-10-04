@@ -71,31 +71,93 @@ pub fn pan_gains(pan: f32) -> (f32, f32) {
 /// same sound hash differently and break the comparison the port rests
 /// on.
 pub fn encode_wav16(samples_l: &[f32], samples_r: &[f32], sample_rate: u32) -> Vec<u8> {
-    let num_samples = samples_l.len();
-    let data_size = (num_samples * 2 * 2) as u32; // 2 channels × 2 bytes
+    encode_wav(samples_l, samples_r, sample_rate, WavFormat::Int16)
+}
 
-    let mut buf = Vec::with_capacity(44 + data_size as usize);
-    // RIFF header
+/// How a WAV stores its samples: the Maschine's three Export Audio bit
+/// depths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WavFormat {
+    /// 16-bit PCM, what a CD holds; full scale is ±32767.
+    Int16,
+    /// 24-bit PCM, for mastering; full scale is ±8388607.
+    Int24,
+    /// 32-bit IEEE float, the engine's own samples as they are — nothing
+    /// above full scale is clipped.
+    Float32,
+}
+
+impl WavFormat {
+    const fn bytes(self) -> u16 {
+        match self {
+            WavFormat::Int16 => 2,
+            WavFormat::Int24 => 3,
+            WavFormat::Float32 => 4,
+        }
+    }
+}
+
+/// Encode stereo WAV bytes in `format`.
+///
+/// PCM is clamped to full scale. 16-bit is truncated toward zero, as it
+/// always has been: every gold hash in the manual is a hash of those
+/// bytes. 24-bit, which nothing hashes, is rounded to the nearest step,
+/// so its error is half a step rather than one. A float file is `WAVE_FORMAT_IEEE_FLOAT`,
+/// with the `cbSize` and `fact` chunk the format asks of anything that
+/// is not PCM.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a WAV's sizes are 32-bit by definition; a file over 4 GB is not one"
+)]
+pub fn encode_wav(
+    samples_l: &[f32],
+    samples_r: &[f32],
+    sample_rate: u32,
+    format: WavFormat,
+) -> Vec<u8> {
+    let frames = samples_l.len().min(samples_r.len());
+    let bytes = format.bytes();
+    let align = 2 * bytes;
+    let data_size = (frames * usize::from(align)) as u32;
+    let float = format == WavFormat::Float32;
+    // fmt is 16 bytes for PCM; 18, with a cbSize of 0, for float, which
+    // also has a 12-byte fact chunk.
+    let fmt_size: u32 = if float { 18 } else { 16 };
+    let fact_size: u32 = if float { 12 } else { 0 };
+    let mut buf = Vec::with_capacity(44 + (fmt_size - 16 + fact_size + data_size) as usize);
     buf.extend_from_slice(b"RIFF");
-    buf.extend_from_slice(&(36 + data_size).to_le_bytes());
+    buf.extend_from_slice(&(4 + 8 + fmt_size + fact_size + 8 + data_size).to_le_bytes());
     buf.extend_from_slice(b"WAVE");
-    // fmt chunk
     buf.extend_from_slice(b"fmt ");
-    buf.extend_from_slice(&16u32.to_le_bytes());
-    buf.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    buf.extend_from_slice(&2u16.to_le_bytes()); // stereo
+    buf.extend_from_slice(&fmt_size.to_le_bytes());
+    buf.extend_from_slice(&(if float { 3u16 } else { 1u16 }).to_le_bytes());
+    buf.extend_from_slice(&2u16.to_le_bytes());
     buf.extend_from_slice(&sample_rate.to_le_bytes());
-    buf.extend_from_slice(&(sample_rate * 4).to_le_bytes()); // byte rate
-    buf.extend_from_slice(&4u16.to_le_bytes()); // block align
-    buf.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
-                                                 // data chunk
+    buf.extend_from_slice(&(sample_rate * u32::from(align)).to_le_bytes());
+    buf.extend_from_slice(&align.to_le_bytes());
+    buf.extend_from_slice(&(bytes * 8).to_le_bytes());
+    if float {
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(b"fact");
+        buf.extend_from_slice(&4u32.to_le_bytes());
+        buf.extend_from_slice(&(frames as u32).to_le_bytes());
+    }
     buf.extend_from_slice(b"data");
     buf.extend_from_slice(&data_size.to_le_bytes());
-    for i in 0..num_samples {
-        let l = (samples_l[i].clamp(-1.0, 1.0) * 32767.0) as i16;
-        let r = (samples_r[i].clamp(-1.0, 1.0) * 32767.0) as i16;
-        buf.extend_from_slice(&l.to_le_bytes());
-        buf.extend_from_slice(&r.to_le_bytes());
+    for (&l, &r) in samples_l.iter().zip(samples_r).take(frames) {
+        for sample in [l, r] {
+            match format {
+                WavFormat::Int16 => {
+                    buf.extend_from_slice(&((sample.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+                }
+                WavFormat::Int24 => {
+                    let value = (f64::from(sample.clamp(-1.0, 1.0)) * 8_388_607.0).round() as i32;
+                    buf.extend_from_slice(&value.to_le_bytes()[..3]);
+                }
+                WavFormat::Float32 => buf.extend_from_slice(&sample.to_le_bytes()),
+            }
+        }
     }
     buf
 }
+
