@@ -160,10 +160,11 @@ impl Lstm {
         true
     }
 
-    /// NAM's guess at what settles an LSTM: half a second.
+    /// NAM's guess at what settles an LSTM: half a second at the rate the
+    /// file gives, and one sample if it gives none.
     #[must_use]
-    pub fn prewarm_samples(sample_rate: f64) -> usize {
-        let n = (0.5 * sample_rate) as i64;
+    pub fn prewarm_samples(sample_rate: Option<f64>) -> usize {
+        let n = (0.5 * sample_rate.unwrap_or(-1.0)) as i64;
         n.max(1) as usize
     }
 

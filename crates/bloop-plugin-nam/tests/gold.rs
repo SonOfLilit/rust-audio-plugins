@@ -118,15 +118,25 @@ fn cases() -> Vec<Case> {
             plucks(0.1, 1.0),
             128,
         );
-        for shape in Shape::WAVENETS
-            .into_iter()
-            .chain([Shape::GatedNano, Shape::Lstm(16)])
-        {
+        for shape in Shape::WAVENETS.into_iter().chain([
+            Shape::GatedNano,
+            Shape::KernelOne,
+            Shape::NanoWith("ReLU"),
+            Shape::NanoWith("LeakyReLU"),
+            Shape::NanoWith("Hardtanh"),
+            Shape::NanoWith("Sigmoid"),
+            Shape::NanoWith("SiLU"),
+            Shape::NanoWith("Hardswish"),
+            Shape::NanoWith("Softsign"),
+            Shape::NanoWith("Fasttanh"),
+            Shape::Lstm(16),
+            Shape::Lstm2(8),
+        ]) {
             add(&shape.name(), shape.nam(7), tanh, plucks(0.3, 0.5), 128);
         }
         add("tiny lstm", TINY_LSTM.into(), tanh, plucks(0.3, 0.5), 128);
     }
-    for block in [1, 37, 100] {
+    for block in [1, 37, 100, 128, 300] {
         add(
             &format!("obsidian, blocks of {block}"),
             OBSIDIAN.into(),
@@ -194,7 +204,17 @@ fn every_case_through_the_port() {
         feather                      Exact  rms  -71.9 dB  peak  -60.6 dB  64ec4bd0fd512544
         nano                         Exact  rms  -46.7 dB  peak  -46.6 dB  bb773e555bb2a30f
         gated-nano                   Exact  rms  -49.8 dB  peak  -47.8 dB  61938c87f6f55910
+        kernel-1                     Exact  rms  -35.1 dB  peak  -35.1 dB  4d43d1ef1d1bfd38
+        nano-ReLU                    Exact  rms  -45.8 dB  peak  -45.7 dB  05c626ea1b3430f3
+        nano-LeakyReLU               Exact  rms  -45.8 dB  peak  -45.7 dB  8c479a2c9f00567b
+        nano-Hardtanh                Exact  rms  -46.9 dB  peak  -46.8 dB  bd99da336522b9d6
+        nano-Sigmoid                 Exact  rms  -47.6 dB  peak  -47.5 dB  80a95ad4405cce62
+        nano-SiLU                    Exact  rms  -45.6 dB  peak  -45.6 dB  b2661ad099724c8e
+        nano-Hardswish               Exact  rms  -45.7 dB  peak  -45.6 dB  e18b4502ccc8d788
+        nano-Softsign                Exact  rms  -46.2 dB  peak  -46.1 dB  01e829739727984a
+        nano-Fasttanh                Exact  rms  -46.7 dB  peak  -46.6 dB  73cf25fbd921f968
         lstm-16                      Exact  rms  -12.7 dB  peak  -12.6 dB  8845ec2139c756ab
+        lstm-2x8                     Exact  rms  -19.0 dB  peak  -18.9 dB  2328f79ac5f8a9b2
         tiny lstm                    Exact  rms  -45.0 dB  peak  -35.6 dB  651046e958ad22c5
         obsidian, DI level           Fast  rms  -26.2 dB  peak  -18.1 dB  78b6f7623375129d
         obsidian, hot                Fast  rms  -22.1 dB  peak  -14.3 dB  4be1fc60aab841ff
@@ -205,11 +225,23 @@ fn every_case_through_the_port() {
         feather                      Fast  rms  -71.8 dB  peak  -60.5 dB  d4c48698649d1253
         nano                         Fast  rms  -46.7 dB  peak  -46.6 dB  73cf25fbd921f968
         gated-nano                   Fast  rms  -49.8 dB  peak  -47.8 dB  d4a1d0f11e264afb
+        kernel-1                     Fast  rms  -35.1 dB  peak  -35.1 dB  69b035d06feef4a8
+        nano-ReLU                    Fast  rms  -45.8 dB  peak  -45.7 dB  05c626ea1b3430f3
+        nano-LeakyReLU               Fast  rms  -45.8 dB  peak  -45.7 dB  8c479a2c9f00567b
+        nano-Hardtanh                Fast  rms  -46.9 dB  peak  -46.8 dB  bd99da336522b9d6
+        nano-Sigmoid                 Fast  rms  -47.6 dB  peak  -47.5 dB  80a95ad4405cce62
+        nano-SiLU                    Fast  rms  -45.6 dB  peak  -45.6 dB  b2661ad099724c8e
+        nano-Hardswish               Fast  rms  -45.7 dB  peak  -45.6 dB  e18b4502ccc8d788
+        nano-Softsign                Fast  rms  -46.2 dB  peak  -46.1 dB  01e829739727984a
+        nano-Fasttanh                Fast  rms  -46.7 dB  peak  -46.6 dB  73cf25fbd921f968
         lstm-16                      Fast  rms  -12.7 dB  peak  -12.6 dB  b9eb585fe83172ec
+        lstm-2x8                     Fast  rms  -19.0 dB  peak  -18.9 dB  5733730fbdc94d18
         tiny lstm                    Fast  rms  -45.1 dB  peak  -35.8 dB  40463df69a6cc105
         obsidian, blocks of 1        Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
         obsidian, blocks of 37       Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
         obsidian, blocks of 100      Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        obsidian, blocks of 128      Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        obsidian, blocks of 300      Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
     "#]]);
 }
 
@@ -391,7 +423,17 @@ fn gold_errors() {
         feather                      Exact  max |diff| 8.4e-9  of peak 8.9e-6
         nano                         Exact  max |diff| 9.3e-10  of peak 2.0e-7
         gated-nano                   Exact  max |diff| 2.1e-9  of peak 5.1e-7
+        kernel-1                     Exact  max |diff| 7.5e-9  of peak 4.3e-7
+        nano-ReLU                    Exact  max |diff| 1.4e-9  of peak 2.7e-7
+        nano-LeakyReLU               Exact  max |diff| 1.4e-9  of peak 2.7e-7
+        nano-Hardtanh                Exact  max |diff| 1.4e-9  of peak 3.1e-7
+        nano-Sigmoid                 Exact  max |diff| 1.4e-9  of peak 3.3e-7
+        nano-SiLU                    Exact  max |diff| 1.4e-9  of peak 2.7e-7
+        nano-Hardswish               Exact  max |diff| 9.3e-10  of peak 1.8e-7
+        nano-Softsign                Exact  max |diff| 9.3e-10  of peak 1.9e-7
+        nano-Fasttanh                Exact  max |diff| 9.3e-10  of peak 2.0e-7
         lstm-16                      Exact  max |diff| 3.0e-8  of peak 1.3e-7
+        lstm-2x8                     Exact  max |diff| 2.2e-8  of peak 2.0e-7
         tiny lstm                    Exact  max |diff| 8.9e-8  of peak 5.4e-6
         obsidian, DI level           Fast  max |diff| 1.7e-6  of peak 1.4e-5
         obsidian, hot                Fast  max |diff| 2.2e-6  of peak 1.1e-5
@@ -402,11 +444,23 @@ fn gold_errors() {
         feather                      Fast  max |diff| 7.3e-9  of peak 7.7e-6
         nano                         Fast  max |diff| 9.3e-10  of peak 2.0e-7
         gated-nano                   Fast  max |diff| 2.6e-9  of peak 6.3e-7
+        kernel-1                     Fast  max |diff| 7.5e-9  of peak 4.3e-7
+        nano-ReLU                    Fast  max |diff| 1.4e-9  of peak 2.7e-7
+        nano-LeakyReLU               Fast  max |diff| 1.4e-9  of peak 2.7e-7
+        nano-Hardtanh                Fast  max |diff| 1.4e-9  of peak 3.1e-7
+        nano-Sigmoid                 Fast  max |diff| 1.4e-9  of peak 3.3e-7
+        nano-SiLU                    Fast  max |diff| 1.4e-9  of peak 2.7e-7
+        nano-Hardswish               Fast  max |diff| 9.3e-10  of peak 1.8e-7
+        nano-Softsign                Fast  max |diff| 9.3e-10  of peak 1.9e-7
+        nano-Fasttanh                Fast  max |diff| 9.3e-10  of peak 2.0e-7
         lstm-16                      Fast  max |diff| 3.0e-8  of peak 1.3e-7
+        lstm-2x8                     Fast  max |diff| 2.2e-8  of peak 2.0e-7
         tiny lstm                    Fast  max |diff| 1.5e-7  of peak 9.2e-6
         obsidian, blocks of 1        Fast  max |diff| 1.4e-6  of peak 1.1e-5
         obsidian, blocks of 37       Fast  max |diff| 1.4e-6  of peak 1.1e-5
         obsidian, blocks of 100      Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        obsidian, blocks of 128      Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        obsidian, blocks of 300      Fast  max |diff| 1.4e-6  of peak 1.1e-5
         worst: 2.8e-5 (-91 dB)
     "#]]
     .assert_eq(&out);

@@ -202,7 +202,8 @@ fn every_shipped_capture_reads() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn what_the_reader_refuses() {
     let a2 = r#"{"architecture": "WaveNet", "config": {"layers": [{"input_size": 1, "condition_size": 1, "head_size": 1, "channels": 3, "kernel_sizes": [3], "dilations": [1], "activation": "Tanh", "head_bias": false}], "head": null, "head_scale": 0.02}, "weights": []}"#;
-    let short = Shape::Nano.nam(1).replace(", 0.02]}", "]}");
+    let nano = Shape::Nano.nam(1);
+    let short = nano.replace(", 0.02]}", "]}");
     let cases = [
         ("not JSON", "hello".to_string()),
         ("ConvNet", r#"{"architecture": "ConvNet", "config": {}, "weights": []}"#.to_string()),
@@ -210,22 +211,40 @@ fn what_the_reader_refuses() {
         ("a weight short", short),
         ("a weight over", Shape::Nano.nam(1).replace("0.02]}", "0.02, 1.0]}")),
         ("stereo LSTM", r#"{"architecture": "LSTM", "config": {"input_size": 2, "hidden_size": 3, "num_layers": 1}, "weights": []}"#.to_string()),
+        ("kernel 0", nano.replacen(r#""kernel_size": 3"#, r#""kernel_size": 0"#, 1)),
+        ("dilation 0", nano.replacen("[1, 2, 4", "[0, 2, 4", 1)),
+        ("a head", nano.replace(r#""head": null"#, r#""head": {"out_channels": 1}"#)),
+        ("a condition DSP", nano.replace(r#""head": null"#, r#""head": null, "condition_dsp": {}"#)),
+        ("65 channels", nano.replacen(r#""channels": 4"#, r#""channels": 65"#, 1)),
+        ("stereo out", nano.replace(r#""head_size": 1"#, r#""head_size": 2"#)),
+        ("unknown activation", nano.replacen(r#""activation": "Tanh""#, r#""activation": "Swish7""#, 1)),
+        ("activation object", nano.replacen(r#""activation": "Tanh""#, r#""activation": {"type": "Tanh"}"#, 1)),
+        ("mismatched arrays", nano.replacen(r#""input_size": 4"#, r#""input_size": 3"#, 1)),
     ];
     let mut out = String::new();
     for (label, text) in cases {
         let said = match Model::parse(&text) {
             Ok(_) => "read".to_string(),
-            Err(e) => e.chars().take(90).collect(),
+            Err(e) => e.chars().take(100).collect(),
         };
-        let _ = writeln!(out, "{label:<15} {said}");
+        let _ = writeln!(out, "{label:<19} {said}");
     }
     expect![[r#"
-        not JSON        not a .nam file: expected value at line 1 column 1
-        ConvNet         bloop does not run ConvNet models yet
-        an A2 layer     layer array 0 uses "kernel_sizes", which bloop does not run yet
-        a weight short  the model has 841 weights, fewer than its layers need
-        a weight over   the model has 843 weights, but its layers use 842
-        stereo LSTM     the LSTM takes 2 inputs; bloop runs mono models
+        not JSON            not a .nam file: expected value at line 1 column 1
+        ConvNet             bloop does not run ConvNet models yet
+        an A2 layer         layer array 0 uses "kernel_sizes", which bloop does not run yet
+        a weight short      the model has 841 weights, fewer than its layers need
+        a weight over       the model has 843 weights, but its layers use 842
+        stereo LSTM         the LSTM takes 2 inputs; bloop runs mono models
+        kernel 0            layer array 0 has a kernel of 0
+        dilation 0          layer array 0 has no layers, or a dilation of 0
+        a head              bloop does not run WaveNets with a post-stack head yet
+        a condition DSP     bloop does not run WaveNets with a condition DSP yet
+        65 channels         layer array 0 has 65 channels; bloop runs 1 to 64
+        stereo out          the model outputs 2 channels; bloop runs mono models
+        unknown activation  bloop does not run the Swish7 activation yet
+        activation object   layer array 0's activation is not a name
+        mismatched arrays   layer array 1 takes 3 channels, but the array before it outputs 4
     "#]]
     .assert_eq(&out);
 }

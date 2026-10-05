@@ -33,6 +33,9 @@ pub struct Model {
     net: Net,
     /// The rate it was trained at: it sounds right only at this rate.
     pub sample_rate: f64,
+    /// The rate as the file gives it, if it does: NAM prewarms an LSTM
+    /// that gives none for one sample only.
+    given_rate: Option<f64>,
     pub metadata: Metadata,
     pub architecture: &'static str,
 }
@@ -60,7 +63,8 @@ impl Model {
                     .ok_or("a weight is not a number")
             })
             .collect::<Result<_, _>>()?;
-        let sample_rate = json["sample_rate"].as_f64().unwrap_or(48_000.0);
+        let given_rate = json["sample_rate"].as_f64();
+        let sample_rate = given_rate.unwrap_or(48_000.0);
         let (net, architecture) = match architecture {
             "WaveNet" => (Net::WaveNet(wavenet(config, &weights)?), "WaveNet"),
             "LSTM" => (
@@ -86,6 +90,7 @@ impl Model {
         let mut model = Self {
             net,
             sample_rate,
+            given_rate,
             metadata,
             architecture,
         };
@@ -100,7 +105,7 @@ impl Model {
     pub fn prewarm_samples(&self) -> usize {
         match &self.net {
             Net::WaveNet(w) => w.prewarm_samples(),
-            Net::Lstm(_) => Lstm::prewarm_samples(self.sample_rate),
+            Net::Lstm(_) => Lstm::prewarm_samples(self.given_rate),
         }
     }
 

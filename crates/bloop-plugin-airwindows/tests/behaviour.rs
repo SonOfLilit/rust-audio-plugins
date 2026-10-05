@@ -16,6 +16,16 @@ use wasm_bindgen_test::*;
 
 const PI: f64 = core::f64::consts::PI;
 
+/// The provenance comment in Cargo.toml names the revision the License
+/// page cites, so the two cannot drift apart.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn cargo_toml_cites_the_ported_revision() {
+    let manifest = include_str!("../Cargo.toml");
+    let rev = bloop_plugin_airwindows::PORTED_FROM_AIRWINDOWS_REV;
+    assert!(manifest.contains(rev), "Cargo.toml must cite {rev}");
+}
+
 fn gain(db: f64) -> f64 {
     libm::pow(10.0, db / 20.0)
 }

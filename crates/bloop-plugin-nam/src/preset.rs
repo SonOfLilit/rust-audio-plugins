@@ -19,8 +19,16 @@ pub enum Shape {
     /// trainer versions offered: twice the convolution's channels, the
     /// first half through `tanh` times the second through a sigmoid.
     GatedNano,
+    /// The nano size with a kernel of one: no look back at all, every
+    /// layer a 1x1.
+    KernelOne,
+    /// The nano size with another activation, by the name a `.nam` file
+    /// gives it.
+    NanoWith(&'static str),
     /// One LSTM layer of this many hidden units.
     Lstm(usize),
+    /// Two LSTM layers of this many hidden units each.
+    Lstm2(usize),
 }
 
 impl Shape {
@@ -34,7 +42,10 @@ impl Shape {
             Self::Feather => "feather".into(),
             Self::Nano => "nano".into(),
             Self::GatedNano => "gated-nano".into(),
+            Self::KernelOne => "kernel-1".into(),
+            Self::NanoWith(activation) => format!("nano-{activation}"),
             Self::Lstm(h) => format!("lstm-{h}"),
+            Self::Lstm2(h) => format!("lstm-2x{h}"),
         }
     }
 
@@ -50,12 +61,21 @@ impl Shape {
             (unit * 2.0 - 1.0) * scale
         };
         let mut weights = Vec::new();
-        let config = if let Self::Lstm(hidden) = self {
-            let count = 4 * hidden * (1 + hidden) + 4 * hidden + 2 * hidden + hidden + 1;
+        let lstm = match self {
+            Self::Lstm(h) => Some((h, 1)),
+            Self::Lstm2(h) => Some((h, 2)),
+            _ => None,
+        };
+        let config = if let Some((hidden, layers)) = lstm {
             let scale = 1.0 / (hidden as f32).sqrt();
-            weights.extend((0..count).map(|_| weight(scale)));
+            for layer in 0..layers {
+                let input = if layer == 0 { 1 } else { hidden };
+                let count = 4 * hidden * (input + hidden) + 4 * hidden + 2 * hidden;
+                weights.extend((0..count).map(|_| weight(scale)));
+            }
+            weights.extend((0..=hidden).map(|_| weight(scale)));
             format!(
-                r#""architecture": "LSTM", "config": {{"input_size": 1, "hidden_size": {hidden}, "num_layers": 1}}"#
+                r#""architecture": "LSTM", "config": {{"input_size": 1, "hidden_size": {hidden}, "num_layers": {layers}}}"#
             )
         } else {
             let (c1, c2, d1, d2): (usize, usize, &[usize], &[usize]) = match self {
@@ -66,13 +86,15 @@ impl Shape {
             };
             let gated = self == Self::GatedNano;
             let g = if gated { 2 } else { 1 };
+            let kernel = if self == Self::KernelOne { 1 } else { 3 };
+            let activation = if let Self::NanoWith(a) = self { a } else { "Tanh" };
             let arrays = [(1, c1, c2, d1, false), (c1, c2, 1, d2, true)];
             let mut layers = String::new();
             for (i, &(input, channels, head, dilations, head_bias)) in arrays.iter().enumerate() {
                 let scale = 1.0 / (channels as f32 * 3.0).sqrt();
                 let count = input * channels
                     + dilations.len()
-                        * (3 * channels * g * channels
+                        * (kernel * channels * g * channels
                             + 2 * g * channels
                             + channels * channels
                             + channels)
@@ -84,7 +106,7 @@ impl Shape {
                 }
                 let _ = write!(
                     layers,
-                    r#"{{"input_size": {input}, "condition_size": 1, "head_size": {head}, "channels": {channels}, "kernel_size": 3, "dilations": {dilations:?}, "activation": "Tanh", "gated": {gated}, "head_bias": {head_bias}}}"#
+                    r#"{{"input_size": {input}, "condition_size": 1, "head_size": {head}, "channels": {channels}, "kernel_size": {kernel}, "dilations": {dilations:?}, "activation": "{activation}", "gated": {gated}, "head_bias": {head_bias}}}"#
                 );
             }
             weights.push(0.02);

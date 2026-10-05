@@ -93,6 +93,10 @@ fn dense_row(
     start: impl Fn(usize) -> usize,
 ) {
     let frames = row.len();
+    debug_assert!(
+        w.iter().enumerate().all(|(t, _)| start(t) + frames <= data.len()),
+        "a weight reads past its row"
+    );
     let mut s = 0;
     while s + LANES <= frames {
         let mut acc = [bias; LANES];
@@ -621,6 +625,12 @@ fn check(configs: &[ArrayConfig], i: usize) -> Result<(), String> {
         return Err(format!(
             "layer array {i} is conditioned on {} channels; bloop runs models conditioned on the input alone",
             cfg.condition_size
+        ));
+    }
+    if i + 1 == configs.len() && cfg.head_size != 1 {
+        return Err(format!(
+            "the model outputs {} channels; bloop runs mono models",
+            cfg.head_size
         ));
     }
     if i == 0 && cfg.input_size != 1 {

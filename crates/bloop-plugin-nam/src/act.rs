@@ -20,7 +20,11 @@ pub enum Tanh {
 /// One activation, as a `.nam` file names it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Activation {
+    /// `tanh`, the render's choice of which ([`Tanh`]).
     Tanh,
+    /// `"Fasttanh"`: a model that names it runs the fast one always, as
+    /// in NAM.
+    FastTanh,
     Hardtanh,
     Relu,
     LeakyRelu(f32),
@@ -35,7 +39,8 @@ impl Activation {
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
         Some(match name {
-            "Tanh" | "Fasttanh" => Self::Tanh,
+            "Tanh" => Self::Tanh,
+            "Fasttanh" => Self::FastTanh,
             "Hardtanh" => Self::Hardtanh,
             "ReLU" => Self::Relu,
             "LeakyReLU" => Self::LeakyRelu(0.01),
@@ -54,6 +59,7 @@ impl Activation {
                 Tanh::Exact => data.iter_mut().for_each(|x| *x = libm::tanhf(*x)),
                 Tanh::Fast => data.iter_mut().for_each(|x| *x = fast_tanh(*x)),
             },
+            Self::FastTanh => data.iter_mut().for_each(|x| *x = fast_tanh(*x)),
             Self::Hardtanh => data.iter_mut().for_each(|x| *x = hard_tanh(*x)),
             Self::Relu => data
                 .iter_mut()
