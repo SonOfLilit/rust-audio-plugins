@@ -1128,6 +1128,31 @@ fn each_effect_alone() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_held_note_through_a_moved_position_a_new_table_and_a_preset() {
+    check(
+        &Program::new()
+            .on(0, 60, 100)
+            .play("held", 0.3)
+            .set("osc1pos", 60.0)
+            .play("position moved", 0.2)
+            .tables("NK - INERT", "AKWP bw_squ")
+            .play("table switched", 0.2)
+            .preset("DT Siren 1")
+            .play("preset loaded", 0.3)
+            .off(0, 60)
+            .play("released", 0.3),
+        &expect![[r#"
+            held: L peak -19.5 rms -26.0 | R peak -19.5 rms -26.0 #a14e6d36d3098ecd
+            position moved: L peak -19.7 rms -23.4 | R peak -19.7 rms -23.4 #fbac01db02c24ef1
+            table switched: L peak -20.2 rms -25.8 | R peak -20.2 rms -25.8 #c2213c572e5d3f09
+            preset loaded: L peak -inf rms -inf | R peak -inf rms -inf #2d9ab45bcfc84b25
+            released: L peak -inf rms -inf | R peak -inf rms -inf #2d9ab45bcfc84b25
+        "#]],
+    );
+}
+
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn more_notes_than_voices_steal() {
     let mut program = Program::new().set("voices", 4.0).set("release", 1.0);
     for (i, note) in [48, 52, 55, 59, 62, 65].into_iter().enumerate() {

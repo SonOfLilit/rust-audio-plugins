@@ -24,6 +24,7 @@ fn main() {
 
     let mut blob = Vec::new();
     let mut index = String::from("pub static CATALOGUE: &[Entry] = &[\n");
+    let mut names = Vec::new();
     for line in listing.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
         let f: Vec<&str> = line.split('\t').collect();
         assert_eq!(f.len(), 6, "a catalogue line has six fields: {line}");
@@ -45,8 +46,15 @@ fn main() {
             index,
             "    Entry {{ bank: {bank:?}, name: {name:?}, format: {format}, frame: {frame}, audio: {audio} }},"
         );
+        names.push(format!("{name:?}"));
     }
     index.push_str("];\n");
+    let _ = writeln!(
+        index,
+        "/// Every wavetable's name, in catalogue order.\npub static NAMES: [&str; {}] = [{}];",
+        names.len(),
+        names.join(", ")
+    );
 
     std::fs::File::create(out.join("wavetables.blob"))
         .and_then(|mut f| f.write_all(&blob))

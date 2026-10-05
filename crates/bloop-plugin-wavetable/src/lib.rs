@@ -52,6 +52,34 @@ pub const PORTED_FROM_WAVETABLE_REV: &str = "5f932ff87c453d32cebee233af1fde946f5
 /// Init. Setting it loads that preset over everything.
 pub const PARAM_PRESET: usize = params::PARAM_COUNT;
 
+/// The wavetables a Wavetable set to play `current` plays once parameter
+/// `param` is set to `value`: a Wavetable knob names one, and a preset
+/// names both (or leaves one at Init's). What a host that hands the synth
+/// its tables ([`WavetablePlugin::set_tables`]) asks before it sends a
+/// parameter on, so the tables can go ahead of it.
+#[must_use]
+pub fn tables_after(current: [u16; 2], param: usize, value: f32) -> [u16; 2] {
+    // As the knob itself stores it (`Values::set`): to its step, in range.
+    let range = params::PARAMS[id::WT1].range;
+    let table = |value: f32| range.clamp(range.snap(value)) as u16;
+    match param {
+        id::WT1 => [table(value), current[1]],
+        id::WT2 => [current[0], table(value)],
+        PARAM_PRESET => {
+            let preset = presets::PRESETS.get(value.round().max(0.0) as usize);
+            let tables = preset.map_or([u16::MAX; 2], |p| p.tables);
+            [0, 1].map(|i| {
+                if tables[i] == u16::MAX {
+                    presets::INIT_TABLES[i]
+                } else {
+                    tables[i]
+                }
+            })
+        }
+        _ => current,
+    }
+}
+
 /// The most events one block hands the synth; more are dropped.
 const MAX_EVENTS: usize = 256;
 

@@ -54,6 +54,13 @@ pub fn catalogue() -> &'static [Entry] {
     CATALOGUE
 }
 
+/// Every wavetable's name, in catalogue order: what the Wavetable knob
+/// steps through.
+#[must_use]
+pub fn names() -> &'static [&'static str] {
+    &NAMES
+}
+
 /// The catalogue entry called `name`.
 #[must_use]
 pub fn index_of(name: &str) -> Option<usize> {

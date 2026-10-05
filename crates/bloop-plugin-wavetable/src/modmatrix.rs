@@ -159,6 +159,29 @@ pub const DESTINATION_OF: [i16; PARAM_COUNT] = {
     of
 };
 
+/// What a slot's Source knob offers: None, then every source by name.
+pub static SOURCE_CHOICES: [&str; SOURCE_COUNT + 1] = {
+    let mut all = ["None"; SOURCE_COUNT + 1];
+    let mut i = 0;
+    while i < SOURCE_COUNT {
+        all[i + 1] = SOURCES[i].name;
+        i += 1;
+    }
+    all
+};
+
+/// What a slot's Destination knob offers: None, then every parameter the
+/// matrix reaches, by name.
+pub static DESTINATION_CHOICES: [&str; DESTINATION_COUNT + 1] = {
+    let mut all = ["None"; DESTINATION_COUNT + 1];
+    let mut i = 0;
+    while i < DESTINATION_COUNT {
+        all[i + 1] = SPECS[DESTINATIONS[i]].name;
+        i += 1;
+    }
+    all
+};
+
 /// The source with preset id `id`.
 #[must_use]
 pub fn source_named(id: &str) -> Option<usize> {
@@ -166,7 +189,7 @@ pub fn source_named(id: &str) -> Option<usize> {
 }
 
 /// How many routes reach one destination at most. A factory preset's
-/// most is 4; a fifth slot on the same destination is ignored.
+/// most is 4; a ninth slot on the same destination is ignored.
 pub const MAX_PER_DESTINATION: usize = 8;
 
 /// A route the matrix runs: which source, how deep.

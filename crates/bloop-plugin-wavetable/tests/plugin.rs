@@ -27,7 +27,7 @@ use expect_test::{expect, Expect};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 
-/// Counts the allocations made on the thread that is asking, so tests
+/// Counts the allocations and frees made on the thread that is asking, so tests
 /// running beside each other do not count each other's.
 struct Counting;
 
@@ -43,6 +43,9 @@ unsafe impl GlobalAlloc for Counting {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // A free counts too: dropping the last handle on a table here is
+        // what the audio thread must never do.
+        let _ = ALLOCATIONS.try_with(|n| n.set(n.get() + 1));
         // Safety: forwarded unchanged to the system allocator.
         unsafe { System.dealloc(ptr, layout) }
     }
@@ -350,11 +353,11 @@ fn choke_cuts_and_aftertouch_is_ignored() {
 fn presets_load_through_the_preset_knob() {
     let mut plugin = WavetablePlugin::at(RATE);
     let mut text = String::new();
-    let guitar = presets::PRESETS
+    let siren = presets::PRESETS
         .iter()
-        .position(|p| p.name == "Guitar Pad")
+        .position(|p| p.name == "DT Siren 1")
         .expect("a shipped preset");
-    plugin.set_param(PARAM_PRESET, guitar as f32);
+    plugin.set_param(PARAM_PRESET, siren as f32);
     let show = |plugin: &WavetablePlugin, text: &mut String| {
         let mods = (0..params::MOD_SLOTS)
             .map(|s| plugin.get_param(params::id::MOD1_SRC + s * 3))
@@ -376,7 +379,7 @@ fn presets_load_through_the_preset_knob() {
     plugin.set_param(PARAM_PRESET, 999.0);
     show(&plugin, &mut text);
     check(&text, &expect![[r#"
-        preset 5 (Guitar Pad): tables [114, 69], osc1pos 38.72, fltenable 1, 0 mod slots
+        preset 0 (DT Siren 1): tables [113, 31], osc1pos 51.153572, fltenable 1, 2 mod slots
         preset 8 (Init): tables [26, 31], osc1pos 0, fltenable 1, 0 mod slots
         preset 8 (Init): tables [26, 31], osc1pos 0, fltenable 1, 0 mod slots
     "#]]);
