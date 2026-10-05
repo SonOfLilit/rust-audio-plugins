@@ -290,6 +290,12 @@ impl Synth {
         self.voices.iter().any(Voice::is_active)
     }
 
+    /// How many voices are sounding, those being cut short excepted.
+    #[must_use]
+    pub fn active_voices(&self) -> usize {
+        self.active_count() as usize
+    }
+
     fn rebuild_routes(&mut self) {
         let values = &self.values;
         self.matrix.set_routes((0..MOD_SLOTS).map(|slot| {

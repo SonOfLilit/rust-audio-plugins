@@ -121,6 +121,13 @@ impl WavetablePlugin {
         self.synth.is_sounding()
     }
 
+    /// How many voices are sounding, those being cut short excepted: at
+    /// most the Voices knob, and never more than [`VOICE_SLOTS`].
+    #[must_use]
+    pub fn active_voices(&self) -> usize {
+        self.synth.active_voices()
+    }
+
     /// Every voice stopped and every effect's tail emptied, now.
     /// Allocation-free.
     pub fn silence(&mut self) {
