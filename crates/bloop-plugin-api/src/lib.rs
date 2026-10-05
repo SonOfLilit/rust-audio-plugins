@@ -28,6 +28,24 @@ pub struct ParamInfo {
     pub max: f32,
 }
 
+/// How much a render may spend on a sample: what an effect with a cheap
+/// and a costly way to run (NAM's fast or exact `tanh`) is told to use.
+///
+/// Belongs to the render, not the Project: the same Project plays [`Live`]
+/// through the speakers and renders at [`Render`] when it is exported or
+/// bounced, which nobody waits on in real time.
+///
+/// [`Live`]: Quality::Live
+/// [`Render`]: Quality::Render
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Quality {
+    /// Played as it happens: has to keep up on a phone.
+    #[default]
+    Live,
+    /// Rendered offline (EXPORT, a bounce): may take longer than real time.
+    Render,
+}
+
 /// Context passed to Plugin::process each audio block.
 pub struct ProcessContext<'a> {
     pub outputs: &'a mut [&'a mut [f32]],

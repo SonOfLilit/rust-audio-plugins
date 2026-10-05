@@ -1,0 +1,53 @@
+//! The captures bloop ships.
+//!
+//! NAM captures are made by the community and licensed however their
+//! makers chose; bloop ships only ones whose licence plainly allows it.
+//! Both of these are Steven Atkinson's, from his MIT-licensed repositories:
+//!
+//! - **Obsidian**: an Omega Ampworks Obsidian, high gain, modelled by him —
+//!   the capture NeuralAmpModelerPlugin ships as its REAPER example
+//!   (`REAPER/model.nam`, NeuralAmpModelerPlugin rev
+//!   16be869746b8915885c7a35bafdcc0061faeb50e).
+//! - **Example**: NeuralAmpModelerCore's own A1 "standard" example
+//!   (`example_models/wavenet_a1_standard.nam`, the rev `vendor/nam` pins),
+//!   which says nothing of what it captured. It plays like a high-gain amp
+//!   through a cabinet: heavily compressed, its harmonics falling away above
+//!   4 kHz.
+//!
+//! Both are the trainer's standard WaveNet, trained at 48 kHz.
+
+use std::sync::OnceLock;
+
+use crate::Model;
+
+/// A capture bloop ships: its name in the Model list, and its file.
+pub struct Capture {
+    pub name: &'static str,
+    pub text: &'static str,
+}
+
+pub const CAPTURES: [Capture; 2] = [
+    Capture {
+        name: "Obsidian",
+        text: include_str!("../models/obsidian.nam"),
+    },
+    Capture {
+        name: "Example",
+        text: include_str!("../models/example.nam"),
+    },
+];
+
+/// Every shipped capture, read and prewarmed once, in [`CAPTURES`] order:
+/// a plug-in takes copies, and puts a copy back to how it was here when it
+/// switches to it. (A capture that did not read would be left out; a test
+/// reads every one.)
+#[must_use]
+pub fn models() -> &'static [Model] {
+    static MODELS: OnceLock<Vec<Model>> = OnceLock::new();
+    MODELS.get_or_init(|| {
+        CAPTURES
+            .iter()
+            .filter_map(|c| Model::parse(c.text).ok())
+            .collect()
+    })
+}

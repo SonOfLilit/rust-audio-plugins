@@ -6,7 +6,12 @@ license = "MIT"
 
 # Neural Amp Modeler: a Rust port of NeuralAmpModelerCore's WaveNet and LSTM
 # (MIT, Steven Atkinson), at rev 0b3d3c97b0859a3a8c92a8628c4dd89a25eb5842 —
-# the revision the vendor/nam submodule pins, which the gold tests compile.
+# the revision the vendor/nam submodule pins, which the gold tests compile —
+# and of the tone stack NeuralAmpModelerPlugin (MIT) puts after the model, at
+# rev 16be869746b8915885c7a35bafdcc0061faeb50e, with the AudioDSPTools (MIT)
+# filters it pins, rev e19ef4b5b3bf2171c431847563acde29eedf85c0. models/ holds
+# the two captures bloop ships, both from those MIT repositories
+# (src/bundled.rs).
 
 [features]
 # Comparison against the C++ original (tests/gold.rs). Needs g++ and the

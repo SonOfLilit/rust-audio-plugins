@@ -104,6 +104,18 @@ impl Model {
         }
     }
 
+    /// Takes on `from`'s state — a copy of the same capture, kept as it
+    /// was just after its prewarm, puts this one back there — without
+    /// allocating. `false`, and nothing changed, if `from` is another
+    /// network.
+    pub fn restore(&mut self, from: &Self) -> bool {
+        match (&mut self.net, &from.net) {
+            (Net::WaveNet(a), Net::WaveNet(b)) => a.restore(b),
+            (Net::Lstm(a), Net::Lstm(b)) => a.restore(b),
+            _ => false,
+        }
+    }
+
     /// Forgets what it has heard and runs NAM's prewarm, in blocks of
     /// [`MAX_BLOCK`], with `tanh`. Allocates nothing; costs
     /// [`Self::prewarm_samples`] samples of processing. [`Self::parse`]

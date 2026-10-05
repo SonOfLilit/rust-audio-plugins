@@ -13,7 +13,7 @@
 pub enum Tanh {
     /// `tanhf`, to the last bit the maths library gives.
     Exact,
-    /// NAM's `fast_tanh`: within 2e-4 of `tanhf` everywhere.
+    /// NAM's `fast_tanh`: within 4.4e-4 of `tanhf` everywhere.
     Fast,
 }
 

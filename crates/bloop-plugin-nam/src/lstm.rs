@@ -141,6 +141,25 @@ impl Lstm {
         }
     }
 
+    /// Takes on `from`'s state without allocating; `false`, and nothing
+    /// changed, if the two are not the same network.
+    pub fn restore(&mut self, from: &Self) -> bool {
+        let same = self.cells.len() == from.cells.len()
+            && self
+                .cells
+                .iter()
+                .zip(&from.cells)
+                .all(|(a, b)| a.xh.len() == b.xh.len() && a.c.len() == b.c.len());
+        if !same {
+            return false;
+        }
+        for (a, b) in self.cells.iter_mut().zip(&from.cells) {
+            a.xh.copy_from_slice(&b.xh);
+            a.c.copy_from_slice(&b.c);
+        }
+        true
+    }
+
     /// NAM's guess at what settles an LSTM: half a second.
     #[must_use]
     pub fn prewarm_samples(sample_rate: f64) -> usize {

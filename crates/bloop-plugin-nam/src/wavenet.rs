@@ -52,6 +52,25 @@ impl Rows {
     }
 }
 
+/// `a + w · x`. On a phone (aarch64) one fused multiply-add, which every
+/// `ARMv8` core has: half the instructions of a multiply then an add, in the
+/// loop all of a model's time goes to. Fused, the product is not rounded
+/// before the add, so a phone's output differs from this machine's in the
+/// last bits — well inside what `tests/gold.rs` holds the port to. Elsewhere
+/// (x86 without a guaranteed FMA unit, and wasm, whose renders the tests
+/// compare against native ones) the multiply and the add stay separate.
+#[inline]
+fn madd(a: f32, w: f32, x: f32) -> f32 {
+    #[cfg(target_arch = "aarch64")]
+    {
+        w.mul_add(x, a)
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        a + w * x
+    }
+}
+
 /// How many frames of one output row are summed in registers at once.
 const LANES: usize = 32;
 
@@ -80,14 +99,14 @@ fn dense_row(
         if let Some((scale, init)) = init {
             if let Some(x) = init[s..].first_chunk::<LANES>() {
                 for (a, x) in acc.iter_mut().zip(x) {
-                    *a += scale * *x;
+                    *a = madd(*a, scale, *x);
                 }
             }
         }
         for (t, &w) in w.iter().enumerate() {
             if let Some(x) = data[start(t) + s..].first_chunk::<LANES>() {
                 for (a, x) in acc.iter_mut().zip(x) {
-                    *a += w * *x;
+                    *a = madd(*a, w, *x);
                 }
             }
         }
@@ -97,10 +116,10 @@ fn dense_row(
     for f in s..frames {
         let mut acc = bias;
         if let Some((scale, init)) = init {
-            acc += scale * init[f];
+            acc = madd(acc, scale, init[f]);
         }
         for (t, &w) in w.iter().enumerate() {
-            acc += w * data[start(t) + f];
+            acc = madd(acc, w, data[start(t) + f]);
         }
         row[f] = acc;
     }
@@ -529,6 +548,29 @@ impl WaveNet {
                 layer.history.clear();
             }
         }
+    }
+
+    /// Takes on `from`'s state — what it has heard — without allocating.
+    /// `false`, and nothing changed, if the two are not the same network.
+    pub fn restore(&mut self, from: &Self) -> bool {
+        let same = self.arrays.len() == from.arrays.len()
+            && self.arrays.iter().zip(&from.arrays).all(|(a, b)| {
+                a.layers.len() == b.layers.len()
+                    && a.layers.iter().zip(&b.layers).all(|(x, y)| {
+                        x.history.data.len() == y.history.data.len()
+                            && x.history.lookback == y.history.lookback
+                    })
+            });
+        if !same {
+            return false;
+        }
+        for (a, b) in self.arrays.iter_mut().zip(&from.arrays) {
+            for (x, y) in a.layers.iter_mut().zip(&b.layers) {
+                x.history.data.copy_from_slice(&y.history.data);
+                x.history.at = y.history.at;
+            }
+        }
+        true
     }
 
     /// Multiplies and adds per sample: what one sample costs.
