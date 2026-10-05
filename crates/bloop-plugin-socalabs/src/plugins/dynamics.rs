@@ -200,3 +200,31 @@ impl Processor for DynamicsProcessor {
         }
     }
 }
+
+impl DynamicsProcessor {
+    /// `process`, the detector listening to `key` — a side-chain's two
+    /// channels — rather than to the signal. The knobs are handed on as
+    /// `process` hands them.
+    pub fn process_keyed(&mut self, left: &mut [f32], right: &mut [f32], key: [&[f32]; 2]) {
+        let samples = left.len().min(right.len());
+        if key.iter().any(|k| k.len() < samples) {
+            self.process(left, right, Host { bpm: 120.0 });
+            return;
+        }
+        if any_smoothing(&self.params) {
+            for i in 0..samples {
+                self.apply(1, 1);
+                self.dynamics.process_keyed(
+                    &mut [&mut left[i..=i], &mut right[i..=i]],
+                    &[&key[0][i..=i], &key[1][i..=i]],
+                );
+            }
+        } else {
+            self.apply(samples, 1);
+            self.dynamics.process_keyed(
+                &mut [&mut left[..samples], &mut right[..samples]],
+                &[&key[0][..samples], &key[1][..samples]],
+            );
+        }
+    }
+}

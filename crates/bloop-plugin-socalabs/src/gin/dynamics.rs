@@ -6,7 +6,7 @@
 //! four processors use is ported: a peak detector with digital time
 //! constants, reporting in decibels, and the stereo pair linked. The
 //! class's other switches — mean-square and RMS detection, analog time
-//! constants, unlinked channels, lookahead, side-chain keying and filters,
+//! constants, unlinked channels, lookahead, side-chain filters,
 //! automatic makeup gain, the compressor-expander curve — are left behind
 //! until something turns one on. So are the level trackers, which feed
 //! meters and do not touch audio.
@@ -195,6 +195,21 @@ impl Dynamics {
 
     /// Process `channels` in place, the detector following the signal.
     pub fn process(&mut self, channels: &mut [&mut [f32]]) {
+        self.run(channels, None);
+    }
+
+    /// Process `channels` in place, the detector following `key` instead:
+    /// `process (buffer, sidechain)`, the newer Gin's side-chain keying.
+    /// As there, the input gain lands on the key as on the signal, and a
+    /// key with fewer channels than the signal has its last drive the
+    /// rest; one shorter than the block is not used at all.
+    pub fn process_keyed(&mut self, channels: &mut [&mut [f32]], key: &[&[f32]]) {
+        let samples = channels.first().map_or(0, |c| c.len());
+        let usable = !key.is_empty() && key.iter().all(|k| k.len() >= samples);
+        self.run(channels, usable.then_some(key));
+    }
+
+    fn run(&mut self, channels: &mut [&mut [f32]], key: Option<&[&[f32]]>) {
         let n = self.channels.min(channels.len());
         let Some(samples) = channels.first().map(|c| c.len()) else {
             return;
@@ -203,8 +218,14 @@ impl Dynamics {
         let output_gain = self.output_gain;
         for i in 0..samples {
             let mut linked = 0.0f32;
-            for (channel, envelope) in channels.iter().zip(&mut self.envelopes).take(n) {
-                linked += decibels_to_gain(envelope.process(input_gain * channel[i]));
+            for (c, (channel, envelope)) in channels
+                .iter()
+                .zip(&mut self.envelopes)
+                .take(n)
+                .enumerate()
+            {
+                let heard = key.map_or(channel[i], |key| key[c.min(key.len() - 1)][i]);
+                linked += decibels_to_gain(envelope.process(input_gain * heard));
             }
             linked /= self.channels as f32;
             let linked = gain_to_decibels(linked);

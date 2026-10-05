@@ -135,6 +135,16 @@ impl Kind {
         }
     }
 
+    /// Whether it listens to a side-chain input: the Compressor, the
+    /// Limiter and the Gate, as the Maschine's do
+    /// (effects#the-side-chain-parameter-page) — Gin's dynamics can key
+    /// off another signal. The Expander, which the Maschine has not, does
+    /// not.
+    #[must_use]
+    pub fn takes_key(self) -> bool {
+        matches!(self, Self::Compressor | Self::Limiter | Self::Gate)
+    }
+
     /// The effect called `name`, if there is one.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
@@ -371,6 +381,22 @@ impl Effect {
     #[must_use]
     pub fn sample_rate(&self) -> f32 {
         self.sample_rate
+    }
+
+    /// One block in place, the detector listening to `key` — a side-chain
+    /// input's two channels, at least as long as the block — for an effect
+    /// that has one ([`Kind::takes_key`]); any other processes as it
+    /// always does.
+    pub fn process_keyed(&mut self, context: &mut ProcessContext, key: [&[f32]; 2]) {
+        if let (true, Engine::Dynamics(dynamics), [left, right, ..]) = (
+            self.kind.takes_key(),
+            &mut self.engine,
+            &mut context.outputs[..],
+        ) {
+            dynamics.process_keyed(left, right, key);
+            return;
+        }
+        self.process(context);
     }
 
     /// The unit a parameter's value is in, as the original labels it.
