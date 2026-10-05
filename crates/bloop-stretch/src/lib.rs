@@ -46,6 +46,10 @@ use partials::Partial;
 use phase::Phase;
 use rustfft::num_complex::Complex32;
 
+/// The Bungee revision the port follows: v2.4.10, which `vendor/bungee`
+/// pins and the gold tests compile.
+pub const BUNGEE_REV: &str = "2745718c2751bd655d7c5ed4853955de492bb39f";
+
 /// Bungee's limit on how far a pitch can move, in octaves either way:
 /// Bungee ships 2 and Just-a-Sample builds it with 4. Three is the most
 /// the Audio plug-in's Tune reaches (36 semitones). Only buffer sizes

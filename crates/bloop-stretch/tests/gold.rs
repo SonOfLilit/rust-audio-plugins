@@ -551,6 +551,17 @@ mod gold {
 
     fn build() -> PathBuf {
         let b = bungee();
+        let head = Command::new("git")
+            .arg("-C")
+            .arg(&b)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .expect("run git to read vendor/bungee's revision");
+        assert_eq!(
+            String::from_utf8_lossy(&head.stdout).trim(),
+            bloop_stretch::BUNGEE_REV,
+            "vendor/bungee is not at the revision the port (and its License notice) cites"
+        );
         let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bungee-gold");
         std::fs::create_dir_all(&out).expect("create the harness build directory");
         let binary = out.join("harness");
