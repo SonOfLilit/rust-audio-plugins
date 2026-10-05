@@ -43,13 +43,13 @@ impl GlibcRand {
             rear: 0,
         };
         for _ in 0..310 {
-            rand.next();
+            rand.rand();
         }
         rand
     }
 
     /// `rand()`.
-    pub fn next(&mut self) -> i32 {
+    pub fn rand(&mut self) -> i32 {
         self.state[self.front] = self.state[self.front].wrapping_add(self.state[self.rear]);
         let result = (self.state[self.front] >> 1) as i32;
         self.front = (self.front + 1) % 31;
@@ -145,7 +145,7 @@ impl Default for AirWindowsDistortion {
 /// noise-shaped against the last one added.
 fn dither(rand: &mut GlibcRand, x: f64) -> f64 {
     let (_, expon) = libm::frexpf(x as f32);
-    (f64::from(rand.next()) / (f64::from(RAND_MAX) * 7.737_125_245_533_627e25))
+    (f64::from(rand.rand()) / (f64::from(RAND_MAX) * 7.737_125_245_533_627e25))
         * math::pow(2.0, f64::from(expon + 62))
 }
 

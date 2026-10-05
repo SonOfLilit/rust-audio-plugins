@@ -103,6 +103,10 @@ impl Notes {
 }
 
 /// The synth: Wavetable's processor, voices and effects.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "gin::Synthesiser's mono, legato, glissando and portamento flags, and the processor's own"
+)]
 pub struct Synth {
     pub values: Values,
     matrix: Matrix,
@@ -157,7 +161,7 @@ impl Synth {
         // Airwindows seeds its dither from glibc's `rand()`, first as each
         // effect is built and again as the processor resets them.
         let mut glibc = GlibcRand::new(1);
-        let mut rand = || glibc.next();
+        let mut rand = || glibc.rand();
         let mut bitcrusher = DeRez2::new(&mut rand);
         let mut fire_amp = FireAmp::new(&mut rand);
         let mut grind_amp = GrindAmp::new(&mut rand);
@@ -268,7 +272,7 @@ impl Synth {
     /// A parameter set, as the host sets it.
     pub fn set_param(&mut self, index: usize, value: f32) {
         self.values.set(index, value);
-        if index >= id::MOD1_SRC && index < id::MOD1_SRC + MOD_SLOTS * 3 {
+        if (id::MOD1_SRC..id::MOD1_SRC + MOD_SLOTS * 3).contains(&index) {
             self.routes_dirty = true;
         }
     }
@@ -312,7 +316,7 @@ impl Synth {
         } else {
             base
         };
-        spec.conversion.apply(spec.range.from_0to1(v))
+        spec.conversion.apply(spec.range.convert_from_0to1(v))
     }
 
     fn voice_started(&mut self, voice: usize) {
@@ -365,7 +369,7 @@ impl Synth {
         self.voices[voice].note_on_time = self.note_on_counter;
         self.note_on_counter = self.note_on_counter.wrapping_add(1);
         self.voice_started(voice);
-        self.with_context(voice, |v, ctx| v.note_started(ctx));
+        self.with_context(voice, Voice::note_started);
     }
 
     fn stop_voice(&mut self, voice: usize, note: Note, tail: bool) {
@@ -378,7 +382,7 @@ impl Synth {
     fn retrigger_voice(&mut self, voice: usize, note: Note) {
         self.update_glide(voice);
         self.voices[voice].note = note;
-        self.with_context(voice, |v, ctx| v.note_retriggered(ctx));
+        self.with_context(voice, Voice::note_retriggered);
     }
 
     fn update_glide(&mut self, voice: usize) {
@@ -533,11 +537,7 @@ impl Synth {
         note.pitchbend = self.last_pitchbend;
         note.total_pitchbend =
             f64::from(note.pitchbend.signed() * self.pitchbend_range as f32);
-        if let Some(at) = self.notes.position(note.id) {
-            let mut playing = self.notes.remove(at);
-            playing.key = KeyState::Off;
-            self.note_released(playing);
-        }
+        self.release_note(note.id);
         self.notes.push(note);
         self.note_added(note);
     }
@@ -547,20 +547,34 @@ impl Synth {
         if self.notes.len == 0 {
             return;
         }
-        if let Some(at) = self.notes.position((1 << 7) + u16::from(number)) {
-            let mut note = self.notes.remove(at);
+        self.release_note((1 << 7) + u16::from(number));
+    }
+
+    /// A held note let go: the listeners hear of it while it is still
+    /// among the playing notes, and it leaves them after, as
+    /// `MPEInstrument` does — a mono glide back to the note below counts
+    /// the one being released.
+    fn release_note(&mut self, id: u16) {
+        if let Some(at) = self.notes.position(id) {
+            let mut note = self.notes.as_slice()[at];
             note.key = KeyState::Off;
             self.note_released(note);
+            if let Some(at) = self.notes.position(id) {
+                self.notes.remove(at);
+            }
         }
     }
 
     /// `releaseAllNotes`.
     fn release_all_notes(&mut self) {
-        while self.notes.len > 0 {
-            let mut note = self.notes.remove(self.notes.len - 1);
+        // Every note stays among the playing ones until all have been
+        // released, as in `MPEInstrument::releaseAllNotes`.
+        for at in (0..self.notes.len).rev() {
+            let mut note = self.notes.as_slice()[at];
             note.key = KeyState::Off;
             self.note_released(note);
         }
+        self.notes.len = 0;
     }
 
     /// `turnOffAllVoices`.

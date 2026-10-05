@@ -1,4 +1,4 @@
-//! Airwindows DeRez2 (MIT), the distortion's Bitcrusher mode: sample-rate
+//! Airwindows `DeRez2` (MIT), the distortion's Bitcrusher mode: sample-rate
 //! and bit-depth reduction through a µ-law curve, with "hard" mixing in
 //! the dry transitions. Ported from Wavetable's `FX/DeRez2Proc.cpp`, the
 //! single-precision `processReplacing`, which works in double.
@@ -114,21 +114,16 @@ fn quantise(x: f64, step: f64) -> f64 {
 }
 
 fn clip(x: f64) -> f64 {
-    if x > 1.0 {
-        1.0
-    } else if x < -1.0 {
-        -1.0
-    } else {
-        x
-    }
+    x.clamp(-1.0, 1.0)
 }
 
 impl DeRez2 {
     /// As constructed, drawing its dither seeds from `rand`.
     pub fn new(rand: &mut dyn FnMut() -> i32) -> Self {
-        let mut d = Self::default();
-        d.fpd = [seed_fpd(rand), seed_fpd(rand)];
-        d
+        Self {
+            fpd: [seed_fpd(rand), seed_fpd(rand)],
+            ..Self::default()
+        }
     }
 
     /// `setParameter (index, value)`.

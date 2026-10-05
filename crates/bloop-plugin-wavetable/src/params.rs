@@ -302,7 +302,7 @@ const fn step(uid: &'static str, name: &'static str) -> Spec {
 const fn gate_step(uid: &'static str, name: &'static str, n: usize) -> Spec {
     // `(i % 2 == 0 || i % 5 == 0)`, for step `n` counted from 1.
     let i = n - 1;
-    switch(uid, name, if i % 2 == 0 || i % 5 == 0 { 1.0 } else { 0.0 })
+    switch(uid, name, if i.is_multiple_of(2) || i.is_multiple_of(5) { 1.0 } else { 0.0 })
 }
 
 macro_rules! steps {
@@ -637,6 +637,10 @@ const ORIGINAL_LEN: usize = OSC1.len()
     + GRIND.len();
 
 /// Every parameter the original registers, in its order.
+#[expect(
+    clippy::large_const_arrays,
+    reason = "read only while compiling, to build SPECS"
+)]
 const ORIGINAL: [Spec; ORIGINAL_LEN] = concat_all!(
     OSC1, OSC2, SUB, NOISE, FILTER, ENV1, ENV2, ENV3, LFO1, LFO2, LFO3, STEP_LFO, STEPS, AMP,
     GLOBAL, GATE, GATE_STEPS, CHORUS, DISTORTION, DELAY, REVERB, FX, CRUSH, FIRE, GRIND,
@@ -678,9 +682,19 @@ macro_rules! slots {
 const SLOTS: [Spec; MOD_SLOTS * 3] =
     slots!(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24);
 
+/// How many parameters there are.
+pub const PARAM_COUNT: usize = ORIGINAL.len() + TABLES.len() + SLOTS.len();
+
+/// Every parameter, by bloop index, for what is worked out while
+/// compiling: the ids, the matrix's destinations.
+#[expect(
+    clippy::large_const_arrays,
+    reason = "read only while compiling; what runs reads PARAMS"
+)]
+pub(crate) const SPECS: [Spec; PARAM_COUNT] = concat_all!(ORIGINAL, TABLES, SLOTS);
+
 /// Every parameter, by bloop index.
-pub const PARAMS: [Spec; ORIGINAL.len() + TABLES.len() + SLOTS.len()] =
-    concat_all!(ORIGINAL, TABLES, SLOTS);
+pub static PARAMS: [Spec; PARAM_COUNT] = SPECS;
 
 /// The number of parameters the original registers (bloop's own follow).
 pub const ORIGINAL_COUNT: usize = ORIGINAL.len();
@@ -693,11 +707,11 @@ pub fn index_of(uid: &str) -> Option<usize> {
 
 /// Named indices, so the DSP reads `P::OSC1_POS` rather than a number.
 pub mod id {
-    use super::{index_of_const, PARAMS};
+    use super::{index_of_const, SPECS};
 
     macro_rules! ids {
         ($($name:ident = $uid:literal;)*) => {
-            $(pub const $name: usize = index_of_const(&PARAMS, $uid);)*
+            $(pub const $name: usize = index_of_const(&SPECS, $uid);)*
         };
     }
 
@@ -928,13 +942,13 @@ pub fn reading(spec: &Spec, value: f32) -> String {
 /// its step and held in its range.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Values {
-    values: [f32; PARAMS.len()],
+    values: [f32; PARAM_COUNT],
 }
 
 impl Default for Values {
     fn default() -> Self {
         Self {
-            values: PARAMS.map(|p| p.default),
+            values: SPECS.map(|p| p.default),
         }
     }
 }
@@ -977,7 +991,7 @@ impl Values {
     #[must_use]
     pub fn normalised(&self, index: usize) -> f32 {
         let range = &PARAMS[index].range;
-        bloop_plugin_socalabs::shared::jlimit(0.0, 1.0, range.to_0to1(self.values[index]))
+        bloop_plugin_socalabs::shared::jlimit(0.0, 1.0, range.convert_to_0to1(self.values[index]))
     }
 
     /// `getProcValue`: the user value through its conversion.

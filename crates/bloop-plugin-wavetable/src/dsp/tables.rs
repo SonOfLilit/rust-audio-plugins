@@ -122,6 +122,12 @@ impl LookupTable {
         self.table_size
     }
 
+    /// How many notes each copy covers.
+    #[must_use]
+    pub fn notes_per_table(&self) -> i32 {
+        self.notes_per_table
+    }
+
     /// Copy `index`, all `table_size + 1` samples of it.
     #[must_use]
     pub fn copy(&self, index: usize) -> &[f32] {

@@ -1,0 +1,26 @@
+// Settings every translation unit of the gold harness is built with (g++
+// -include). Only JUCE's non-GUI modules are compiled.
+#pragma once
+
+#define JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED 1
+#define JUCE_STANDALONE_APPLICATION 1
+#define JUCE_USE_CURL 0
+#define JUCE_WEB_BROWSER 0
+// Wavetable reads its bundled tables as FLAC.
+#define JUCE_USE_FLAC 1
+#define JUCE_USE_OGGVORBIS 0
+#define JUCE_USE_MP3AUDIOFORMAT 0
+#define JUCE_USE_LAME_AUDIO_FORMAT 0
+#define JUCE_USE_WINDOWS_MEDIA_FORMAT 0
+#define JUCE_INCLUDE_ZLIB_CODE 1
+#define JUCE_MODULE_AVAILABLE_juce_core 1
+#define JUCE_MODULE_AVAILABLE_juce_events 1
+#define JUCE_MODULE_AVAILABLE_juce_data_structures 1
+#define JUCE_MODULE_AVAILABLE_juce_audio_basics 1
+#define JUCE_MODULE_AVAILABLE_juce_audio_formats 1
+#define JUCE_MODULE_AVAILABLE_juce_dsp 1
+
+// ScopedNoDenormals sets flush-to-zero on x86 through this; the port runs
+// IEEE denormals on every target, so the harness does too. Gin's own SIMD
+// (mipp, which the wavetable oscillator uses) is independent of it and on.
+#define JUCE_USE_SSE_INTRINSICS 0

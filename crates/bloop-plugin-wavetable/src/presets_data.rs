@@ -2,7 +2,7 @@
 
 use crate::presets::Preset;
 
-/// The wavetables a fresh Wavetable plays: AKWP bw_saw and AKWP bw_squ.
+/// The wavetables a fresh Wavetable plays: `AKWP bw_saw` and `AKWP bw_squ`.
 pub const INIT_TABLES: [u16; 2] = [26, 31];
 
 /// Wavetable's factory presets that bloop ships, by author then name.

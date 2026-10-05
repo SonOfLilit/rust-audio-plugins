@@ -11,7 +11,7 @@
 //! all a factory preset asks for: none sets a curve, a mapping or
 //! `enabled="0"`.
 
-use crate::params::{Kind, PARAMS};
+use crate::params::{Kind, PARAM_COUNT, SPECS};
 use bloop_plugin_socalabs::shared::{jlimit, ValueSmoother};
 
 /// One modulation source: its id as a preset names it, its name, and
@@ -114,13 +114,13 @@ pub const SOURCE_COUNT: usize = SOURCES.len();
 
 /// Whether parameter `index` is one the matrix can reach.
 const fn reachable(index: usize) -> bool {
-    matches!(PARAMS[index].kind, Kind::Ext | Kind::IntModulated)
+    matches!(SPECS[index].kind, Kind::Ext | Kind::IntModulated)
 }
 
 const fn count_destinations() -> usize {
     let mut n = 0;
     let mut i = 0;
-    while i < PARAMS.len() {
+    while i < PARAM_COUNT {
         if reachable(i) {
             n += 1;
         }
@@ -138,7 +138,7 @@ pub const DESTINATIONS: [usize; DESTINATION_COUNT] = {
     let mut all = [0; DESTINATION_COUNT];
     let mut n = 0;
     let mut i = 0;
-    while i < PARAMS.len() {
+    while i < PARAM_COUNT {
         if reachable(i) {
             all[n] = i;
             n += 1;
@@ -149,8 +149,8 @@ pub const DESTINATIONS: [usize; DESTINATION_COUNT] = {
 };
 
 /// Each parameter's place among the destinations, if it has one.
-pub const DESTINATION_OF: [i16; PARAMS.len()] = {
-    let mut of = [-1i16; PARAMS.len()];
+pub const DESTINATION_OF: [i16; PARAM_COUNT] = {
+    let mut of = [-1i16; PARAM_COUNT];
     let mut n = 0;
     while n < DESTINATION_COUNT {
         of[DESTINATIONS[n]] = n as i16;

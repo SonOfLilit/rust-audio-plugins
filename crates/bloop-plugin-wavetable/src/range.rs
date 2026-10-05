@@ -43,7 +43,7 @@ impl Range {
 
     /// `convertTo0to1`.
     #[must_use]
-    pub fn to_0to1(&self, value: f32) -> f32 {
+    pub fn convert_to_0to1(self, value: f32) -> f32 {
         let proportion = clamp01((value - self.start) / (self.end - self.start));
         if self.skew == 1.0 {
             return proportion;
@@ -58,7 +58,7 @@ impl Range {
 
     /// `convertFrom0to1`.
     #[must_use]
-    pub fn from_0to1(&self, proportion: f32) -> f32 {
+    pub fn convert_from_0to1(self, proportion: f32) -> f32 {
         let mut proportion = clamp01(proportion);
         if !self.symmetric {
             if self.skew != 1.0 && proportion > 0.0 {

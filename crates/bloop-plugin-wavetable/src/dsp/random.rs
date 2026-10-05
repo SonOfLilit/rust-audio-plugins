@@ -67,7 +67,7 @@ impl MinStdRand0 {
         }
     }
 
-    pub fn next(&mut self) -> u32 {
+    pub fn generate(&mut self) -> u32 {
         self.state = ((u64::from(self.state) * 16807) % Self::MODULUS) as u32;
         self.state
     }
@@ -76,7 +76,7 @@ impl MinStdRand0 {
     fn canonical(&mut self) -> f32 {
         // One draw covers 24 bits; the range is 2^31 - 2, which in float
         // is 2^31.
-        let sum = (self.next() - 1) as f32;
+        let sum = (self.generate() - 1) as f32;
         let ret = sum / 2_147_483_648.0f32;
         if ret >= 1.0 {
             1.0f32.next_down_compat()

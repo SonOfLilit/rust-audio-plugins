@@ -273,7 +273,7 @@ def main():
         "",
         "use crate::presets::Preset;",
         "",
-        f"/// The wavetables a fresh Wavetable plays: {INIT_TABLES[0]} and {INIT_TABLES[1]}.",
+        f"/// The wavetables a fresh Wavetable plays: `{INIT_TABLES[0]}` and `{INIT_TABLES[1]}`.",
         f"pub const INIT_TABLES: [u16; 2] = [{index_of[INIT_TABLES[0]]}, {index_of[INIT_TABLES[1]]}];",
         "",
         "/// Wavetable's factory presets that bloop ships, by author then name.",

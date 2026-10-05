@@ -71,6 +71,7 @@ pub struct Note {
     /// 0 for no note (`isValid` false); otherwise `(channel << 7) + note`.
     pub id: u16,
     pub channel: u8,
+    #[expect(clippy::struct_field_names, reason = "juce::MPENote's own name for it")]
     pub initial_note: u8,
     pub velocity: MpeValue,
     pub pitchbend: MpeValue,
@@ -258,7 +259,7 @@ impl Voice {
         } else {
             base
         };
-        spec.conversion.apply(spec.range.from_0to1(v))
+        spec.conversion.apply(spec.range.convert_from_0to1(v))
     }
 
     fn osc_value(&mut self, ctx: &Context, osc: usize, offset: usize) -> f32 {

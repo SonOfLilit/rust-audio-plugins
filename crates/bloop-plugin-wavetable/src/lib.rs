@@ -10,9 +10,10 @@
 //! [`WavetablePlugin`] is the Plug-in; [`params`] lists its parameters,
 //! [`presets`] its factory presets, [`bank`] its wavetables. Every piece is
 //! held to the C++ it was ported from by `tests/gold.rs` (`--features
-//! gold`): bit for bit from a wavetable's frames on, and within a few
-//! ulps for the frames themselves, which the original band-limits with
-//! JUCE's FFT and bloop with its own (`dsp::fft`).
+//! gold`): bit for bit from a wavetable's frames on, and to within a
+//! millionth of full scale (about -120 dB) for the frames themselves,
+//! which the original band-limits with JUCE's FFT and bloop with its own
+//! (`dsp::fft`).
 //!
 //! Its wavetables are large and slow to build, so the synth never builds
 //! them: the host builds them on the UI thread ([`bank::tables_for`]) and
@@ -49,7 +50,7 @@ pub const PORTED_FROM_WAVETABLE_REV: &str = "5f932ff87c453d32cebee233af1fde946f5
 
 /// The preset parameter: which factory preset is loaded, the last being
 /// Init. Setting it loads that preset over everything.
-pub const PARAM_PRESET: usize = PARAMS.len();
+pub const PARAM_PRESET: usize = params::PARAM_COUNT;
 
 /// The most events one block hands the synth; more are dropped.
 const MAX_EVENTS: usize = 256;

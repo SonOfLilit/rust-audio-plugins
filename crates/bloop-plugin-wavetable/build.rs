@@ -2,6 +2,11 @@
 //! `wavetables/catalogue.tsv` lists — on the web only those it marks `web`
 //! — and an index into it, so the catalogue's order, and so every table's
 //! number, is the same on every target whether or not its audio is there.
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "a build script reports to no one but cargo: a missing or malformed table stops the build"
+)]
 
 use std::fmt::Write as _;
 use std::io::Write as _;

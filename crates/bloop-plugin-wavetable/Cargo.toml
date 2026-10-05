@@ -69,3 +69,7 @@ manual_midpoint = "allow"
 # they are written.
 too_many_lines = "allow"
 unreadable_literal = "allow"
+# Constants and preset values are written as the originals write them, to
+# the digit; trimming them to what f32 or f64 keeps changes nothing but
+# how they compare with their source.
+excessive_precision = "allow"
