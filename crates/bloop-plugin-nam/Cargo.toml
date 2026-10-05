@@ -1,0 +1,48 @@
+[package]
+name = "bloop-plugin-nam"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Neural Amp Modeler: a Rust port of NeuralAmpModelerCore's WaveNet and LSTM
+# (MIT, Steven Atkinson), at rev 0b3d3c97b0859a3a8c92a8628c4dd89a25eb5842 —
+# the revision the vendor/nam submodule pins, which the gold tests compile.
+
+[features]
+# Comparison against the C++ original (tests/gold.rs). Needs g++ and the
+# vendor/nam and vendor/eigen submodules.
+gold = []
+
+[dependencies]
+bloop-plugin-api = { workspace = true }
+libm = "0.2"
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
+unimplemented = "deny"
+allow_attributes = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+await_holding_lock = "deny"
+large_futures = "deny"
+exit = "deny"
+mem_forget = "deny"
+module_name_repetitions = "allow"
+similar_names = "allow"
+# Layer sizes and sample counts read from JSON numbers.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+many_single_char_names = "allow"
