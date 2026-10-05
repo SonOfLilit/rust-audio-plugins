@@ -15,8 +15,30 @@
 
 mod gin;
 mod juce;
-mod math;
+pub mod math;
 mod plugins;
+
+/// The parts of this port SocaLabs' Wavetable synth is built from too
+/// (`bloop-plugin-wavetable`): Gin's filter, chorus, delay line, plate
+/// reverb, note durations and smoothers, the JUCE helpers, and the switch
+/// between `libm` and the C library (`gold`). Shared rather than copied,
+/// so that one gold harness holding either port to its C++ holds both.
+pub mod shared {
+    pub use crate::gin::audioutil::WetDryMix;
+    pub use crate::gin::delay::DelayLine;
+    pub use crate::gin::distortion::GlibcRand;
+    pub use crate::gin::filter::{Filter, FilterType, Slope};
+    pub use crate::gin::modulation::Modulation;
+    pub use crate::gin::noteduration::{NoteDuration, DURATIONS};
+    pub use crate::gin::param::{
+        midi_note_from_hertz, midi_note_in_hertz, EasedValueSmoother, ValueSmoother,
+    };
+    pub use crate::gin::platereverb::PlateReverb;
+    pub use crate::juce::{
+        approximately_equal, decibels_to_gain, gain_to_decibels, jlimit, LinearSmoothedValue,
+    };
+    pub use crate::math;
+}
 
 use bloop_plugin_api::{ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext};
 use plugins::bitcrusher::BitCrusherProcessor;

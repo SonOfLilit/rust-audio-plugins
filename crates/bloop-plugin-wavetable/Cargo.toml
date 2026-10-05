@@ -1,0 +1,71 @@
+[package]
+name = "bloop-plugin-wavetable"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause AND MIT AND CC0-1.0"
+
+# SocaLabs Wavetable as a bloop Plug-in: a Rust port of Roland Rabien's
+# Wavetable (BSD-3-Clause) at rev 5f932ff87c453d32cebee233af1fde946f53ac89 —
+# the revision vendor/wavetable pins — and of the Gin DSP it is built from,
+# shared with bloop-plugin-socalabs, which ports Gin at the revision
+# Wavetable's own Gin submodule pins. Its distortion's three amp modes are
+# Airwindows' DeRez2, FireAmp and GrindAmp (MIT). The bundled wavetables are
+# Adventure Kid's (CC0) and Neu KatalYst's (free to use in any synth); the
+# factory presets are those whose wavetables bloop may ship. LICENSE has
+# every text and tools/import.py says what is left out and why.
+#
+# No JUCE code is ported; what the original takes from JUCE is written from
+# its documented behaviour, and the gold tests link the real JUCE to hold it
+# to that.
+
+[features]
+# Bit-exact comparison against the C++ original (tests/gold.rs). Needs g++
+# and the vendor/wavetable, vendor/gin and vendor/juce submodules; switches
+# the transcendentals to the C library the C++ links.
+gold = ["bloop-plugin-socalabs/gold"]
+
+[dependencies]
+bloop-events = { workspace = true }
+bloop-plugin-api = { workspace = true }
+bloop-plugin-socalabs = { workspace = true }
+bloop-sampler-engine = { workspace = true }
+libm = "0.2"
+
+[dev-dependencies]
+bloop-core = { workspace = true }
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
+unimplemented = "deny"
+allow_attributes = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+await_holding_lock = "deny"
+large_futures = "deny"
+exit = "deny"
+mem_forget = "deny"
+module_name_repetitions = "allow"
+similar_names = "allow"
+# A port held bit-exact to C++ converts between float, double and int, and
+# compares floats exactly, wherever the original does; the gold tests hold
+# those to the original, and flagging each would bury the few that matter.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
+float_cmp = "allow"
+many_single_char_names = "allow"
+manual_midpoint = "allow"
+# Airwindows' amp simulators are long straight-line functions, ported as
+# they are written.
+too_many_lines = "allow"
+unreadable_literal = "allow"

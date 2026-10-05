@@ -5,10 +5,11 @@
 //! `AudioFilterTypes.h`, `FilterInstance.h` and `ParametricCreator.cpp`.
 //! A stage is designed by the matched z-transform with the `MZTi` FIR
 //! correction (Guiness and Chauhan) and run as a state-variable filter.
-//! Only the three types the Graphic EQ uses are ported — bandpass,
-//! lowpass and highpass — and of `getMztTransform` only the branches
-//! those reach with a Q above 0.5: complex poles, and zeros either absent,
-//! at DC, or a double zero at DC.
+//! The three types the Graphic EQ uses are ported — bandpass, lowpass and
+//! highpass — and the notch SocaLabs' Wavetable adds, and of
+//! `getMztTransform` the branches those reach with a Q above 0.5: complex
+//! poles, and zeros either absent, at DC, a double zero at DC, or the
+//! notch's complex pair on the unit circle.
 
 use crate::juce::gain_to_decibels;
 use crate::math;
@@ -51,14 +52,11 @@ impl Default for BiquadParam {
 
 /// The filter types ported, as `AudioFilter::FilterType` names them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[expect(
-    clippy::enum_variant_names,
-    reason = "AudioFilter's names, so the port reads against it"
-)]
 pub enum FilterType {
     LoPass,
     HiPass,
     BandPass,
+    Notch,
 }
 
 /// `getAnalog`: the s-domain prototype.
@@ -88,6 +86,13 @@ fn analog(q: f64, gain: f64, kind: FilterType) -> BiquadParam {
             b.a1 = 1.0 / q;
             b.a2 = 1.0;
         }
+        FilterType::Notch => {
+            b.b0 = 1.0;
+            b.b1 = 0.0;
+            b.b2 = 1.0;
+            b.a1 = 1.0 / q;
+            b.a2 = 1.0;
+        }
     }
     b
 }
@@ -112,16 +117,28 @@ fn mzt_transform(analog: &BiquadParam, digital: &mut BiquadParam, freq: f64, sam
             digital.b2 = 0.0;
         }
     } else {
-        // Real zeros: the only zeros a highpass has, both at DC.
         let b11 = analog.b1 * analog.b1;
         let b02 = 4.0 * analog.b0 * analog.b2;
-        let za0 = (analog.b1 + (b11 - b02).sqrt()) / (2.0 * analog.b2);
-        let za1 = (analog.b1 - (b11 - b02).sqrt()) / (2.0 * analog.b2);
-        let zd0 = math::exp(angle(za0, freq, sample_rate));
-        let zd1 = math::exp(angle(za1, freq, sample_rate));
-        digital.b0 = 1.0;
-        digital.b1 = -zd0 - zd1;
-        digital.b2 = zd0 * zd1;
+        if b11 >= b02 {
+            // Real zeros: the only zeros a highpass has, both at DC.
+            let za0 = (analog.b1 + (b11 - b02).sqrt()) / (2.0 * analog.b2);
+            let za1 = (analog.b1 - (b11 - b02).sqrt()) / (2.0 * analog.b2);
+            let zd0 = math::exp(angle(za0, freq, sample_rate));
+            let zd1 = math::exp(angle(za1, freq, sample_rate));
+            digital.b0 = 1.0;
+            digital.b1 = -zd0 - zd1;
+            digital.b2 = zd0 * zd1;
+        } else {
+            // Complex zeros: a notch's, on the unit circle at its centre.
+            let za_re = analog.b1 / (2.0 * analog.b2);
+            let za_im = (b02 - b11).sqrt() / (2.0 * analog.b2);
+            let d_rad = math::exp(angle(za_re, freq, sample_rate));
+            let zd_re = d_rad * math::cos(angle(za_im, freq, sample_rate));
+            let zd_im = d_rad * math::sin(angle(za_im, freq, sample_rate));
+            digital.b0 = 1.0;
+            digital.b1 = -2.0 * zd_re;
+            digital.b2 = zd_re * zd_re + zd_im * zd_im;
+        }
     }
 
     // Complex poles: every Q above 0.5.
@@ -318,8 +335,8 @@ pub enum Slope {
     Db24,
 }
 
-/// `gin::Filter`: a lowpass, highpass or bandpass on up to two channels,
-/// at 12 or 24 dB.
+/// `gin::Filter`: a lowpass, highpass, bandpass or notch on up to two
+/// channels, at 12 or 24 dB.
 #[derive(Clone, Copy, Debug)]
 pub struct Filter {
     kind: FilterType,
@@ -345,6 +362,11 @@ impl Filter {
 
     pub fn set_slope(&mut self, slope: Slope) {
         self.slope = slope;
+    }
+
+    /// `setType`: what the next `setParams` designs.
+    pub fn set_type(&mut self, kind: FilterType) {
+        self.kind = kind;
     }
 
     pub fn reset(&mut self) {

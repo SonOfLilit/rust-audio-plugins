@@ -15,14 +15,16 @@ use crate::math;
 /// glibc's `rand()`: the additive feedback generator `random()` uses, with
 /// its default seed of 1.
 #[derive(Clone, Debug)]
-struct GlibcRand {
+pub struct GlibcRand {
     state: [u32; 31],
     front: usize,
     rear: usize,
 }
 
 impl GlibcRand {
-    fn new(seed: u32) -> Self {
+    /// `srand (seed)`.
+    #[must_use]
+    pub fn new(seed: u32) -> Self {
         let mut state = [0u32; 31];
         let mut word = i64::from(seed as i32);
         state[0] = word as u32;
@@ -46,7 +48,8 @@ impl GlibcRand {
         rand
     }
 
-    fn next(&mut self) -> i32 {
+    /// `rand()`.
+    pub fn next(&mut self) -> i32 {
         self.state[self.front] = self.state[self.front].wrapping_add(self.state[self.rear]);
         let result = (self.state[self.front] >> 1) as i32;
         self.front = (self.front + 1) % 31;

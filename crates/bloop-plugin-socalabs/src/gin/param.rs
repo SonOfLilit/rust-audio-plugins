@@ -157,6 +157,14 @@ impl EasedValueSmoother {
         }
     }
 
+    /// `setValueUnsmoothed`: there at once, with nothing left to ease.
+    pub fn set_value_unsmoothed(&mut self, value: f32) {
+        self.target = value;
+        self.current = value;
+        self.orig = value;
+        self.position = 1.0;
+    }
+
     pub fn set_value(&mut self, value: f32) {
         self.orig = self.current;
         self.target = value;
