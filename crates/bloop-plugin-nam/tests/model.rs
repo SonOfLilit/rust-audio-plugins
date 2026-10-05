@@ -149,7 +149,8 @@ fn the_fast_tanh_is_within_half_a_thousandth() {
             (worst, at) = (d, x);
         }
     }
-    expect!["largest difference 4.4e-4 at x = -0.580"].assert_eq(&format!("largest difference {worst:.1e} at x = {at:.3}"));
+    expect!["largest difference 4.4e-4 at x = -0.580"]
+        .assert_eq(&format!("largest difference {worst:.1e} at x = {at:.3}"));
 }
 
 /// The provenance comment in Cargo.toml and the shipped captures' notes
@@ -225,5 +226,6 @@ fn what_the_reader_refuses() {
         a weight short  the model has 841 weights, fewer than its layers need
         a weight over   the model has 843 weights, but its layers use 842
         stereo LSTM     the LSTM takes 2 inputs; bloop runs mono models
-    "#]].assert_eq(&out);
+    "#]]
+    .assert_eq(&out);
 }

@@ -24,6 +24,10 @@
 //! on every target, wasm included; `gold` switches them to the C library
 //! the C++ links (src/math.rs).
 
+/// The Airwindows revision the ports follow, which `vendor/airwindows`
+/// pins and the gold tests compile.
+pub const PORTED_FROM_AIRWINDOWS_REV: &str = "e718c9bcfcdd736deeddb08bffe6bce2aa8e0eea";
+
 mod baxandall2;
 mod console7;
 mod density2;
