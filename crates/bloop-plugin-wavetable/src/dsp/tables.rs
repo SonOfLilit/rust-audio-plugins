@@ -32,6 +32,18 @@ fn table_notes(notes_per_table: i32) -> impl Iterator<Item = f32> {
     core::iter::successors(Some(first), move |note| Some(note + step)).take_while(|n| *n < 127.0)
 }
 
+/// `getLinear` on one copy, `table_size + 1` samples long.
+#[inline]
+#[must_use]
+pub fn linear_in(copy: &[f32], phase: f32) -> f32 {
+    let size = copy.len() as i32 - 1;
+    let scaled = phase * size as f32;
+    let pos = (scaled as i32).min(size - 1) as usize;
+    let frac = scaled - pos as f32;
+    let (a, b) = (copy[pos], copy[pos + 1]);
+    (a * (1.0 - frac)) + (b * frac)
+}
+
 impl LookupTable {
     /// `reset (function, sampleRate, notesPerTable, tableSize)`: each copy
     /// worked out from `function (phase, freq, sampleRate)`.
@@ -154,12 +166,15 @@ impl LookupTable {
     #[inline]
     #[must_use]
     pub fn linear(&self, index: usize, phase: f32) -> f32 {
-        let size = self.table_size as i32;
-        let scaled = phase * size as f32;
-        let pos = (scaled as i32).min(size - 1);
-        let frac = scaled - pos as f32;
-        let base = index * (self.table_size + 1) + pos as usize;
-        (self.data[base] * (1.0 - frac)) + (self.data[base + 1] * frac)
+        linear_in(self.copy(index), phase)
+    }
+
+    /// The copy `processLinear` reads for `note`: what an oscillator
+    /// playing one note looks up once a frame rather than once a sample.
+    #[inline]
+    #[must_use]
+    pub fn copy_for_note(&self, note: f32) -> &[f32] {
+        self.copy(self.index_for_note(note))
     }
 
     /// How many bytes its samples take.

@@ -943,14 +943,26 @@ pub fn reading(spec: &Spec, value: f32) -> String {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Values {
     values: [f32; PARAM_COUNT],
+    /// Each value's place in its range, 0 to 1, worked out when it is set:
+    /// a voice reads it every 32 samples, and a skewed range costs a
+    /// `powf` to work out.
+    normalised: [f32; PARAM_COUNT],
 }
 
 impl Default for Values {
     fn default() -> Self {
+        let values = SPECS.map(|p| p.default);
         Self {
-            values: SPECS.map(|p| p.default),
+            values,
+            normalised: core::array::from_fn(|i| normalise(i, values[i])),
         }
     }
+}
+
+/// `getValue`: `value` as a place in parameter `index`'s range.
+fn normalise(index: usize, value: f32) -> f32 {
+    let range = &PARAMS[index].range;
+    bloop_plugin_socalabs::shared::jlimit(0.0, 1.0, range.convert_to_0to1(value))
 }
 
 impl Values {
@@ -966,6 +978,7 @@ impl Values {
             false
         } else {
             *slot = v;
+            self.normalised[index] = normalise(index, v);
             true
         }
     }
@@ -990,8 +1003,7 @@ impl Values {
     /// `getValue`: where the knob sits, 0 to 1, after the skew.
     #[must_use]
     pub fn normalised(&self, index: usize) -> f32 {
-        let range = &PARAMS[index].range;
-        bloop_plugin_socalabs::shared::jlimit(0.0, 1.0, range.convert_to_0to1(self.values[index]))
+        self.normalised[index]
     }
 
     /// `getProcValue`: the user value through its conversion.

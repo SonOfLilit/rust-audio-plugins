@@ -2,7 +2,7 @@
 //! (`gin_wtoscillators.h`), `StereoOscillator` (`gin_oscillators.h`) and
 //! the `DCBlocker` a wavetable oscillator runs (`gin_dcblocker.h`).
 
-use super::tables::{AnalogTables, LookupTable, NoiseSource, Wave, Wavetable};
+use super::tables::{linear_in, AnalogTables, NoiseSource, Wave, Wavetable};
 use bloop_plugin_socalabs::shared::{jlimit, math};
 
 /// `std::numeric_limits<float>::epsilon()` below 1.
@@ -96,19 +96,25 @@ fn bend_distortion(phase: f32, bend: f32) -> f32 {
 const LN_5: f32 = 1.609_437_912_43;
 
 /// `formantDistortion`: the cycle read faster, up to five times, and held
-/// at its end.
+/// at its end. `speed` is `exp (formant * ln 5)`, which the original
+/// works out every sample and the port once a block: the same float.
 #[inline]
-fn formant_distortion(phase: f32, formant: f32) -> f32 {
-    ALMOST_ONE.min(phase * math::expf(formant * LN_5))
+fn formant_distortion(phase: f32, speed: f32) -> f32 {
+    ALMOST_ONE.min(phase * speed)
+}
+
+/// How much faster `formantDistortion` reads the cycle at `formant`.
+fn formant_speed(formant: f32) -> f32 {
+    math::expf(formant * LN_5)
 }
 
 #[inline]
-fn phase_distortion(mut phase: f32, bend: f32, formant: f32) -> f32 {
+fn phase_distortion(mut phase: f32, bend: f32, formant: f32, speed: f32) -> f32 {
     if bend != 0.0 {
         phase = bend_distortion(phase, bend);
     }
     if formant != 0.0 {
-        phase = formant_distortion(phase, formant);
+        phase = formant_distortion(phase, speed);
     }
     phase
 }
@@ -187,9 +193,12 @@ impl WtOscillator {
         }
 
         let delta = phase_delta(note, self.sample_rate);
-        let mut frame1 = table.frame(self.table_index as usize);
+        let speed = formant_speed(params.formant);
+        // The copy a note reads is the same all block: looked up once a
+        // frame, not once a sample.
+        let mut frame1 = table.frame(self.table_index as usize).copy_for_note(note);
         let mut frame2 = if mode == Mode::Crossfade {
-            table.frame(self.last_table_index as usize)
+            table.frame(self.last_table_index as usize).copy_for_note(note)
         } else {
             frame1
         };
@@ -208,7 +217,7 @@ impl WtOscillator {
                 let base = self.phase;
                 for lane in 0..4 {
                     let phase = base + lane as f32 * delta;
-                    let s = Self::sample(mode, frame1, frame2, note, params, phase, base);
+                    let s = Self::sample(mode, frame1, frame2, params, speed, phase, base);
                     left[at] += s * params.left_gain;
                     right[at] += s * params.right_gain;
                     at += 1;
@@ -217,7 +226,7 @@ impl WtOscillator {
                 todo -= 4;
             }
             for _ in 0..todo {
-                let s = Self::sample(mode, frame1, frame2, note, params, self.phase, self.phase);
+                let s = Self::sample(mode, frame1, frame2, params, speed, self.phase, self.phase);
                 left[at] += s * params.left_gain;
                 right[at] += s * params.right_gain;
                 at += 1;
@@ -227,7 +236,7 @@ impl WtOscillator {
                 self.phase -= 1.0;
                 self.last_table_index = self.table_index;
                 self.table_index = Self::frame_for(table, params.position);
-                frame1 = table.frame(self.table_index as usize);
+                frame1 = table.frame(self.table_index as usize).copy_for_note(note);
                 if mode == Mode::Crossfade {
                     frame2 = frame1;
                 }
@@ -239,23 +248,23 @@ impl WtOscillator {
     #[inline]
     fn sample(
         mode: Mode,
-        frame1: &LookupTable,
-        frame2: &LookupTable,
-        note: f32,
+        frame1: &[f32],
+        frame2: &[f32],
         params: &WtParams,
+        speed: f32,
         phase: f32,
         weight: f32,
     ) -> f32 {
         let phase = ALMOST_ONE.min(phase);
         match mode {
-            Mode::Simple => frame1.process_linear(note, phase),
+            Mode::Simple => linear_in(frame1, phase),
             Mode::Complex => {
-                frame1.process_linear(note, phase_distortion(phase, params.bend, params.formant))
+                linear_in(frame1, phase_distortion(phase, params.bend, params.formant, speed))
             }
             Mode::Crossfade => {
-                let p = phase_distortion(phase, params.bend, params.formant);
-                let s1 = frame1.process_linear(note, p);
-                let s2 = frame2.process_linear(note, p);
+                let p = phase_distortion(phase, params.bend, params.formant, speed);
+                let s1 = linear_in(frame1, p);
+                let s2 = linear_in(frame2, p);
                 s1 * weight + s2 * (1.0 - weight)
             }
         }

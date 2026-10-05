@@ -253,13 +253,14 @@ impl Voice {
         let dst = DESTINATION_OF[param];
         let spec = &crate::params::PARAMS[param];
         let base = ctx.values.normalised(param);
-        let v = if dst >= 0 {
-            ctx.matrix
-                .value_voice(&mut self.modulation, dst as usize, base)
+        let turn = |v: f32| spec.conversion.apply(spec.range.convert_from_0to1(v));
+        if dst >= 0 {
+            let dst = dst as usize;
+            let v = ctx.matrix.value_voice(&mut self.modulation, dst, base);
+            self.modulation.turned(dst, v, turn)
         } else {
-            base
-        };
-        spec.conversion.apply(spec.range.convert_from_0to1(v))
+            turn(base)
+        }
     }
 
     fn osc_value(&mut self, ctx: &Context, osc: usize, offset: usize) -> f32 {

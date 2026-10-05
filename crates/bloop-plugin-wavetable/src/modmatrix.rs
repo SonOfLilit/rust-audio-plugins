@@ -242,6 +242,12 @@ pub struct VoiceMod {
     /// note starts.
     pub disable_smoothing: bool,
     pub age: i32,
+    /// Per destination, the last place in its range a voice turned into a
+    /// value, and the value: a destination at rest is the same place
+    /// block after block, and turning it costs an `expf` and a `logf` on a
+    /// skewed range. A pure function remembered, so nothing it returns
+    /// differs from working it out again.
+    turned: [(u32, f32); DESTINATION_COUNT],
 }
 
 impl Default for VoiceMod {
@@ -251,11 +257,25 @@ impl Default for VoiceMod {
             smoothers: core::array::from_fn(|_| ValueSmoother::default()),
             disable_smoothing: false,
             age: 0,
+            turned: [(f32::NAN.to_bits(), 0.0); DESTINATION_COUNT],
         }
     }
 }
 
 impl VoiceMod {
+    /// `turn` of `place`, for destination `dst`, from the last time if the
+    /// place is the same.
+    #[inline]
+    pub fn turned(&mut self, dst: usize, place: f32, turn: impl FnOnce(f32) -> f32) -> f32 {
+        let (last, value) = self.turned[dst];
+        if last == place.to_bits() {
+            return value;
+        }
+        let value = turn(place);
+        self.turned[dst] = (place.to_bits(), value);
+        value
+    }
+
     /// `ModVoice::finishBlock`: every smoother `samples` on.
     pub fn finish_block(&mut self, samples: usize) {
         for s in &mut self.smoothers {
