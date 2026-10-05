@@ -85,6 +85,14 @@ pub struct SampleDecoder {
     interleaved: Vec<f32>,
     /// Total frames the container claims, for progress. Zero when unknown.
     expected_frames: u64,
+    /// Where the audio really ends, when the format says so exactly.
+    ///
+    /// FLAC's STREAMINFO counts the samples the encoder was given, and a
+    /// stream may pad its last block past that — the bundled pack does,
+    /// to whole 4096-frame blocks. Other formats' counts are estimates
+    /// or exclude an encoder delay that is still decoded (MP3), so only
+    /// FLAC's is a place to cut.
+    exact_end: Option<usize>,
     finished: bool,
 }
 
@@ -125,6 +133,10 @@ impl SampleDecoder {
             return Err(ImportError::NoAudioTrack);
         };
 
+        let exact_end = (params.codec == symphonia::core::codecs::audio::well_known::CODEC_ID_FLAC
+            && expected_frames > 0)
+            .then(|| usize::try_from(expected_frames).unwrap_or(usize::MAX));
+
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(&params, &Default::default())
             .map_err(|_| ImportError::UnsupportedCodec)?;
@@ -137,6 +149,7 @@ impl SampleDecoder {
             rate: 0,
             interleaved: Vec::new(),
             expected_frames,
+            exact_end,
             finished: false,
         })
     }
@@ -192,7 +205,12 @@ impl SampleDecoder {
         if self.channels.is_empty() || self.channels[0].is_empty() {
             return Err(ImportError::Empty);
         }
-        let channels = core::mem::take(&mut self.channels);
+        let mut channels = core::mem::take(&mut self.channels);
+        if let Some(end) = self.exact_end {
+            for channel in &mut channels {
+                channel.truncate(end);
+            }
+        }
         Ok(Some(SampleBuffer::new(fold_channels(channels), self.rate)))
     }
 
