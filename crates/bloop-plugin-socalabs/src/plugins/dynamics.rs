@@ -202,6 +202,12 @@ impl Processor for DynamicsProcessor {
 }
 
 impl DynamicsProcessor {
+    /// What the original's meters read ([`Dynamics::meter`]).
+    #[must_use]
+    pub fn meter(&self) -> bloop_plugin_api::DynamicsMeter {
+        self.dynamics.meter()
+    }
+
     /// `process`, the detector listening to `key` — a side-chain's two
     /// channels — rather than to the signal. The knobs are handed on as
     /// `process` hands them.

@@ -19,13 +19,13 @@ const BAND_NAMES: [&str; BANDS] = [
     "31 Hz", "63 Hz", "125 Hz", "250 Hz", "500 Hz", "1k Hz", "2k Hz", "4k Hz", "8k Hz", "16k Hz",
 ];
 
-const LP_ENABLE: usize = BANDS;
-const LP_FREQ: usize = BANDS + 1;
-const LP_SLOPE: usize = BANDS + 2;
-const HP_ENABLE: usize = BANDS + 3;
-const HP_FREQ: usize = BANDS + 4;
-const HP_SLOPE: usize = BANDS + 5;
-const OUTPUT: usize = BANDS + 6;
+pub const LP_ENABLE: usize = BANDS;
+pub const LP_FREQ: usize = BANDS + 1;
+pub const LP_SLOPE: usize = BANDS + 2;
+pub const HP_ENABLE: usize = BANDS + 3;
+pub const HP_FREQ: usize = BANDS + 4;
+pub const HP_SLOPE: usize = BANDS + 5;
+pub const OUTPUT: usize = BANDS + 6;
 
 /// The GraphicEQ's knobs, in the order its constructor adds them. The
 /// filter frequencies run in MIDI notes, whose ends the original works out

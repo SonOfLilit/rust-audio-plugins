@@ -207,6 +207,46 @@ fn mzti_stage(freq: f64, gain: f64, q: f64, kind: FilterType, sample_rate: f64) 
     param
 }
 
+/// `AudioFilter::Response::getResponsePoint`: the magnitude of one stage's
+/// response at `freq`, the correction FIR's with it.
+fn response_point(p: &BiquadParam, freq: f64, sample_rate: f64) -> f64 {
+    let sin2w = math::sin(PI * freq / sample_rate);
+    let phi = sin2w * sin2w;
+    let (b0, b1, b2, a1, a2) = (p.b0, p.b1, p.b2, p.a1, p.a2);
+    let nom = (b0 + b1 + b2) * (b0 + b1 + b2) - 4.0 * (b0 * b1 + 4.0 * b0 * b2 + b1 * b2) * phi
+        + 16.0 * b0 * b2 * phi * phi;
+    let den = (1.0 + a1 + a2) * (1.0 + a1 + a2)
+        - 4.0 * (1.0 * a1 + 4.0 * 1.0 * a2 + a1 * a2) * phi
+        + 16.0 * 1.0 * a2 * phi * phi;
+    let mut gain = nom / den;
+    if p.use_compensation {
+        let (c0, c1, c2) = (p.c0, p.c1, p.c2);
+        let cor = (c0 + c1 + c2) * (c0 + c1 + c2) - 4.0 * (c0 * c1 + 4.0 * c0 * c2 + c1 * c2) * phi
+            + 16.0 * c0 * c2 * phi * phi;
+        gain *= cor;
+    }
+    gain.sqrt()
+}
+
+/// One stage's response at `freq`, as a complex gain `(re, im)`: the
+/// biquad and its correction FIR evaluated on the unit circle.
+fn response_complex(p: &BiquadParam, freq: f64, sample_rate: f64) -> (f64, f64) {
+    let w = 2.0 * PI * freq / sample_rate;
+    // z^-1 and z^-2.
+    let (c1, s1) = (math::cos(w), -math::sin(w));
+    let (c2, s2) = (math::cos(2.0 * w), -math::sin(2.0 * w));
+    let poly = |a: f64, b: f64, c: f64| (a + b * c1 + c * c2, b * s1 + c * s2);
+    let mul = |(ar, ai): (f64, f64), (br, bi): (f64, f64)| (ar * br - ai * bi, ar * bi + ai * br);
+    let num = poly(p.b0, p.b1, p.b2);
+    let (dr, di) = poly(1.0, p.a1, p.a2);
+    let den2 = dr * dr + di * di;
+    let mut h = mul(num, (dr / den2, -di / den2));
+    if p.use_compensation {
+        h = mul(h, poly(p.c0, p.c1, p.c2));
+    }
+    h
+}
+
 /// `AudioFilter::FilterParams<float>`: a biquad as state-variable filter
 /// coefficients, and its correction FIR.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -343,6 +383,10 @@ pub struct Filter {
     slope: Slope,
     sample_rate: f64,
     stages: [FilterInstance; 2],
+    /// What each stage was last designed as, for its response: the
+    /// original designs them again in `getResponseMagnitude` from the same
+    /// settings, which comes to the same coefficients.
+    designs: [BiquadParam; 2],
 }
 
 impl Filter {
@@ -353,6 +397,7 @@ impl Filter {
             slope: Slope::Db12,
             sample_rate: 44100.0,
             stages: [FilterInstance::default(); 2],
+            designs: [BiquadParam::default(); 2],
         }
     }
 
@@ -394,6 +439,36 @@ impl Filter {
             self.sample_rate,
         );
         self.stages[1].set_params(&second);
+        self.designs = [first, second];
+    }
+
+    /// The filter's response at `freq` as a complex gain `(re, im)`: one
+    /// stage at 12 dB, both at 24.
+    #[must_use]
+    pub fn response(&self, freq: f32) -> (f64, f64) {
+        let stages = match self.slope {
+            Slope::Db12 => 1,
+            Slope::Db24 => 2,
+        };
+        self.designs[..stages].iter().fold((1.0, 0.0), |(ar, ai), design| {
+            let (br, bi) = response_complex(design, f64::from(freq), self.sample_rate);
+            (ar * br - ai * bi, ar * bi + ai * br)
+        })
+    }
+
+    /// `getResponseMagnitude`: the filter's gain at `freq`, as a factor —
+    /// one stage at 12 dB, both at 24. A filter never given its settings
+    /// passes everything.
+    #[must_use]
+    pub fn response_magnitude(&self, freq: f32) -> f32 {
+        let stages = match self.slope {
+            Slope::Db12 => 1,
+            Slope::Db24 => 2,
+        };
+        self.designs[..stages]
+            .iter()
+            .map(|design| response_point(design, f64::from(freq), self.sample_rate))
+            .product::<f64>() as f32
     }
 
     /// One sample of `channel` through the filter.

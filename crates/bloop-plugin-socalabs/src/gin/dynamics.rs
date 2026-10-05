@@ -8,8 +8,12 @@
 //! class's other switches — mean-square and RMS detection, analog time
 //! constants, unlinked channels, lookahead, side-chain filters,
 //! automatic makeup gain, the compressor-expander curve — are left behind
-//! until something turns one on. So are the level trackers, which feed
-//! meters and do not touch audio.
+//! until something turns one on. The level trackers that feed the
+//! original's meters are here, clocked by the samples processed rather
+//! than the wall clock ([`bloop_plugin_api::LevelTracker`]); they do not
+//! touch audio.
+
+use bloop_plugin_api::meter::{peak_of, DynamicsMeter, LevelTracker};
 
 use crate::juce::{decibels_to_gain, gain_to_decibels};
 use crate::math;
@@ -106,7 +110,14 @@ pub struct Dynamics {
     attack: f32,
     hold: f32,
     release: f32,
+    /// `inputTracker`, `outputTracker` and `reductionTracker {-30.0f}`.
+    input_tracker: LevelTracker,
+    output_tracker: LevelTracker,
+    reduction_tracker: LevelTracker,
 }
+
+/// Gin's trackers' fall, in dB a second.
+const TRACKER_FALL: f32 = 30.0;
 
 impl Default for Dynamics {
     fn default() -> Self {
@@ -125,6 +136,9 @@ impl Default for Dynamics {
             attack: 0.0,
             hold: 0.0,
             release: 0.0,
+            input_tracker: LevelTracker::new(TRACKER_FALL),
+            output_tracker: LevelTracker::new(TRACKER_FALL),
+            reduction_tracker: LevelTracker::new(-TRACKER_FALL),
         }
     }
 }
@@ -209,11 +223,36 @@ impl Dynamics {
         self.run(channels, usable.then_some(key));
     }
 
+    /// What the original's meters read: the level in, the level out and
+    /// the gain reduction, each held and falling as Gin's trackers are.
+    #[must_use]
+    pub fn meter(&self) -> DynamicsMeter {
+        DynamicsMeter {
+            input_db: self.input_tracker.level(),
+            output_db: self.output_tracker.level(),
+            reduction_db: [self.reduction_tracker.level().min(0.0), 0.0, 0.0],
+            bands: 1,
+        }
+    }
+
     fn run(&mut self, channels: &mut [&mut [f32]], key: Option<&[&[f32]]>) {
         let n = self.channels.min(channels.len());
         let Some(samples) = channels.first().map(|c| c.len()) else {
             return;
         };
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a block's length, far inside f32's exact integers"
+        )]
+        let seconds = (samples as f64 / self.sample_rate) as f32;
+        let loudest = |channels: &[&mut [f32]]| {
+            channels
+                .iter()
+                .take(n)
+                .fold(0.0f32, |peak, c| peak.max(peak_of(c)))
+        };
+        self.input_tracker.track(loudest(channels), seconds);
+        let mut peak_reduction = 1.0f32;
         let input_gain = self.input_gain;
         let output_gain = self.output_gain;
         for i in 0..samples {
@@ -230,18 +269,21 @@ impl Dynamics {
             linked /= self.channels as f32;
             let linked = gain_to_decibels(linked);
             let gain = decibels_to_gain(self.curve.calc(linked) - linked);
+            peak_reduction = peak_reduction.min(gain);
             for channel in channels.iter_mut().take(n) {
                 // `* autoMakeup` too, in the original, which is 1 unless
                 // automatic makeup gain is on.
                 channel[i] = input_gain * gain * channel[i] * output_gain;
             }
         }
+        self.reduction_tracker.track(peak_reduction, seconds);
+        self.output_tracker.track(loudest(channels), seconds);
     }
 }
 
 /// The settings `calcCurve` reads.
 #[derive(Clone, Copy, Debug)]
-struct Curve {
+pub struct Curve {
     kind: DynamicsType,
     threshold: f32,
     ratio: f32,
@@ -249,8 +291,20 @@ struct Curve {
 }
 
 impl Curve {
+    /// The curve of a `kind` gain computer at these settings.
+    #[must_use]
+    pub fn new(kind: DynamicsType, threshold: f32, ratio: f32, knee: f32) -> Self {
+        Self {
+            kind,
+            threshold,
+            ratio,
+            knee,
+        }
+    }
+
     /// `calcCurve`: the level out, in decibels, for a level in.
-    fn calc(self, db_in: f32) -> f32 {
+    #[must_use]
+    pub fn calc(self, db_in: f32) -> f32 {
         let Self {
             kind,
             threshold,

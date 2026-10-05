@@ -17,6 +17,7 @@ mod gin;
 mod juce;
 pub mod math;
 mod plugins;
+pub mod view;
 
 /// The parts of this port SocaLabs' Wavetable synth is built from too
 /// (`bloop-plugin-wavetable`): Gin's filter, chorus, delay line, plate
@@ -419,6 +420,18 @@ impl Effect {
             return;
         }
         self.process(context);
+    }
+
+    /// What a dynamics processor's meters read — the level in, the level
+    /// out, the gain reduction — for the Compressor, Limiter, Gate and
+    /// Expander; `None` for any other. Allocation-free: the engine reads it
+    /// every block for the effect a screen is watching.
+    #[must_use]
+    pub fn meter(&self) -> Option<bloop_plugin_api::DynamicsMeter> {
+        match &self.engine {
+            Engine::Dynamics(dynamics) => Some(dynamics.meter()),
+            _ => None,
+        }
     }
 
     /// The unit a parameter's value is in, as the original labels it.

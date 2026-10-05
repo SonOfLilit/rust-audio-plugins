@@ -2,6 +2,9 @@
 
 use bloop_events::EventBuffer;
 
+pub mod meter;
+pub use meter::{DynamicsMeter, LevelTracker};
+
 #[derive(Clone, Debug)]
 pub struct PluginInfo {
     pub name: &'static str,

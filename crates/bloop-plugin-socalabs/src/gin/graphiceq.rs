@@ -77,6 +77,26 @@ impl GraphicEq {
         self.gains[channel][band] = gain_db;
     }
 
+    /// The bands' gain at `freq`, as a factor: the input plus each band's
+    /// bandpass at its gain less one, as `process` sums them.
+    ///
+    /// The original's `getFrequencyResponse` adds the bandpasses'
+    /// *magnitudes*; a band's filter turns the phase as well, so where two
+    /// bands overlap that is far from what the EQ does — 10 dB off between
+    /// bands set ±12 apart. Here they are added as the complex gains they
+    /// are, which is what a tone through the EQ measures.
+    #[must_use]
+    pub fn response(&self, channel: usize, freq: f32) -> f32 {
+        let (mut re, mut im) = (1.0f64, 0.0f64);
+        for (filter, &gain) in self.filters[channel].iter().zip(&self.gains[channel]) {
+            let weight = f64::from(decibels_to_gain(gain) - 1.0);
+            let (hr, hi) = filter.response(freq);
+            re += weight * hr;
+            im += weight * hi;
+        }
+        libm::hypot(re, im) as f32
+    }
+
     pub fn process(&mut self, channels: [&mut [f32]; 2]) {
         for (c, data) in channels.into_iter().enumerate().take(self.channels) {
             // Once a block, as the original works each band over the block.
