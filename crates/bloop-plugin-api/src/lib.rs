@@ -34,6 +34,88 @@ pub struct ProcessContext<'a> {
     pub is_playing: bool,
 }
 
+/// Where the Pattern a plug-in plays in is, for one that plays in time
+/// with it (the Audio plug-in's loops). The engine fills one per block
+/// before `process`: whether the transport runs, and the beat — quarter
+/// notes since the Pattern's start — at the first sample of each stretch
+/// of the block it played straight through. Between anchors and after the
+/// last the beat moves at the tempo. A new anchor is a jump: the Pattern
+/// wrapped, the song moved on to another, or the playhead was moved.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Timeline {
+    pub playing: bool,
+    anchors: [TimelineAnchor; Timeline::MAX_ANCHORS],
+    len: usize,
+}
+
+/// The beat at one sample of a block.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TimelineAnchor {
+    pub offset: u32,
+    pub beat: f64,
+}
+
+impl Timeline {
+    /// More jumps than this in one block are not kept: a block holds a
+    /// few hundred samples, and a Pattern shorter than that is not one
+    /// anybody loops audio in.
+    pub const MAX_ANCHORS: usize = 8;
+
+    /// The transport stopped: nothing to be in time with.
+    #[must_use]
+    pub const fn stopped() -> Self {
+        Self {
+            playing: false,
+            anchors: [TimelineAnchor {
+                offset: 0,
+                beat: 0.0,
+            }; Self::MAX_ANCHORS],
+            len: 0,
+        }
+    }
+
+    /// Running, with the Pattern at `beat` at sample `offset`. Anchors are
+    /// pushed in offset order; one past [`Self::MAX_ANCHORS`] is dropped
+    /// and `false` returned.
+    pub fn push(&mut self, offset: u32, beat: f64) -> bool {
+        self.playing = true;
+        if self.len >= Self::MAX_ANCHORS {
+            return false;
+        }
+        self.anchors[self.len] = TimelineAnchor { offset, beat };
+        self.len += 1;
+        true
+    }
+
+    #[must_use]
+    pub fn anchors(&self) -> &[TimelineAnchor] {
+        &self.anchors[..self.len]
+    }
+
+    /// The beat at `offset` (which may lie past the block), moving at
+    /// `beats_per_sample` from the last anchor at or before it; `None`
+    /// while stopped.
+    #[must_use]
+    pub fn beat_at(&self, offset: f64, beats_per_sample: f64) -> Option<f64> {
+        if !self.playing {
+            return None;
+        }
+        let anchor = self
+            .anchors()
+            .iter()
+            .rev()
+            .find(|a| f64::from(a.offset) <= offset)
+            .or_else(|| self.anchors().first())?;
+        Some(anchor.beat + (offset - f64::from(anchor.offset)) * beats_per_sample)
+    }
+}
+
+impl Default for Timeline {
+    fn default() -> Self {
+        Self::stopped()
+    }
+}
+
 /// The trait every plugin implements.
 pub trait Plugin: Send {
     fn info(&self) -> PluginInfo;
