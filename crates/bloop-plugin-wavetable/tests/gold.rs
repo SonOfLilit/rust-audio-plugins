@@ -347,7 +347,30 @@ fn check(program: &Program, expect: &Expect) {
     let rust = run_rust(program);
     #[cfg(feature = "gold")]
     compare(program, &rust, &cpp::run(program));
-    expect.assert_eq(&summary(&rust));
+    assert_summary(expect, &summary(&rust));
+}
+
+/// The snapshot is the default build's, whose maths is `libm`'s. Under
+/// `gold` the shared Gin ports compute with glibc's, as the C++ does, so
+/// the samples — and their hashes — differ in the last bits; the levels
+/// must still agree.
+fn assert_summary(expect: &Expect, actual: &str) {
+    #[cfg(feature = "gold")]
+    {
+        let without_hashes = |text: &str| -> Vec<String> {
+            text.lines()
+                .map(|l| l.trim().split(" #").next().unwrap_or("").to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        };
+        assert_eq!(
+            without_hashes(expect.data()),
+            without_hashes(actual),
+            "the summary under gold differs from the snapshot beyond its hashes"
+        );
+    }
+    #[cfg(not(feature = "gold"))]
+    expect.assert_eq(actual);
 }
 
 #[cfg(feature = "gold")]
@@ -857,7 +880,7 @@ fn table_builds_match_the_original() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn init_plays_a_note() {
     check(&Program::new().note(60, 100, 0.5, 0.5), &expect![[r#"
-        held: L peak -19.5 rms -25.9 | R peak -19.5 rms -25.9 #a468c83be7ae57ad
+        held: L peak -19.5 rms -25.9 | R peak -19.5 rms -25.9 #b16fb171aed34269
         released: L peak -21.7 rms -42.5 | R peak -21.7 rms -42.5 #e5fa50bd6ef941a5
     "#]]);
 }
@@ -880,10 +903,10 @@ fn a_chord_bent_and_released() {
             .off(0, 64)
             .play("released", 0.4),
         &expect![[r#"
-            chord: L peak -9.9 rms -18.8 | R peak -9.9 rms -18.8 #0c76a316ef5fff4d
-            bent up: L peak -12.0 rms -19.4 | R peak -12.0 rms -19.4 #3a4705aaaaaf3769
-            bent down: L peak -11.6 rms -17.6 | R peak -11.6 rms -17.6 #aacc22acfd479c35
-            released: L peak -13.0 rms -33.3 | R peak -13.0 rms -33.3 #e22ce05656c64625
+            chord: L peak -9.9 rms -18.8 | R peak -9.9 rms -18.8 #3734954238a4aaed
+            bent up: L peak -12.0 rms -19.4 | R peak -12.0 rms -19.4 #4cc8e5bd9a9cd159
+            bent down: L peak -11.6 rms -17.6 | R peak -11.6 rms -17.6 #51a7762847931939
+            released: L peak -13.0 rms -33.3 | R peak -13.0 rms -33.3 #1115b49a46cfe3d9
         "#]],
     );
 }
@@ -900,7 +923,7 @@ fn position_swept_by_an_lfo() {
             .modulate("lfo1", "osc1pos", 0.5)
             .note(57, 100, 1.0, 0.3),
         &expect![[r#"
-            held: L peak -17.3 rms -23.1 | R peak -17.3 rms -23.1 #6b477b39339a1c95
+            held: L peak -17.3 rms -23.1 | R peak -17.3 rms -23.1 #419489959fd678f9
             released: L peak -18.2 rms -37.1 | R peak -18.2 rms -37.1 #db0a6e102430639d
         "#]],
     );
@@ -922,7 +945,7 @@ fn both_oscillators_with_unison_formant_and_bend() {
             .set("osc2pan", 0.6)
             .note(45, 110, 0.6, 0.3),
         &expect![[r#"
-            held: L peak -10.7 rms -20.4 | R peak -5.1 rms -14.6 #9274b38b0da137f9
+            held: L peak -10.7 rms -20.4 | R peak -5.1 rms -14.6 #536aa08f35f0301b
             released: L peak -18.1 rms -35.6 | R peak -11.8 rms -29.4 #3e088d91c036475f
         "#]],
     );
@@ -941,7 +964,7 @@ fn every_filter_type_under_its_envelope() {
         program = program.set("flttype", kind as f32).note(52, 100, 0.25, 0.1);
     }
     check(&program, &expect![[r#"
-        held: L peak -11.5 rms -22.6 | R peak -11.5 rms -22.6 #ccf40cc0678ae9dd
+        held: L peak -11.5 rms -22.6 | R peak -11.5 rms -22.6 #d768c6dc8f9e6b2d
         released: L peak -14.2 rms -32.8 | R peak -14.2 rms -32.8 #f75b56507f08f1d9
         held: L peak -12.2 rms -22.7 | R peak -12.2 rms -22.7 #3e53d4c207ded6dd
         released: L peak -14.7 rms -32.1 | R peak -14.7 rms -32.1 #2a058bc189e49775
@@ -974,10 +997,10 @@ fn sub_and_both_noises() {
             .set("subwave", 5.0)
             .note(40, 100, 0.3, 0.1),
         &expect![[r#"
-            held: L peak -7.4 rms -10.9 | R peak -7.4 rms -10.9 #0b1e6bda287e09a5
-            released: L peak -10.0 rms -20.7 | R peak -10.0 rms -20.7 #d0bb9c1de212e861
-            held: L peak -4.6 rms -10.2 | R peak -4.6 rms -10.2 #fc49040e4501af31
-            released: L peak -10.0 rms -20.4 | R peak -10.0 rms -20.4 #9babf18f3d64b97d
+            held: L peak -7.4 rms -10.9 | R peak -7.4 rms -10.9 #1cc3b33875ba7005
+            released: L peak -10.0 rms -20.7 | R peak -10.0 rms -20.7 #368f1e8aeca752d9
+            held: L peak -4.6 rms -10.2 | R peak -4.6 rms -10.2 #7c184d23a4fa2229
+            released: L peak -10.0 rms -20.4 | R peak -10.0 rms -20.4 #8812a8d5c19e2c35
         "#]],
     );
 }
@@ -1000,7 +1023,7 @@ fn mono_legato_glide() {
             .off(0, 48)
             .play("released", 0.3),
         &expect![[r#"
-            first: L peak -17.3 rms -24.0 | R peak -17.3 rms -24.0 #353721d2aac700f9
+            first: L peak -17.3 rms -24.0 | R peak -17.3 rms -24.0 #20afee39cba66dd5
             glide up: L peak -17.3 rms -23.4 | R peak -17.3 rms -23.4 #2506e1e80b47a975
             back down: L peak -17.3 rms -23.4 | R peak -17.3 rms -23.4 #ec355bb79b4b1c85
             released: L peak -20.7 rms -38.1 | R peak -20.7 rms -38.1 #3573b49be0b77fd9
@@ -1030,7 +1053,7 @@ fn mono_note_stack_without_glide_and_glissando_retriggering() {
             .off(500, 50)
             .play("all released", 0.4),
         &expect![[r#"
-            three held: L peak -25.5 rms -31.6 | R peak -25.5 rms -31.6 #8edc1ee364674815
+            three held: L peak -25.5 rms -31.6 | R peak -25.5 rms -31.6 #ebffc944d8dde825
             middle let go: L peak -27.3 rms -31.3 | R peak -27.3 rms -31.3 #09dace2dbe956785
             back to the first: L peak -17.9 rms -23.5 | R peak -17.9 rms -23.5 #4a5f9d1ba8fa2a6d
             glissando up: L peak -17.7 rms -23.6 | R peak -17.7 rms -23.6 #d5dc3f4a4103d8ad
@@ -1060,8 +1083,8 @@ fn modulation_from_envelope_velocity_cc_and_step_lfo() {
             .off(300, 64)
             .play("released", 0.3),
         &expect![[r#"
-            held: L peak -45.4 rms -57.6 | R peak -36.0 rms -45.2 #a7e81da37695436b
-            released: L peak -45.3 rms -62.3 | R peak -45.3 rms -62.3 #aab2531d538b3fe3
+            held: L peak -45.4 rms -57.6 | R peak -36.0 rms -45.2 #0991e9bb03c22083
+            released: L peak -45.3 rms -62.3 | R peak -45.3 rms -62.3 #28b3536b7f8681e7
         "#]],
     );
 }
@@ -1080,7 +1103,7 @@ fn tempo_synced_lfo_and_gate() {
             .set("gateenable", 1.0)
             .note(55, 100, 0.8, 0.2),
         &expect![[r#"
-            held: L peak -15.5 rms -27.4 | R peak -15.5 rms -27.3 #f344982297c478da
+            held: L peak -15.5 rms -27.4 | R peak -15.5 rms -27.3 #dca20be64097f00e
             released: L peak -65.7 rms -85.0 | R peak -68.0 rms -87.4 #d9e541fc9e65c8d4
         "#]],
     );
@@ -1109,14 +1132,14 @@ fn each_effect_alone() {
             .note(48, 120, 0.2, 0.1);
     }
     check(&program, &expect![[r#"
-        held: L peak -22.2 rms -29.0 | R peak -24.7 rms -32.9 #ec5c930ed5c3dca5
+        held: L peak -22.2 rms -29.0 | R peak -24.7 rms -32.9 #dfbae7ddc6ccfda6
         released: L peak -23.7 rms -41.8 | R peak -31.1 rms -49.9 #77f4f921c91134fe
         held: L peak -12.5 rms -19.0 | R peak -12.5 rms -19.0 #8fdb0eb688a4e921
         released: L peak -14.7 rms -33.1 | R peak -14.7 rms -33.1 #51f23fc407b4d4e5
         held: L peak -19.5 rms -26.2 | R peak -19.5 rms -26.2 #578efa885fda68b5
         released: L peak -22.0 rms -40.6 | R peak -22.0 rms -40.6 #84edf76ed544d86d
-        held: L peak -18.0 rms -24.0 | R peak -18.0 rms -24.0 #c1ad1641baeb5705
-        released: L peak -19.7 rms -34.4 | R peak -19.7 rms -34.4 #48a5360dcd3435e1
+        held: L peak -18.0 rms -24.0 | R peak -18.0 rms -24.0 #fc674a546e09a621
+        released: L peak -19.7 rms -34.4 | R peak -19.7 rms -34.4 #649368b3aedbf619
         held: L peak -10.6 rms -15.1 | R peak -10.6 rms -15.1 #27f01503712f7275
         released: L peak -12.9 rms -21.7 | R peak -12.9 rms -21.7 #94dd49c11d820d25
         held: L peak -4.3 rms -13.6 | R peak -4.3 rms -13.6 #06effdb0d569fbf4
@@ -1142,7 +1165,7 @@ fn a_held_note_through_a_moved_position_a_new_table_and_a_preset() {
             .off(0, 60)
             .play("released", 0.3),
         &expect![[r#"
-            held: L peak -19.5 rms -26.0 | R peak -19.5 rms -26.0 #a14e6d36d3098ecd
+            held: L peak -19.5 rms -26.0 | R peak -19.5 rms -26.0 #9522326ad58d7afd
             position moved: L peak -19.7 rms -23.4 | R peak -19.7 rms -23.4 #fbac01db02c24ef1
             table switched: L peak -20.2 rms -25.8 | R peak -20.2 rms -25.8 #c2213c572e5d3f09
             preset loaded: L peak -inf rms -inf | R peak -inf rms -inf #2d9ab45bcfc84b25
@@ -1159,7 +1182,7 @@ fn more_notes_than_voices_steal() {
         program = program.on(i as u32 * 50, note, 100);
     }
     check(&program.play("six notes on four voices", 0.4), &expect![[r#"
-        six notes on four voices: L peak -8.7 rms -19.8 | R peak -8.7 rms -19.8 #4ba9b01c06cdc26d
+        six notes on four voices: L peak -8.7 rms -19.8 | R peak -8.7 rms -19.8 #60b39995c02dafc5
     "#]]);
 }
 
@@ -1168,12 +1191,12 @@ fn more_notes_than_voices_steal() {
 fn other_rates_and_odd_blocks() {
     for (rate, block, expect) in [
         (44100.0, 37, expect![[r#"
-            held: L peak -9.6 rms -15.6 | R peak -9.6 rms -15.6 #5afd8b390bd62199
-            released: L peak -11.5 rms -30.0 | R peak -11.5 rms -30.0 #6f21d370e01c3d4d
+            held: L peak -9.6 rms -15.6 | R peak -9.6 rms -15.6 #038f368ed6e9278d
+            released: L peak -11.5 rms -30.0 | R peak -11.5 rms -30.0 #7231834ac13f5205
         "#]]),
         (96000.0, 1000, expect![[r#"
-            held: L peak -9.6 rms -15.5 | R peak -9.6 rms -15.5 #44064bd68a304945
-            released: L peak -11.7 rms -30.0 | R peak -11.7 rms -30.0 #77a38fd9130533f9
+            held: L peak -9.6 rms -15.5 | R peak -9.6 rms -15.5 #35d2c2beeece9739
+            released: L peak -11.7 rms -30.0 | R peak -11.7 rms -30.0 #82f0b4112fa58a19
         "#]]),
     ] {
         check(
@@ -1210,38 +1233,38 @@ fn every_factory_preset() {
         compare(&program, &rust, &cpp::run(&program));
         let _ = writeln!(report, "{}:\n{}", preset.name, summary(&rust));
     }
-    expect![[r#"
+    assert_summary(&expect![[r#"
         DT Siren 1:
-        chord: L peak -16.1 rms -28.3 | R peak -16.1 rms -28.3 #9e66f81d46f5c8d1
-        released: L peak -18.9 rms -33.2 | R peak -18.9 rms -33.2 #8af5eb12e54394d5
+        chord: L peak -16.1 rms -28.3 | R peak -16.1 rms -28.3 #5ed9236b2963b965
+        released: L peak -18.9 rms -33.2 | R peak -18.9 rms -33.2 #0507c375ce72dbf9
 
         DT Siren Complex 2:
-        chord: L peak -9.5 rms -16.6 | R peak -9.4 rms -16.5 #402a95df24ae7c55
-        released: L peak -11.3 rms -21.9 | R peak -11.9 rms -22.9 #c7f7e22797e66384
+        chord: L peak -9.5 rms -16.6 | R peak -9.4 rms -16.5 #5b84ef6614c2600a
+        released: L peak -11.3 rms -21.9 | R peak -11.9 rms -22.9 #fd0732da4ca944af
 
         DT Siren complex:
-        chord: L peak -7.9 rms -16.6 | R peak -7.7 rms -16.5 #954e49beb22d6f78
-        released: L peak -10.1 rms -20.8 | R peak -9.8 rms -21.6 #b677c5f575403d20
+        chord: L peak -7.9 rms -16.6 | R peak -7.7 rms -16.5 #a12beb80152687dc
+        released: L peak -10.1 rms -20.8 | R peak -9.8 rms -21.6 #bb70ff1d49d97103
 
         DT Sweeper 6:
-        chord: L peak -8.5 rms -19.3 | R peak -5.7 rms -16.8 #4ada1faf77aa0987
-        released: L peak -10.8 rms -21.9 | R peak -11.2 rms -21.0 #d91e058d85d82a9d
+        chord: L peak -8.5 rms -19.3 | R peak -5.7 rms -16.8 #a7db6c4d82efa592
+        released: L peak -10.8 rms -21.9 | R peak -11.2 rms -21.0 #61451a5c98de7e5c
 
         VOX Dist Vocal I:
-        chord: L peak -5.7 rms -17.5 | R peak -5.4 rms -17.6 #0ee02a7a6ba1822d
-        released: L peak -13.0 rms -26.3 | R peak -10.9 rms -26.4 #97d857124dd810f1
+        chord: L peak -5.7 rms -17.5 | R peak -5.4 rms -17.6 #9e2aea813fd30fb5
+        released: L peak -13.0 rms -26.3 | R peak -10.9 rms -26.4 #2338c2d9a2bd76ec
 
         Guitar Pad:
-        chord: L peak -17.9 rms -29.2 | R peak -18.8 rms -29.3 #bb162510f4693a49
-        released: L peak -18.7 rms -29.4 | R peak -17.7 rms -29.6 #f2dc10c2f2932f8c
+        chord: L peak -17.9 rms -29.2 | R peak -18.8 rms -29.3 #659e69925840d542
+        released: L peak -18.7 rms -29.4 | R peak -17.7 rms -29.6 #de6a65e22edb701f
 
         Noise Riserish:
-        chord: L peak -25.5 rms -39.0 | R peak -24.4 rms -38.9 #10d3e9c6a54f7ef6
-        released: L peak -25.1 rms -37.2 | R peak -23.6 rms -37.0 #9cc4905161a8248e
+        chord: L peak -25.5 rms -39.0 | R peak -24.4 rms -38.9 #7c6e36f3d4be0ccd
+        released: L peak -25.1 rms -37.2 | R peak -23.6 rms -37.0 #0ae70bbcaba131ad
 
         Whip:
-        chord: L peak 1.0 rms -17.2 | R peak 1.4 rms -17.3 #30aace4e8603afb4
-        released: L peak -30.3 rms -53.6 | R peak -29.6 rms -53.5 #e0440cc7206585ed
+        chord: L peak 1.0 rms -17.2 | R peak 1.4 rms -17.3 #db50975807f9215e
+        released: L peak -30.3 rms -53.6 | R peak -29.6 rms -53.5 #f23dc624868d29dc
 
-    "#]].assert_eq(&report);
+    "#]], &report);
 }
