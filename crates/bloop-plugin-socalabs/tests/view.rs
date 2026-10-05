@@ -390,3 +390,60 @@ fn the_meters_read_a_tone_of_known_level() {
         Input +6, -12 dBFS, 0.5 s    in  -12.00  reduction  -17.97  out  -23.97  bands 1
         a Delay: None"#]].assert_eq(&out.join("\n"));
 }
+
+/// The three analysers let their audio through to the bit: half a second
+/// of noise and half of a full-scale square through each, with every knob
+/// at either end of its travel, comes out as it went in.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn the_analysers_let_audio_through_bit_for_bit() {
+    let mut seed = 0x2545_f491_u32;
+    let mut noise = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        f32::from(u16::try_from(seed >> 16).unwrap_or(0)) / 32768.0 - 1.0
+    };
+    let input: Vec<f32> = (0..48_000)
+        .map(|i| {
+            if i < 24_000 {
+                noise()
+            } else if (i / 50) % 2 == 0 {
+                1.0
+            } else {
+                -1.0
+            }
+        })
+        .collect();
+    let mut out = Vec::new();
+    for kind in [Kind::Oscilloscope, Kind::SpectrumAnalyzer, Kind::XyScope] {
+        for end in [0.0f32, 1.0] {
+            let mut effect = Effect::new(kind, RATE);
+            for i in 0..effect.param_count() {
+                let value = effect.knob_value(i, end);
+                effect.set_param(i, value);
+            }
+            let mut left = input.clone();
+            let mut right: Vec<f32> = input.iter().map(|x| -x).collect();
+            for (l, r) in left.chunks_mut(BLOCK).zip(right.chunks_mut(BLOCK)) {
+                process(&mut effect, l, r);
+            }
+            let same = left.iter().zip(&input).all(|(a, b)| a.to_bits() == b.to_bits())
+                && right.iter().zip(&input).all(|(a, b)| a.to_bits() == (-b).to_bits());
+            out.push(format!(
+                "{:<16} knobs at {end}: {} knobs, {}, {}, bit for bit {same}",
+                kind.name(),
+                effect.param_count(),
+                kind.category(),
+                if effect.meter().is_some() { "metered" } else { "no meter" },
+            ));
+        }
+    }
+    expect![[r#"
+        Oscilloscope     knobs at 0: 11 knobs, Analysis, no meter, bit for bit true
+        Oscilloscope     knobs at 1: 11 knobs, Analysis, no meter, bit for bit true
+        SpectrumAnalyzer knobs at 0: 2 knobs, Analysis, no meter, bit for bit true
+        SpectrumAnalyzer knobs at 1: 2 knobs, Analysis, no meter, bit for bit true
+        XYScope          knobs at 0: 1 knobs, Analysis, no meter, bit for bit true
+        XYScope          knobs at 1: 1 knobs, Analysis, no meter, bit for bit true"#]].assert_eq(&out.join("\n"));
+}

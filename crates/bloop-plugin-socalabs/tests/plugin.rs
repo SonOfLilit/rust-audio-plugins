@@ -189,6 +189,18 @@ fn every_effect_describes_itself() {
                0. Threshold        -24 to 0         dB  default -6        skew 1
                1. Ceiling          -24 to 0         dB  default -0.3      skew 1
                2. Release            0 to 1000      ms  default 100       skew 0.5
+            Oscilloscope by SocaLabs, Effect, 2 in 2 out
+               0. Samp/px       0.0625 to 48            default 1         skew 0.3
+               1. Zoom             0.1 to 100           default 1         skew 0.3
+               2. Offset L          -2 to 2             default 0         skew 1
+               3. Offset R          -2 to 2             default 0         skew 1
+               4. Trigger Chan        -1 to 1             default 0         skew 1
+               5. Trigger Mode         0 to 3             default 3         skew 1
+               6. Trigger Level        -1 to 1             default 0         skew 1
+               7. Trigger Pos         0 to 1             default 0         skew 1
+               8. Trigger Run         0 to 1             default 0         skew 1
+               9. Sync               0 to 1             default 0         skew 1
+              10. Beats              1 to 32            default 4         skew 1
             PlateReverb by SocaLabs, Effect, 2 in 2 out
                0. Mix                0 to 100       %   default 25        skew 1
                1. Predelay           0 to 100       ms  default 0         skew 1
@@ -208,6 +220,9 @@ fn every_effect_describes_itself() {
                0. Drive              0 to 24        dB  default 0         skew 1
                1. Knee               0 to 100       %   default 50        skew 1
                2. Ceiling          -24 to 0         dB  default 0         skew 1
+            SpectrumAnalyzer by SocaLabs, Effect, 2 in 2 out
+               0. Mode               0 to 1             default 0         skew 1
+               1. Log                0 to 1             default 0         skew 1
             StereoEnhancer by SocaLabs, Effect, 2 in 2 out
                0. Width              0 to 1         %   default 0.5       skew 1
                1. Freq HP            0 to 1         %   default 0.5       skew 1
@@ -230,6 +245,8 @@ fn every_effect_describes_itself() {
                5. Detector           0 to 100       %   default 50        skew 1
                6. Process            0 to 100       %   default 50        skew 1
                7. Output           -24 to 12        dB  default 0         skew 1
+            XYScope by SocaLabs, Effect, 2 in 2 out
+               0. Zoom            0.25 to 4             default 1         skew 0.5
         "#]],
     );
 }
@@ -356,12 +373,15 @@ fn a_knob_past_the_last_is_nothing() {
             GraphicEq: 17 knobs; knob 17 is "" 0..0 reading 0
             Limiter: 5 knobs; knob 5 is "" 0..0 reading 0
             Maximizer: 3 knobs; knob 3 is "" 0..0 reading 0
+            Oscilloscope: 11 knobs; knob 11 is "" 0..0 reading 0
             PlateReverb: 6 knobs; knob 6 is "" 0..0 reading 0
             SimpleVerb: 7 knobs; knob 7 is "" 0..0 reading 0
             SoftClipper: 3 knobs; knob 3 is "" 0..0 reading 0
+            SpectrumAnalyzer: 2 knobs; knob 2 is "" 0..0 reading 0
             StereoEnhancer: 3 knobs; knob 3 is "" 0..0 reading 0
             StereoProcessor: 8 knobs; knob 8 is "" 0..0 reading 0
             TransientShaper: 8 knobs; knob 8 is "" 0..0 reading 0
+            XyScope: 1 knobs; knob 1 is "" 0..0 reading 0
         "#]],
     );
 }
@@ -563,25 +583,31 @@ fn every_knob_changes_what_comes_out() {
     check(
         &out,
         &expect![[r#"
-        BitCrusher: Bits, Rate, Dirty
-        Chorus: Delay, Depth, Speed, Width, Mix
-        Compressor: Attack, Release, Ratio, Threshold, Knee, Input, Output
-        Crossfeed: Enable
-        Delay: Sync (with Beat 1, Mix 100), Time (with Mix 100), Beat (with Sync 1, Mix 100), Feedback (with Time 0.05, Mix 100), Crossfeed (with Time 0.05, Mix 100), Mix
-        Distortion: Density, Highpass (with Density 2), Output (with Density 2), Mix (with Density 2)
-        Exciter: Frequency, Drive, Harmonics, Mix
-        Expander: Attack (with Ratio 4), Release (with Ratio 4), Ratio, Threshold (with Ratio 4), Knee (with Ratio 4), Input (with Ratio 4), Output (with Ratio 4)
-        Gate: Attack, Hold, Release, Threshold, Knee, Input, Output
-        GraphicEQ: 31 Hz, 63 Hz, 125 Hz, 250 Hz, 500 Hz, 1k Hz, 2k Hz, 4k Hz, 8k Hz, 16k Hz, LP, LP Freq (with LP 1), LP Slope (with LP 1), HP, HP Freq (with HP 1), HP Slope (with HP 1), Output
-        Limiter: Attack, Release, Threshold, Input, Output
-        Maximizer: Threshold, Ceiling, Release (with Threshold -24)
-        PlateReverb: Mix, Predelay, Lowpass, Decay, Size, Damping
-        SimpleVerb: Room, Damp, PreDelay, LP, HP, Wet, Dry
-        SoftClipper: Drive, Knee (with Drive 12), Ceiling
-        StereoEnhancer: Width, Freq HP, Width HP
-        StereoProcessor: Width 1, Center 1, Pan 1, Rotation, Pan 2, Center 2, Width 2, Output
-        TransientShaper: Attack, Sustain (with Attack 2), Smoothing (with Attack 2), Low Cut (with Attack 2), High Cut (with Attack 2), Detector (with Attack 2), Process (with Attack 2), Output (with Attack 2)
-    "#]],
+            BitCrusher: Bits, Rate, Dirty
+            Chorus: Delay, Depth, Speed, Width, Mix
+            Compressor: Attack, Release, Ratio, Threshold, Knee, Input, Output
+            Crossfeed: Enable
+            Delay: Sync (with Beat 1, Mix 100), Time (with Mix 100), Beat (with Sync 1, Mix 100), Feedback (with Time 0.05, Mix 100), Crossfeed (with Time 0.05, Mix 100), Mix
+            Distortion: Density, Highpass (with Density 2), Output (with Density 2), Mix (with Density 2)
+            Exciter: Frequency, Drive, Harmonics, Mix
+            Expander: Attack (with Ratio 4), Release (with Ratio 4), Ratio, Threshold (with Ratio 4), Knee (with Ratio 4), Input (with Ratio 4), Output (with Ratio 4)
+            Gate: Attack, Hold, Release, Threshold, Knee, Input, Output
+            GraphicEQ: 31 Hz, 63 Hz, 125 Hz, 250 Hz, 500 Hz, 1k Hz, 2k Hz, 4k Hz, 8k Hz, 16k Hz, LP, LP Freq (with LP 1), LP Slope (with LP 1), HP, HP Freq (with HP 1), HP Slope (with HP 1), Output
+            Limiter: Attack, Release, Threshold, Input, Output
+            Maximizer: Threshold, Ceiling, Release (with Threshold -24)
+            Oscilloscope: 
+              STILL: Samp/px, Zoom, Offset L, Offset R, Trigger Chan, Trigger Mode, Trigger Level, Trigger Pos, Trigger Run, Sync, Beats
+            PlateReverb: Mix, Predelay, Lowpass, Decay, Size, Damping
+            SimpleVerb: Room, Damp, PreDelay, LP, HP, Wet, Dry
+            SoftClipper: Drive, Knee (with Drive 12), Ceiling
+            SpectrumAnalyzer: 
+              STILL: Mode, Log
+            StereoEnhancer: Width, Freq HP, Width HP
+            StereoProcessor: Width 1, Center 1, Pan 1, Rotation, Pan 2, Center 2, Width 2, Output
+            TransientShaper: Attack, Sustain (with Attack 2), Smoothing (with Attack 2), Low Cut (with Attack 2), High Cut (with Attack 2), Detector (with Attack 2), Process (with Attack 2), Output (with Attack 2)
+            XYScope: 
+              STILL: Zoom
+        "#]],
     );
 }
 
@@ -801,25 +827,28 @@ fn clear_leaves_nothing_ringing() {
     check(
         &out,
         &expect![[r#"
-        BitCrusher       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Chorus           silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Compressor       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Crossfeed        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Delay            silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Distortion       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Exciter          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Expander         silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Gate             silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        GraphicEQ        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Limiter          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        Maximizer        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        PlateReverb      silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        SimpleVerb       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        SoftClipper      silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        StereoEnhancer   silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        StereoProcessor  silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
-        TransientShaper  silence after clear: 0.000000, then noise off by 0.000003, 0 allocations
-    "#]],
+            BitCrusher       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Chorus           silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Compressor       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Crossfeed        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Delay            silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Distortion       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Exciter          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Expander         silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Gate             silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            GraphicEQ        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Limiter          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Maximizer        silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            Oscilloscope     silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            PlateReverb      silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            SimpleVerb       silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            SoftClipper      silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            SpectrumAnalyzer silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            StereoEnhancer   silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            StereoProcessor  silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+            TransientShaper  silence after clear: 0.000000, then noise off by 0.000003, 0 allocations
+            XYScope          silence after clear: 0.000000, then noise off by 0.000000, 0 allocations
+        "#]],
     );
 }
 

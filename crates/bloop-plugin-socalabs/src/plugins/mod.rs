@@ -6,6 +6,7 @@ pub mod delay;
 pub mod dynamics;
 pub mod extras;
 pub mod graphiceq;
+pub mod scopes;
 pub mod simpleverb;
 pub mod stereo;
 

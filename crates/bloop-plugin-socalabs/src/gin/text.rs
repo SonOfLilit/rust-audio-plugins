@@ -30,6 +30,24 @@ pub enum Text {
     /// SimpleVerb's and the stereo plug-ins' `percentTextFunction`: a
     /// fader's 0 to 1 as a whole percentage.
     Percent,
+    /// Oscilloscope's `chanTextFunction`: "Ave", "Left", "Right".
+    Channel,
+    /// Oscilloscope's `modeTextFunction`: "Off", "Up", "Down", "Auto".
+    TriggerMode,
+    /// Oscilloscope's `sppTextFunction`: "1/4" below one, whole above.
+    SamplesPerPixel,
+    /// Oscilloscope's `tlTextFunction`: the level's size in dB, to a
+    /// decimal, "-inf dB" at zero.
+    TriggerLevel,
+    /// Oscilloscope's `tpTextFunction`: two decimals.
+    TwoDecimals,
+    /// Oscilloscope's `runTextFunction`: "Normal" or "Single".
+    Run,
+    /// Oscilloscope's `beatSyncTextFunction`: "1 beat", "4 beats".
+    Beats,
+    /// The `SpectrumAnalyzer`'s `modeTextFunction`: "Spectroscope" or
+    /// "Sonogram".
+    AnalyzerMode,
 }
 
 impl Text {
@@ -59,6 +77,47 @@ impl Text {
                 .get(value.max(0.0) as usize)
                 .map_or_else(String::new, |d| d.name.to_string()),
             Text::Percent => format!("{}%", round_to_int(value * 100.0)),
+            Text::Channel => match value as i32 {
+                -1 => "Ave",
+                0 => "Left",
+                1 => "Right",
+                _ => "",
+            }
+            .to_string(),
+            Text::TriggerMode => ["Off", "Up", "Down", "Auto"]
+                .get(value.max(0.0) as usize)
+                .map_or_else(String::new, |s| (*s).to_string()),
+            Text::SamplesPerPixel => {
+                if value < 1.0 {
+                    format!("1/{}", round_to_int(1.0 / value))
+                } else {
+                    format!("{}", round_to_int(value))
+                }
+            }
+            Text::TriggerLevel => {
+                if value.abs() < 0.0001 {
+                    "-inf dB".to_string()
+                } else {
+                    format!("{:.1} dB", 20.0 * libm::log10f(value.abs()))
+                }
+            }
+            Text::TwoDecimals => format!("{value:.2}"),
+            Text::Run => match value as i32 {
+                0 => "Normal",
+                1 => "Single",
+                _ => "",
+            }
+            .to_string(),
+            Text::Beats => {
+                let beats = value as i32;
+                format!("{beats} {}", if beats == 1 { "beat" } else { "beats" })
+            }
+            Text::AnalyzerMode => match value as i32 {
+                0 => "Spectroscope",
+                1 => "Sonogram",
+                _ => "",
+            }
+            .to_string(),
         }
     }
 }

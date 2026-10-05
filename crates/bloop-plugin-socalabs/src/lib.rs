@@ -51,6 +51,8 @@ use plugins::extras::{
     PlateReverbProcessor, SoftClipperProcessor, TransientShaperProcessor,
 };
 use plugins::graphiceq::GraphicEqProcessor;
+use plugins::scopes::{Analyser, ScopeProcessor};
+pub use plugins::scopes::oscilloscope;
 use plugins::simpleverb::SimpleVerbProcessor;
 use plugins::stereo::{StereoEnhancerProcessor, StereoProcessorProcessor};
 use plugins::{Host, Processor};
@@ -89,11 +91,14 @@ pub enum Kind {
     Exciter,
     SoftClipper,
     Chorus,
+    Oscilloscope,
+    SpectrumAnalyzer,
+    XyScope,
 }
 
 impl Kind {
     /// Every effect, in the order the Browser lists them.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 21] = [
         Self::BitCrusher,
         Self::Chorus,
         Self::Compressor,
@@ -106,12 +111,15 @@ impl Kind {
         Self::GraphicEq,
         Self::Limiter,
         Self::Maximizer,
+        Self::Oscilloscope,
         Self::PlateReverb,
         Self::SimpleVerb,
         Self::SoftClipper,
+        Self::SpectrumAnalyzer,
         Self::StereoEnhancer,
         Self::StereoProcessor,
         Self::TransientShaper,
+        Self::XyScope,
     ];
 
     /// The effect's name, as SocaLabs publishes it.
@@ -136,6 +144,9 @@ impl Kind {
             Self::Exciter => "Exciter",
             Self::SoftClipper => "SoftClipper",
             Self::Chorus => "Chorus",
+            Self::Oscilloscope => "Oscilloscope",
+            Self::SpectrumAnalyzer => "SpectrumAnalyzer",
+            Self::XyScope => "XYScope",
         }
     }
 
@@ -155,6 +166,7 @@ impl Kind {
             Self::Distortion | Self::BitCrusher | Self::SoftClipper | Self::Exciter => "Distortion",
             Self::StereoEnhancer | Self::StereoProcessor | Self::Crossfeed => "Stereo",
             Self::Chorus => "Modulation",
+            Self::Oscilloscope | Self::SpectrumAnalyzer | Self::XyScope => "Analysis",
         }
     }
 
@@ -252,6 +264,7 @@ enum Engine {
     Exciter(Box<ExciterProcessor>),
     SoftClipper(Box<SoftClipperProcessor>),
     Chorus(Box<ChorusProcessor>),
+    Scope(Box<ScopeProcessor>),
 }
 
 macro_rules! dispatch {
@@ -272,6 +285,7 @@ macro_rules! dispatch {
             Engine::Exciter($p) => $body,
             Engine::SoftClipper($p) => $body,
             Engine::Chorus($p) => $body,
+            Engine::Scope($p) => $body,
         }
     };
 }
@@ -353,6 +367,11 @@ impl Effect {
             Kind::Exciter => Engine::Exciter(Box::default()),
             Kind::SoftClipper => Engine::SoftClipper(Box::default()),
             Kind::Chorus => Engine::Chorus(Box::default()),
+            Kind::Oscilloscope => Engine::Scope(Box::new(ScopeProcessor::new(Analyser::Oscilloscope))),
+            Kind::SpectrumAnalyzer => {
+                Engine::Scope(Box::new(ScopeProcessor::new(Analyser::SpectrumAnalyzer)))
+            }
+            Kind::XyScope => Engine::Scope(Box::new(ScopeProcessor::new(Analyser::XyScope))),
         };
         engine.prepare(sample_rate);
         Self {
