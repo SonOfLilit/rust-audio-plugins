@@ -1,0 +1,64 @@
+[package]
+name = "bloop-plugin-airwindows"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Six Airwindows plug-ins by Chris Johnson, ported to Rust: Console7Channel,
+# Console7Buss, ToTape8, Density2, Galactic3 and Baxandall2. Ported from
+# airwindows rev e718c9bcfcdd736deeddb08bffe6bce2aa8e0eea (the revision the
+# vendor/airwindows submodule pins, which the gold tests compile), from the
+# LinuxVST sources' processReplacing. MIT, like the originals; LICENSE is
+# theirs.
+
+[features]
+# Bit-exact comparison against the C++ originals (tests/gold.rs). Needs g++
+# and the vendor/airwindows submodule. Also switches the transcendentals to
+# the platform C library the C++ links (src/math.rs).
+gold = []
+
+[dependencies]
+libm = "0.2"
+
+[dev-dependencies]
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
+unimplemented = "deny"
+allow_attributes = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+await_holding_lock = "deny"
+large_futures = "deny"
+exit = "deny"
+mem_forget = "deny"
+module_name_repetitions = "allow"
+similar_names = "allow"
+# A port that is bit-exact against C++ has to convert between float, double
+# and int exactly where the original does, and compare floats exactly where
+# it does; the gold tests are what hold those conversions to the original's.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_lossless = "allow"
+float_cmp = "allow"
+many_single_char_names = "allow"
+# Airwindows' constants carry more digits than a double holds; they are
+# copied as written so the port reads side by side with the C++.
+excessive_precision = "allow"
+unreadable_literal = "allow"
+# `1.57079633` and `3.141592653589793238` are the originals' spellings of
+# pi/2 and pi; the first is not pi/2 to a double's precision, and the port
+# must use what the original uses.
+approx_constant = "allow"
+# The plug-ins' names (Console7Buss, ToTape8…) are names, not code.
+doc_markdown = "allow"
