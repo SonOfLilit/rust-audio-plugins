@@ -64,7 +64,7 @@ const LANES: usize = 32;
 /// keeps in registers, so each weight costs one load and one
 /// multiply-add per vector of frames rather than a load and a store of
 /// the row as well.
-#[inline(always)]
+#[inline]
 fn dense_row(
     row: &mut [f32],
     bias: f32,
@@ -291,7 +291,6 @@ impl Layer {
 
     /// One block: reads `input`, adds the activation to `head`, writes
     /// `input + out(activation)` to `next`.
-    #[expect(clippy::too_many_arguments, reason = "one layer's whole dataflow")]
     fn process(
         &mut self,
         input: &Rows,
@@ -395,10 +394,18 @@ impl LayerArray {
         }
         self.rechannel.apply(input, &mut self.a, frames);
         for layer in &mut self.layers {
-            layer.process(&self.a, condition, &mut self.head, &mut self.b, frames, tanh);
+            layer.process(
+                &self.a,
+                condition,
+                &mut self.head,
+                &mut self.b,
+                frames,
+                tanh,
+            );
             std::mem::swap(&mut self.a, &mut self.b);
         }
-        self.head_rechannel.apply(&self.head, &mut self.head_out, frames);
+        self.head_rechannel
+            .apply(&self.head, &mut self.head_out, frames);
     }
 }
 

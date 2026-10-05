@@ -44,7 +44,8 @@ impl Model {
     /// Text that is not a `.nam` file, or a model this port does not run
     /// (the error says which part).
     pub fn parse(text: &str) -> Result<Self, String> {
-        let json: Value = serde_json::from_str(text).map_err(|e| format!("not a .nam file: {e}"))?;
+        let json: Value =
+            serde_json::from_str(text).map_err(|e| format!("not a .nam file: {e}"))?;
         let architecture = json["architecture"]
             .as_str()
             .ok_or("the file names no architecture")?;
@@ -53,7 +54,11 @@ impl Model {
             .as_array()
             .ok_or("the file has no weights")?
             .iter()
-            .map(|v| v.as_f64().map(|x| x as f32).ok_or("a weight is not a number"))
+            .map(|v| {
+                v.as_f64()
+                    .map(|x| x as f32)
+                    .ok_or("a weight is not a number")
+            })
             .collect::<Result<_, _>>()?;
         let sample_rate = json["sample_rate"].as_f64().unwrap_or(48_000.0);
         let (net, architecture) = match architecture {
@@ -150,7 +155,7 @@ fn usize_of(config: &Value, key: &str) -> Result<usize, String> {
 }
 
 /// The keys of a layer array bloop's WaveNet reads. A file with any other
-/// is a newer architecture (NAM's A2: FiLM, bottlenecks, grouped
+/// is a newer architecture (NAM's A2: `FiLM`, bottlenecks, grouped
 /// convolutions, per-layer kernels) this port does not run yet, and is
 /// refused rather than run wrong.
 const ARRAY_KEYS: [&str; 9] = [
@@ -192,7 +197,11 @@ fn wavenet(config: &Value, weights: &[f32]) -> Result<WaveNet, String> {
             .as_array()
             .ok_or_else(|| format!("layer array {i} has no dilations"))?
             .iter()
-            .map(|d| d.as_u64().map(|d| d as usize).ok_or("a dilation is not a number"))
+            .map(|d| {
+                d.as_u64()
+                    .map(|d| d as usize)
+                    .ok_or("a dilation is not a number")
+            })
             .collect::<Result<Vec<_>, _>>()?;
         if dilations.is_empty() || dilations.contains(&0) {
             return Err(format!("layer array {i} has no layers, or a dilation of 0"));

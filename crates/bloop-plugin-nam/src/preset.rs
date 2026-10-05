@@ -15,6 +15,10 @@ pub enum Shape {
     Lite,
     Feather,
     Nano,
+    /// The nano size with gated layers (`"gated": true`), which older
+    /// trainer versions offered: twice the convolution's channels, the
+    /// first half through `tanh` times the second through a sigmoid.
+    GatedNano,
     /// One LSTM layer of this many hidden units.
     Lstm(usize),
 }
@@ -29,6 +33,7 @@ impl Shape {
             Self::Lite => "lite".into(),
             Self::Feather => "feather".into(),
             Self::Nano => "nano".into(),
+            Self::GatedNano => "gated-nano".into(),
             Self::Lstm(h) => format!("lstm-{h}"),
         }
     }
@@ -45,43 +50,53 @@ impl Shape {
             (unit * 2.0 - 1.0) * scale
         };
         let mut weights = Vec::new();
-        let config = match self {
-            Self::Lstm(hidden) => {
-                let count = 4 * hidden * (1 + hidden) + 4 * hidden + 2 * hidden + hidden + 1;
-                let scale = 1.0 / (hidden as f32).sqrt();
+        let config = if let Self::Lstm(hidden) = self {
+            let count = 4 * hidden * (1 + hidden) + 4 * hidden + 2 * hidden + hidden + 1;
+            let scale = 1.0 / (hidden as f32).sqrt();
+            weights.extend((0..count).map(|_| weight(scale)));
+            format!(
+                r#""architecture": "LSTM", "config": {{"input_size": 1, "hidden_size": {hidden}, "num_layers": 1}}"#
+            )
+        } else {
+            let (c1, c2, d1, d2): (usize, usize, &[usize], &[usize]) = match self {
+                Self::Standard => (16, 8, &STANDARD, &STANDARD),
+                Self::Lite => (12, 6, &LITE_1, &LITE_2),
+                Self::Feather => (8, 4, &LITE_1, &LITE_2),
+                _ => (4, 2, &LITE_1, &LITE_2),
+            };
+            let gated = self == Self::GatedNano;
+            let g = if gated { 2 } else { 1 };
+            let arrays = [(1, c1, c2, d1, false), (c1, c2, 1, d2, true)];
+            let mut layers = String::new();
+            for (i, &(input, channels, head, dilations, head_bias)) in arrays.iter().enumerate() {
+                let scale = 1.0 / (channels as f32 * 3.0).sqrt();
+                let count = input * channels
+                    + dilations.len()
+                        * (3 * channels * g * channels
+                            + 2 * g * channels
+                            + channels * channels
+                            + channels)
+                    + channels * head
+                    + usize::from(head_bias) * head;
                 weights.extend((0..count).map(|_| weight(scale)));
-                format!(r#""architecture": "LSTM", "config": {{"input_size": 1, "hidden_size": {hidden}, "num_layers": 1}}"#)
-            }
-            _ => {
-                let (c1, c2, d1, d2): (usize, usize, &[usize], &[usize]) = match self {
-                    Self::Standard => (16, 8, &STANDARD, &STANDARD),
-                    Self::Lite => (12, 6, &LITE_1, &LITE_2),
-                    Self::Feather => (8, 4, &LITE_1, &LITE_2),
-                    _ => (4, 2, &LITE_1, &LITE_2),
-                };
-                let arrays = [(1, c1, c2, d1, false), (c1, c2, 1, d2, true)];
-                let mut layers = String::new();
-                for (i, &(input, channels, head, dilations, head_bias)) in arrays.iter().enumerate() {
-                    let scale = 1.0 / (channels as f32 * 3.0).sqrt();
-                    let count = input * channels
-                        + dilations.len() * (3 * channels * channels + channels + channels + channels * channels + channels)
-                        + channels * head
-                        + usize::from(head_bias) * head;
-                    weights.extend((0..count).map(|_| weight(scale)));
-                    if i > 0 {
-                        layers.push_str(", ");
-                    }
-                    let _ = write!(
-                        layers,
-                        r#"{{"input_size": {input}, "condition_size": 1, "head_size": {head}, "channels": {channels}, "kernel_size": 3, "dilations": {dilations:?}, "activation": "Tanh", "gated": false, "head_bias": {head_bias}}}"#
-                    );
+                if i > 0 {
+                    layers.push_str(", ");
                 }
-                weights.push(0.02);
-                format!(r#""architecture": "WaveNet", "config": {{"layers": [{layers}], "head": null, "head_scale": 0.02}}"#)
+                let _ = write!(
+                    layers,
+                    r#"{{"input_size": {input}, "condition_size": 1, "head_size": {head}, "channels": {channels}, "kernel_size": 3, "dilations": {dilations:?}, "activation": "Tanh", "gated": {gated}, "head_bias": {head_bias}}}"#
+                );
             }
+            weights.push(0.02);
+            format!(
+                r#""architecture": "WaveNet", "config": {{"layers": [{layers}], "head": null, "head_scale": 0.02}}"#
+            )
         };
         let mut text = String::new();
-        let _ = write!(text, r#"{{"version": "0.5.4", {config}, "sample_rate": 48000, "weights": ["#);
+        let _ = write!(
+            text,
+            r#"{{"version": "0.5.4", {config}, "sample_rate": 48000, "weights": ["#
+        );
         for (i, w) in weights.iter().enumerate() {
             if i > 0 {
                 text.push_str(", ");

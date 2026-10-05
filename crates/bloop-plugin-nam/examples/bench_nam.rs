@@ -96,7 +96,10 @@ fn main() {
         report(&shape.name(), &mut model, &input);
     }
     for path in args {
-        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| Model::parse(&t)) {
+        match std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|t| Model::parse(&t))
+        {
             Ok(mut model) => report(&path, &mut model, &input),
             Err(e) => println!("{path}: {e}"),
         }

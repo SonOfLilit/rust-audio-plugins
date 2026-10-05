@@ -8,9 +8,9 @@ use crate::wavenet::Weights;
 struct Cell {
     input_size: usize,
     hidden: usize,
-    /// `[input + hidden][4·hidden]`: PyTorch's matrix transposed, so the
+    /// `[input + hidden][4 × hidden]`: `PyTorch`'s matrix transposed, so the
     /// product runs along the gates, which vectorizes. The gates are in
-    /// PyTorch's order: input, forget, cell, output.
+    /// `PyTorch`'s order: input, forget, cell, output.
     w: Vec<f32>,
     b: Vec<f32>,
     /// The input, then the hidden state.
@@ -76,7 +76,7 @@ impl Cell {
 
     /// The cell and hidden state from the gates' sums, with the given
     /// sigmoid and tanh (function items, so each pair inlines).
-    #[inline(always)]
+    #[inline]
     fn gates(&mut self, sig: impl Fn(f32) -> f32, th: impl Fn(f32) -> f32) {
         let h = self.hidden;
         let (i, rest) = self.ifgo.split_at(h);
@@ -118,7 +118,11 @@ impl Lstm {
         let mut w = Weights::new(weights);
         let mut cells = Vec::with_capacity(num_layers);
         for i in 0..num_layers {
-            cells.push(Cell::read(if i == 0 { input_size } else { hidden }, hidden, &mut w)?);
+            cells.push(Cell::read(
+                if i == 0 { input_size } else { hidden },
+                hidden,
+                &mut w,
+            )?);
         }
         let head_weight = w.take(hidden)?;
         let head_bias = w.next()?;

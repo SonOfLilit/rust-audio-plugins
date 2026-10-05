@@ -55,7 +55,9 @@ impl Activation {
                 Tanh::Fast => data.iter_mut().for_each(|x| *x = fast_tanh(*x)),
             },
             Self::Hardtanh => data.iter_mut().for_each(|x| *x = hard_tanh(*x)),
-            Self::Relu => data.iter_mut().for_each(|x| *x = if *x > 0.0 { *x } else { 0.0 }),
+            Self::Relu => data
+                .iter_mut()
+                .for_each(|x| *x = if *x > 0.0 { *x } else { 0.0 }),
             Self::LeakyRelu(slope) => data
                 .iter_mut()
                 .for_each(|x| *x = if *x > 0.0 { *x } else { slope * *x }),
@@ -70,11 +72,18 @@ impl Activation {
 /// NAM's `fast_tanh`, operation for operation.
 #[must_use]
 #[inline]
+#[expect(
+    clippy::excessive_precision,
+    reason = "NAM's digits, which round to the same floats as fewer would"
+)]
 pub fn fast_tanh(x: f32) -> f32 {
     let ax = x.abs();
     let x2 = x * x;
-    (x * (2.455_507_507_029_56 + 2.455_507_507_029_56 * ax + (0.893_229_853_513_558 + 0.821_226_666_969_744 * ax) * x2))
-        / (2.445_066_346_522_99 + (2.445_066_346_522_99 + x2) * (x + 0.814_642_734_961_073 * x * ax).abs())
+    (x * (2.455_507_507_029_56
+        + 2.455_507_507_029_56 * ax
+        + (0.893_229_853_513_558 + 0.821_226_666_969_744 * ax) * x2))
+        / (2.445_066_346_522_99
+            + (2.445_066_346_522_99 + x2) * (x + 0.814_642_734_961_073 * x * ax).abs())
 }
 
 /// NAM's `fast_sigmoid`: what the LSTM's gates run with fast `tanh` on.
@@ -102,13 +111,5 @@ fn hard_tanh(x: f32) -> f32 {
 
 #[inline]
 fn hardswish(x: f32) -> f32 {
-    let t = x + 3.0;
-    let clamped = if t < 0.0 {
-        0.0
-    } else if t > 6.0 {
-        6.0
-    } else {
-        t
-    };
-    x * clamped * (1.0 / 6.0)
+    x * (x + 3.0).clamp(0.0, 6.0) * (1.0 / 6.0)
 }
