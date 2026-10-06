@@ -21,11 +21,13 @@
 use std::time::Instant;
 
 use bloop_plugin_nam::preset::Shape;
-use bloop_plugin_nam::{Model, Tanh};
+use bloop_plugin_nam::{Model, Size, Tanh};
 
 const RATE: f64 = 48_000.0;
 const BLOCK: usize = 128;
-const SECONDS: usize = 10;
+const SECONDS: usize = 2;
+/// Runs of each; the fastest is reported, which a busy machine slows least.
+const RUNS: usize = 15;
 
 fn signal(frames: usize) -> Vec<f32> {
     let mut state: u64 = 0x2545_f491_4f6c_dd1d;
@@ -44,13 +46,14 @@ fn signal(frames: usize) -> Vec<f32> {
 fn shapes() -> impl Iterator<Item = Shape> {
     Shape::WAVENETS
         .into_iter()
+        .chain([Shape::A2Full, Shape::A2Lite])
         .chain([8, 16, 24, 32].map(Shape::Lstm))
 }
 
 fn time(model: &mut Model, input: &[f32], tanh: Tanh) -> f64 {
     let mut out = vec![0.0; BLOCK];
     let mut best = f64::MAX;
-    for _ in 0..3 {
+    for _ in 0..RUNS {
         let start = Instant::now();
         for block in input.chunks(BLOCK) {
             model.process(block, &mut out[..block.len()], tanh);
@@ -87,7 +90,7 @@ fn main() {
         }
     }
     let input = signal(SECONDS * RATE as usize);
-    println!("one core, 48 kHz, best of three runs of {SECONDS} s; % is of real time");
+    println!("one core, 48 kHz, best of {RUNS} runs of {SECONDS} s; % is of real time");
     for shape in shapes() {
         let Ok(mut model) = Model::parse(&shape.nam(1)) else {
             println!("{}: does not load", shape.name());
@@ -100,7 +103,13 @@ fn main() {
             .map_err(|e| e.to_string())
             .and_then(|t| Model::parse(&t))
         {
-            Ok(mut model) => report(&path, &mut model, &input),
+            Ok(mut model) => {
+                report(&path, &mut model, &input);
+                if model.has_light() {
+                    model.set_size(Size::Light);
+                    report(&format!("{path} (light)"), &mut model, &input);
+                }
+            }
             Err(e) => println!("{path}: {e}"),
         }
     }

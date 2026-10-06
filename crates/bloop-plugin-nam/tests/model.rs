@@ -195,32 +195,64 @@ fn every_shipped_capture_reads() {
     expect![[r#"
         Obsidian  WaveNet at 48000 Hz, 13320 MAC/sample, loudness Some(-28.2), Some("Obsidian") by Some("Steven Atkinson")
         Example   WaveNet at 48000 Hz, 13320 MAC/sample, loudness None, None by None
-        read: 2 of 2"#]].assert_eq(&out);
+        Clean     WaveNet at 48000 Hz, 11776 MAC/sample, loudness Some(-21.9), None by None
+        Blues     WaveNet at 48000 Hz, 11776 MAC/sample, loudness Some(-23.0), None by None
+        Crunch    WaveNet at 48000 Hz, 11776 MAC/sample, loudness Some(-22.9), None by None
+        High Gain WaveNet at 48000 Hz, 11776 MAC/sample, loudness Some(-21.6), None by None
+        read: 6 of 6"#]].assert_eq(&out);
 }
 
 /// What the reader refuses, and says why.
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn what_the_reader_refuses() {
-    let a2 = r#"{"architecture": "WaveNet", "config": {"layers": [{"input_size": 1, "condition_size": 1, "head_size": 1, "channels": 3, "kernel_sizes": [3], "dilations": [1], "activation": "Tanh", "head_bias": false}], "head": null, "head_scale": 0.02}, "weights": []}"#;
     let nano = Shape::Nano.nam(1);
+    let a2 = Shape::A2Full.nam(1);
     let short = nano.replace(", 0.02]}", "]}");
+    let first = |from: &str, to: &str| nano.replacen(from, to, 1);
+    let activation = |to: &str| first(r#""activation": "Tanh""#, &format!(r#""activation": {to}"#));
+    let container = |models: &[(f64, &str)]| {
+        let held: Vec<String> = models
+            .iter()
+            .map(|(max, m)| format!(r#"{{"max_value": {max}, "model": {m}}}"#))
+            .collect();
+        format!(
+            r#"{{"architecture": "SlimmableContainer", "config": {{"submodels": [{}]}}, "weights": []}}"#,
+            held.join(", ")
+        )
+    };
     let cases = [
         ("not JSON", "hello".to_string()),
+        ("JSON, not a model", "[1, 2]".to_string()),
         ("ConvNet", r#"{"architecture": "ConvNet", "config": {}, "weights": []}"#.to_string()),
-        ("an A2 layer", a2.to_string()),
+        ("A2-Full", a2.clone()),
+        ("a slimmed A2", a2.replace(r#""slimmable": null"#, r#""slimmable": {"method": "slice_channels_uniform"}"#)),
+        ("slimmed otherwise", a2.replace(r#""slimmable": null"#, r#""slimmable": {"method": "prune"}"#)),
+        ("a container", container(&[(0.5, &Shape::A2Lite.nam(1)), (1.0, &a2)])),
+        ("out of order", container(&[(1.0, &a2), (0.5, &Shape::A2Lite.nam(1))])),
+        ("short of 1", container(&[(0.5, &a2)])),
+        ("in a container", container(&[(1.0, &container(&[(1.0, &a2)]))])),
+        ("empty container", container(&[])),
         ("a weight short", short),
         ("a weight over", Shape::Nano.nam(1).replace("0.02]}", "0.02, 1.0]}")),
         ("stereo LSTM", r#"{"architecture": "LSTM", "config": {"input_size": 2, "hidden_size": 3, "num_layers": 1}, "weights": []}"#.to_string()),
         ("kernel 0", nano.replacen(r#""kernel_size": 3"#, r#""kernel_size": 0"#, 1)),
         ("dilation 0", nano.replacen("[1, 2, 4", "[0, 2, 4", 1)),
-        ("a head", nano.replace(r#""head": null"#, r#""head": {"out_channels": 1}"#)),
-        ("a condition DSP", nano.replace(r#""head": null"#, r#""head": null, "condition_dsp": {}"#)),
-        ("65 channels", nano.replacen(r#""channels": 4"#, r#""channels": 65"#, 1)),
+        ("a broken head", nano.replace(r#""head": null"#, r#""head": {"out_channels": 1}"#)),
+        ("a stereo head", nano.replace(r#""head": null"#, r#""head": {"channels": 2, "out_channels": 2, "kernel_sizes": [1], "activation": "Tanh"}"#)),
+        ("an LSTM condition", nano.replace(r#""head": null"#, r#""head": null, "condition_dsp": {"architecture": "LSTM"}"#)),
+        ("65 channels", first(r#""channels": 4"#, r#""channels": 65"#)),
         ("stereo out", nano.replace(r#""head_size": 1"#, r#""head_size": 2"#)),
-        ("unknown activation", nano.replacen(r#""activation": "Tanh""#, r#""activation": "Swish7""#, 1)),
-        ("activation object", nano.replacen(r#""activation": "Tanh""#, r#""activation": {"type": "Tanh"}"#, 1)),
-        ("mismatched arrays", nano.replacen(r#""input_size": 4"#, r#""input_size": 3"#, 1)),
+        ("unknown activation", activation(r#""Swish7""#)),
+        ("activation object", activation(r#"{"type": "LeakyReLU", "negative_slope": 0.2}"#)),
+        ("activation, no type", activation(r#"{"kind": "Tanh"}"#)),
+        ("PReLU of 3 for 4", activation(r#"{"type": "PReLU", "negative_slopes": [0.1, 0.2, 0.3]}"#)),
+        ("gated PReLU of 1", first(r#""gated": false"#, r#""gated": true"#).replacen(r#""activation": "Tanh""#, r#""activation": {"type": "PReLU", "negative_slope": 0.1}"#, 1)),
+        ("unknown gating", first(r#""gated": false"#, r#""gating_mode": "sideways""#)),
+        ("two kernel sizes", first(r#""kernel_size": 3"#, r#""kernel_size": 3, "kernel_sizes": [3]"#)),
+        ("no layer 1x1", first(r#""gated": false"#, r#""gated": false, "bottleneck": 2, "layer1x1": {"active": false, "groups": 1}"#)),
+        ("3 groups of 4", first(r#""gated": false"#, r#""gated": false, "groups_input": 3"#)),
+        ("mismatched arrays", first(r#""input_size": 4"#, r#""input_size": 3"#)),
     ];
     let mut out = String::new();
     for (label, text) in cases {
@@ -232,20 +264,86 @@ fn what_the_reader_refuses() {
     }
     expect![[r#"
         not JSON            not a .nam file: expected value at line 1 column 1
+        JSON, not a model   not a .nam file: it is JSON, but not a model
         ConvNet             bloop does not run ConvNet models yet
-        an A2 layer         layer array 0 uses "kernel_sizes", which bloop does not run yet
+        A2-Full             read
+        a slimmed A2        layer array 0 has a head kernel of 16; bloop slims only 1x1 heads
+        slimmed otherwise   layer array 0 slims by "prune", which bloop does not run
+        a container         read
+        out of order        the container's models are not in ascending max_value
+        short of 1          the container's last model does not reach a max_value of 1
+        in a container      bloop does not run a container inside a container
+        empty container     the container holds no models
         a weight short      the model has 841 weights, fewer than its layers need
         a weight over       the model has 843 weights, but its layers use 842
         stereo LSTM         the LSTM takes 2 inputs; bloop runs mono models
         kernel 0            layer array 0 has a kernel of 0
-        dilation 0          layer array 0 has no layers, or a dilation of 0
-        a head              bloop does not run WaveNets with a post-stack head yet
-        a condition DSP     bloop does not run WaveNets with a condition DSP yet
+        dilation 0          layer array 0 has a dilation of 0
+        a broken head       the head's kernel_sizes is not a list
+        a stereo head       the model outputs 2 channels; bloop runs mono models
+        an LSTM condition   bloop runs only WaveNets as a condition DSP
         65 channels         layer array 0 has 65 channels; bloop runs 1 to 64
         stereo out          the model outputs 2 channels; bloop runs mono models
         unknown activation  bloop does not run the Swish7 activation yet
-        activation object   layer array 0's activation is not a name
+        activation object   read
+        activation, no type an activation is neither a name nor an object with a type
+        PReLU of 3 for 4    a PReLU has 3 negative slopes for 4 channels
+        gated PReLU of 1    a PReLU has 1 negative slopes for 4 channels
+        unknown gating      layer array 0 has a gating mode NAM does not have
+        two kernel sizes    layer array 0 gives both a kernel_size and kernel_sizes
+        no layer 1x1        layer array 0 has no layer 1x1, so its bottleneck must be its channels
+        3 groups of 4       a convolution of 4 channels into 4 cannot be split into 3 groups
         mismatched arrays   layer array 1 takes 3 channels, but the array before it outputs 4
     "#]]
     .assert_eq(&out);
+}
+
+/// The sizes a capture comes in: what each costs, how loud it says it
+/// is, and which slim value NAM's core would be given for it. A model of
+/// one size runs it whichever is asked for.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn every_size_of_a_capture() {
+    use bloop_plugin_nam::Size;
+    let models = [
+        ("a2-container", Shape::A2Container.nam(1)),
+        ("a2-full", Shape::A2Full.nam(1)),
+        ("slimmable wavenet", include_str!("models/slimmable_wavenet.nam").to_string()),
+        ("slimmable container", include_str!("models/slimmable_container.nam").to_string()),
+        ("standard", Shape::Standard.nam(1)),
+    ];
+    let mut out = String::new();
+    for (name, text) in models {
+        let mut model = Model::parse(&text).unwrap();
+        let _ = writeln!(out, "{name}: has a light size: {}", model.has_light());
+        for size in [Size::Full, Size::Light] {
+            model.set_size(size);
+            let _ = writeln!(
+                out,
+                "  {size:?}: runs {:?} at slim {:.3}, {} MAC/sample, prewarm {}, loudness {:?}",
+                model.size(),
+                model.slim_value(),
+                model.macs_per_sample(),
+                model.prewarm_samples(),
+                model.loudness().map(|l| (l * 10.0).round() / 10.0),
+            );
+        }
+    }
+    expect![[r#"
+        a2-container: has a light size: true
+          Full: runs Full at slim 1.000, 11776 MAC/sample, prewarm 6347, loudness Some(-20.0)
+          Light: runs Light at slim 0.250, 1731 MAC/sample, prewarm 6347, loudness Some(-20.0)
+        a2-full: has a light size: false
+          Full: runs Full at slim 1.000, 11776 MAC/sample, prewarm 6347, loudness Some(-20.0)
+          Light: runs Full at slim 1.000, 11776 MAC/sample, prewarm 6347, loudness Some(-20.0)
+        slimmable wavenet: has a light size: true
+          Full: runs Full at slim 1.000, 396 MAC/sample, prewarm 2047, loudness None
+          Light: runs Light at slim 0.500, 184 MAC/sample, prewarm 2047, loudness None
+        slimmable container: has a light size: true
+          Full: runs Full at slim 1.000, 732 MAC/sample, prewarm 4093, loudness Some(-25.5)
+          Light: runs Light at slim 0.495, 113 MAC/sample, prewarm 23, loudness Some(-20.0)
+        standard: has a light size: false
+          Full: runs Full at slim 1.000, 13320 MAC/sample, prewarm 4093, loudness None
+          Light: runs Full at slim 1.000, 13320 MAC/sample, prewarm 4093, loudness None
+    "#]].assert_eq(&out);
 }
