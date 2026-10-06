@@ -123,7 +123,7 @@ impl Variant {
 }
 
 /// A capture, ready to run.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Model {
     full: Variant,
     light: Option<Variant>,
@@ -133,6 +133,20 @@ pub struct Model {
     pub metadata: Metadata,
     /// The full size's architecture.
     pub architecture: &'static str,
+}
+
+/// What it is, not its weights and histories: a capture holds tens of
+/// thousands of numbers, and a command or an effect that carries one is
+/// formatted by harnesses.
+impl core::fmt::Debug for Model {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Model")
+            .field("architecture", &self.architecture)
+            .field("name", &self.metadata.name)
+            .field("size", &self.size())
+            .field("macs_per_sample", &self.macs_per_sample())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Model {
