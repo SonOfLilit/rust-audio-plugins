@@ -83,6 +83,7 @@ fn check_sines(text: &str, tanh: Tanh, levels: &[f32], expect: &Expect) {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-nam -- --include-ignored"]
 fn the_example_standard_capture_distorts_more_as_it_is_driven_harder() {
     check_sines(
         STANDARD,

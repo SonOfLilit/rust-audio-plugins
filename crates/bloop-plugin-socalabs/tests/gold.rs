@@ -1187,6 +1187,7 @@ fn expander() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-socalabs -- --include-ignored"]
 fn delay() {
     // Mix defaults to 0: fully dry, so the output is the input.
     check(

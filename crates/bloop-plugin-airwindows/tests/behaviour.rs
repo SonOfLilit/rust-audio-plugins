@@ -466,6 +466,7 @@ fn console7_buss_expands() {
 /// loud ten seconds on.
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-airwindows -- --include-ignored"]
 fn galactic3_tail() {
     let rate = 44100.0f32;
     let burst = noise(-6.0, 2205, 3);

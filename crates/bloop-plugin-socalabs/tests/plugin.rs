@@ -534,6 +534,7 @@ fn needs(kind: Kind, knob: &str) -> &'static [(&'static str, f32)] {
 /// never passed on — would be listed as still.
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-socalabs -- --include-ignored"]
 fn every_knob_changes_what_comes_out() {
     let mut out = String::new();
     for kind in Kind::ALL {

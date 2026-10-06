@@ -153,6 +153,7 @@ fn check(text: &str, expect: &Expect) {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn what_it_says_about_itself() {
     let plugin = WavetablePlugin::new();
     let info = plugin.info();
@@ -212,6 +213,7 @@ fn what_it_says_about_itself() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn silent_until_its_tables_arrive() {
     let mut plugin = WavetablePlugin::at(RATE);
     let without = peak(&render(&mut plugin, &[on(0, 60)], 4800));
@@ -228,6 +230,7 @@ fn silent_until_its_tables_arrive() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn an_oscillator_plays_only_the_table_its_knob_names() {
     let mut plugin = with_tables(WavetablePlugin::at(RATE));
     let before = peak(&render(&mut plugin, &[on(0, 60)], 4800));
@@ -261,6 +264,7 @@ fn an_oscillator_plays_only_the_table_its_knob_names() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn a_sub_sine_plays_in_tune_at_every_rate() {
     let mut text = String::new();
     for rate in [44100.0, 48000.0, 96000.0] {
@@ -294,6 +298,7 @@ fn a_sub_sine_plays_in_tune_at_every_rate() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn voices_are_bounded() {
     let mut text = String::new();
     for knob in [40.0, 4.0] {
@@ -315,6 +320,7 @@ fn voices_are_bounded() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn choke_cuts_and_aftertouch_is_ignored() {
     let held = |events: &[NoteEvent]| {
         let mut plugin = with_tables(WavetablePlugin::at(RATE));
@@ -350,6 +356,7 @@ fn choke_cuts_and_aftertouch_is_ignored() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn presets_load_through_the_preset_knob() {
     let mut plugin = WavetablePlugin::at(RATE);
     let mut text = String::new();
@@ -387,6 +394,7 @@ fn presets_load_through_the_preset_knob() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn the_audio_thread_never_allocates() {
     let mut plugin = with_tables(WavetablePlugin::at(RATE));
     let spare = bank::tables_for(plugin.table_indices(), RATE);

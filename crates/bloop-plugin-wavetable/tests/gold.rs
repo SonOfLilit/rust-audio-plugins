@@ -827,6 +827,7 @@ mod cpp {
 
 #[cfg(feature = "gold")]
 #[test]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn table_builds_match_the_original() {
     let mut report = String::new();
     for (name, rate) in [
@@ -878,6 +879,7 @@ fn table_builds_match_the_original() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn init_plays_a_note() {
     check(&Program::new().note(60, 100, 0.5, 0.5), &expect![[r#"
         held: L peak -19.5 rms -25.9 | R peak -19.5 rms -25.9 #b16fb171aed34269
@@ -887,6 +889,7 @@ fn init_plays_a_note() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn a_chord_bent_and_released() {
     check(
         &Program::new()
@@ -913,6 +916,7 @@ fn a_chord_bent_and_released() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn position_swept_by_an_lfo() {
     check(
         &Program::new()
@@ -931,6 +935,7 @@ fn position_swept_by_an_lfo() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn both_oscillators_with_unison_formant_and_bend() {
     check(
         &Program::new()
@@ -953,6 +958,7 @@ fn both_oscillators_with_unison_formant_and_bend() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn every_filter_type_under_its_envelope() {
     let mut program = Program::new()
         .set("fltenable", 1.0)
@@ -985,6 +991,7 @@ fn every_filter_type_under_its_envelope() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn sub_and_both_noises() {
     check(
         &Program::new()
@@ -1007,6 +1014,7 @@ fn sub_and_both_noises() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn mono_legato_glide() {
     check(
         &Program::new()
@@ -1033,6 +1041,7 @@ fn mono_legato_glide() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn mono_note_stack_without_glide_and_glissando_retriggering() {
     check(
         &Program::new()
@@ -1064,6 +1073,7 @@ fn mono_note_stack_without_glide_and_glissando_retriggering() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn modulation_from_envelope_velocity_cc_and_step_lfo() {
     check(
         &Program::new()
@@ -1091,6 +1101,7 @@ fn modulation_from_envelope_velocity_cc_and_step_lfo() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn tempo_synced_lfo_and_gate() {
     check(
         &Program::new()
@@ -1111,6 +1122,7 @@ fn tempo_synced_lfo_and_gate() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn each_effect_alone() {
     let mut program = Program::new();
     for (enable, extra) in [
@@ -1151,6 +1163,7 @@ fn each_effect_alone() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn a_held_note_through_a_moved_position_a_new_table_and_a_preset() {
     check(
         &Program::new()
@@ -1176,6 +1189,7 @@ fn a_held_note_through_a_moved_position_a_new_table_and_a_preset() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn more_notes_than_voices_steal() {
     let mut program = Program::new().set("voices", 4.0).set("release", 1.0);
     for (i, note) in [48, 52, 55, 59, 62, 65].into_iter().enumerate() {
@@ -1188,6 +1202,7 @@ fn more_notes_than_voices_steal() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn other_rates_and_odd_blocks() {
     for (rate, block, expect) in [
         (44100.0, 37, expect![[r#"
@@ -1215,6 +1230,7 @@ fn other_rates_and_odd_blocks() {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn every_factory_preset() {
     let mut report = String::new();
     for preset in presets::PRESETS {

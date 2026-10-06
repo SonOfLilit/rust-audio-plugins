@@ -193,6 +193,7 @@ fn check(expect: &Expect) {
 
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-nam -- --include-ignored"]
 fn every_case_through_the_port() {
     check(&expect![[r#"
         obsidian, DI level           Exact  rms  -26.1 dB  peak  -18.0 dB  27f0a67773907bd2
