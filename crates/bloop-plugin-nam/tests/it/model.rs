@@ -25,9 +25,9 @@ const RATE: f32 = 48_000.0;
 const F0: f32 = 100.0;
 const PERIOD: usize = 480;
 
-const STANDARD: &str = include_str!("../models/example.nam");
-const TINY_WAVENET: &str = include_str!("models/wavenet.nam");
-const TINY_LSTM: &str = include_str!("models/lstm.nam");
+const STANDARD: &str = include_str!("../../models/example.nam");
+const TINY_WAVENET: &str = include_str!("../models/wavenet.nam");
+const TINY_LSTM: &str = include_str!("../models/lstm.nam");
 
 fn sine(amplitude: f32, frames: usize) -> Vec<f32> {
     (0..frames)
@@ -159,8 +159,8 @@ fn the_fast_tanh_is_within_half_a_thousandth() {
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn cargo_toml_and_the_captures_cite_the_ported_revisions() {
-    let manifest = include_str!("../Cargo.toml");
-    let bundled = include_str!("../src/bundled.rs");
+    let manifest = include_str!("../../Cargo.toml");
+    let bundled = include_str!("../../src/bundled.rs");
     for rev in [
         bloop_plugin_nam::PORTED_FROM_NAM_REV,
         bloop_plugin_nam::NAM_PLUGIN_REV,
@@ -314,8 +314,8 @@ fn every_size_of_a_capture() {
     let models = [
         ("a2-container", Shape::A2Container.nam(1)),
         ("a2-full", Shape::A2Full.nam(1)),
-        ("slimmable wavenet", include_str!("models/slimmable_wavenet.nam").to_string()),
-        ("slimmable container", include_str!("models/slimmable_container.nam").to_string()),
+        ("slimmable wavenet", include_str!("../models/slimmable_wavenet.nam").to_string()),
+        ("slimmable container", include_str!("../models/slimmable_container.nam").to_string()),
         ("standard", Shape::Standard.nam(1)),
     ];
     let mut out = String::new();

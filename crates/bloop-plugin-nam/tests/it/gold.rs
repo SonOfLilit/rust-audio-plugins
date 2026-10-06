@@ -41,16 +41,16 @@ use wasm_bindgen_test::*;
 
 const RATE: f32 = 48_000.0;
 
-const OBSIDIAN: &str = include_str!("../models/obsidian.nam");
-const EXAMPLE: &str = include_str!("../models/example.nam");
-const TINY_LSTM: &str = include_str!("models/lstm.nam");
+const OBSIDIAN: &str = include_str!("../../models/obsidian.nam");
+const EXAMPLE: &str = include_str!("../../models/example.nam");
+const TINY_LSTM: &str = include_str!("../models/lstm.nam");
 /// NeuralAmpModelerCore's own examples (`example_models/`, the rev
 /// `vendor/nam` pins): every A2 feature in one model (not A2's shape, and
 /// not trained), a condition DSP, and the two ways a model is slimmable.
-const A2_FEATURES: &str = include_str!("models/wavenet_a2_feature_test.nam");
-const CONDITION_DSP: &str = include_str!("models/wavenet_condition_dsp.nam");
-const SLIMMABLE_WAVENET: &str = include_str!("models/slimmable_wavenet.nam");
-const SLIMMABLE_CONTAINER: &str = include_str!("models/slimmable_container.nam");
+const A2_FEATURES: &str = include_str!("../models/wavenet_a2_feature_test.nam");
+const CONDITION_DSP: &str = include_str!("../models/wavenet_condition_dsp.nam");
+const SLIMMABLE_WAVENET: &str = include_str!("../models/slimmable_wavenet.nam");
+const SLIMMABLE_CONTAINER: &str = include_str!("../models/slimmable_container.nam");
 
 /// What a guitar DI might be: a plucked note every quarter second, each a
 /// stack of decaying harmonics, at a peak of `level`, with a little noise.
