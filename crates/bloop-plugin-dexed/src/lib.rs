@@ -87,18 +87,29 @@ pub fn preset_voice(preset: usize) -> [u8; VOICE_SIZE] {
     }
 }
 
+/// Voice names in the built-in cartridges that name another maker's
+/// instrument, and the name the library gives each instead. The cartridge
+/// bytes are left as they were: a voice's name plays no part in its sound.
+pub const RENAMED_VOICES: [(&str, &str); 3] = [
+    ("Moog Brass", "Ana Brass"),
+    ("PPG PadFX", "Wave PadFX"),
+    ("DMX TOMS 1", "DRUM TOMS 1"),
+];
+
 /// A preset's library name: bank short tag + voice name ("1A BRASS   1"),
-/// or "Init" for the blank-slate preset (and anything out of range).
+/// or "Init" for the blank-slate preset (and anything out of range). A
+/// voice in [`RENAMED_VOICES`] goes by its new name.
 pub fn preset_name(preset: usize) -> String {
     if preset >= PRESET_INIT {
         "Init".to_string()
     } else {
         let bank = preset / BANK_SIZE;
-        format!(
-            "{} {}",
-            BANKS[bank].short,
-            Bank::builtin(bank).name(preset % BANK_SIZE)
-        )
+        let voice = Bank::builtin(bank).name(preset % BANK_SIZE);
+        let voice = RENAMED_VOICES
+            .iter()
+            .find(|(old, _)| *old == voice)
+            .map_or(voice.as_str(), |(_, new)| new);
+        format!("{} {voice}", BANKS[bank].short)
     }
 }
 
@@ -487,7 +498,7 @@ impl DexedPlugin {
 impl Plugin for DexedPlugin {
     fn info(&self) -> PluginInfo {
         PluginInfo {
-            name: "FM (DX7)",
+            name: "FM",
             vendor: "Bloop",
             category: PluginCategory::Instrument,
             num_audio_inputs: 0,
@@ -907,6 +918,28 @@ mod tests {
                 w 6 peak=0.0000
                 w 7 peak=0.0000"#]],
         );
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn renamed_voices_are_in_the_cartridges() {
+        // Every voice the library renames is found under its cartridge
+        // name, so a rename cannot silently miss: the preset, the name the
+        // cartridge gives it and the name the library shows.
+        let text = (0..PRESET_INIT)
+            .filter_map(|p| {
+                let raw = Bank::builtin(p / BANK_SIZE).name(p % BANK_SIZE);
+                RENAMED_VOICES
+                    .iter()
+                    .any(|(old, _)| *old == raw)
+                    .then(|| format!("{p:>3}: {raw:<10} -> {}", preset_name(p)))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        expect![[r#"
+            319: Moog Brass -> FT2 Ana Brass
+            337: PPG PadFX  -> FT3 Wave PadFX
+            355: DMX TOMS 1 -> DRM DRUM TOMS 1"#]].assert_eq(&text);
     }
 
     #[test]
