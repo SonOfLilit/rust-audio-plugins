@@ -18,6 +18,11 @@ license = "MIT"
 # vendor/nam and vendor/eigen submodules.
 gold = []
 
+# What `gold` compiles: tools/plugin-tests.py turns it on when these are
+# checked out.
+[package.metadata.plugin-tests]
+gold-needs = ["vendor/nam", "vendor/nam/Dependencies/eigen"]
+
 [dependencies]
 bloop-plugin-api = { workspace = true }
 libm = "0.2"

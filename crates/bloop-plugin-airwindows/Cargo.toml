@@ -17,6 +17,11 @@ license = "MIT"
 # the platform C library the C++ links (src/math.rs).
 gold = []
 
+# What `gold` compiles: tools/plugin-tests.py turns it on when these are
+# checked out.
+[package.metadata.plugin-tests]
+gold-needs = ["vendor/airwindows"]
+
 [dependencies]
 libm = "0.2"
 

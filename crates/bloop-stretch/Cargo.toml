@@ -16,6 +16,11 @@ license = "MPL-2.0"
 # the vendor/bungee submodule with its eigen and pffft submodules.
 gold = []
 
+# What `gold` compiles: tools/plugin-tests.py turns it on when these are
+# checked out.
+[package.metadata.plugin-tests]
+gold-needs = ["vendor/bungee", "vendor/bungee/submodules/eigen", "vendor/bungee/submodules/pffft"]
+
 [dependencies]
 libm = "0.2"
 rustfft = { version = "6.4.1", default-features = false }

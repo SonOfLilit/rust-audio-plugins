@@ -26,6 +26,11 @@ license = "BSD-3-Clause AND MIT AND ISC AND WTFPL"
 # that a mismatch is the port's and not the maths library's (src/math.rs).
 gold = []
 
+# What `gold` compiles: tools/plugin-tests.py turns it on when these are
+# checked out.
+[package.metadata.plugin-tests]
+gold-needs = ["vendor/slplugins", "vendor/gin", "vendor/juce"]
+
 [dependencies]
 bloop-core = { workspace = true }
 bloop-events = { workspace = true }

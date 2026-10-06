@@ -24,6 +24,12 @@ license = "BSD-3-Clause AND MIT AND CC0-1.0"
 # the transcendentals to the C library the C++ links.
 gold = ["bloop-plugin-socalabs/gold"]
 
+# What `gold` compiles: tools/plugin-tests.py turns it on when these are
+# checked out, here or under BLOOP_GOLD_VENDOR.
+[package.metadata.plugin-tests]
+gold-needs = ["vendor/wavetable", "vendor/gin", "vendor/juce"]
+gold-vendor-env = true
+
 [dependencies]
 bloop-events = { workspace = true }
 bloop-plugin-api = { workspace = true }
