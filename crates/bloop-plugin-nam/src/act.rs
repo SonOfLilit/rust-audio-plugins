@@ -189,8 +189,11 @@ impl Activation {
 
 #[inline]
 fn leaky(data: &mut [f32], slope: f32) {
-    data.iter_mut()
-        .for_each(|x| *x = if *x > 0.0 { *x } else { slope * *x });
+    for x in data.iter_mut() {
+        if *x <= 0.0 {
+            *x *= slope;
+        }
+    }
 }
 
 /// NAM's `fast_tanh`, operation for operation.

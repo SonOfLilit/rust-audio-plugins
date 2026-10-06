@@ -181,9 +181,21 @@ impl Model {
 
     /// Runs the size `size` from the next block. Allocates nothing; the
     /// size switched to plays on from wherever it was left (a model is
-    /// prewarmed in both).
+    /// prewarmed in both), so a switch while playing wants a
+    /// [`Self::restore_size`] after it.
     pub fn set_size(&mut self, size: Size) {
         self.size = size;
+    }
+
+    /// Takes on `from`'s state in the size that runs only: what a switch
+    /// to it puts back, as the core resets and prewarms the size it
+    /// switches to. `false`, and nothing changed, for another network.
+    pub fn restore_size(&mut self, from: &Self) -> bool {
+        let size = self.size;
+        match (self.light.as_mut(), from.light.as_ref(), size) {
+            (Some(a), Some(b), Size::Light) => a.restore(b),
+            _ => self.full.restore(&from.full),
+        }
     }
 
     /// The size that runs.
@@ -276,20 +288,31 @@ impl Model {
         self.active().macs_per_sample()
     }
 
-    /// Runs `input` into `output` (the same length), mono.
+    /// Runs `input` into `output`, mono, as far as the shorter goes.
     pub fn process(&mut self, input: &[f32], output: &mut [f32], tanh: Tanh) {
         let v = self.active_mut();
-        for (i, o) in input.chunks(MAX_BLOCK).zip(output.chunks_mut(MAX_BLOCK)) {
+        let n = input.len().min(output.len());
+        for (i, o) in input[..n]
+            .chunks(MAX_BLOCK)
+            .zip(output[..n].chunks_mut(MAX_BLOCK))
+        {
             v.process_chunk(i, o, tanh);
         }
     }
 }
 
+/// The largest LSTM size a config may give: past any capture people
+/// train (32 hidden units is large).
+const MAX_LSTM: u64 = 1024;
+
 fn usize_of(config: &Value, key: &str) -> Result<usize, String> {
-    config[key]
+    let n = config[key]
         .as_u64()
-        .map(|v| v as usize)
-        .ok_or_else(|| format!("the config has no {key}"))
+        .ok_or_else(|| format!("the config has no {key}"))?;
+    if n > MAX_LSTM {
+        return Err(format!("the config's {key} is {n}, more than bloop runs"));
+    }
+    usize::try_from(n).map_err(|_| format!("the config's {key} is {n}, more than bloop runs"))
 }
 
 fn weights_of(json: &Value) -> Result<Vec<f32>, String> {
@@ -310,7 +333,7 @@ fn weights_of(json: &Value) -> Result<Vec<f32>, String> {
 fn light_value(breakpoints: &[f64]) -> Option<f64> {
     let (&top, rest) = breakpoints.split_last()?;
     let below = rest.last().copied().unwrap_or(0.0);
-    Some((below + top) / 2.0)
+    Some(f64::midpoint(below, top))
 }
 
 /// The full and the light size of a model's JSON.
@@ -359,7 +382,8 @@ fn sizes(json: &Value) -> Result<(Variant, Option<Variant>), String> {
         }
         Ok(single(model)?.0)
     };
-    let full_index = index_for(1.0);
+    // The core plays the last unless told otherwise.
+    let full_index = held.len() - 1;
     let breakpoints: Vec<f64> = held[..held.len() - 1].iter().map(|(m, _)| *m).collect();
     let light_index = light_value(&breakpoints).map(index_for).filter(|&i| i != full_index);
     for i in 0..held.len() {
@@ -401,17 +425,18 @@ fn single(json: &Value) -> Result<(Variant, Option<Variant>), String> {
             if !cfg.slimmable() {
                 return Ok((full, None));
             }
-            slim::check(&cfg)?;
-            let light = match light_value(&slim::breakpoints(&cfg)) {
-                Some(value) => {
-                    let (slimmed, w) = slim::slim(&cfg, &weights, &slim::channels_for(&cfg, value))?;
-                    Some(Variant {
-                        value,
-                        ..variant(Net::WaveNet(wavenet(&slimmed, &w, given_rate)?), "WaveNet")
-                    })
-                }
-                None => None,
-            };
+            // As the core does, a model that cannot be slimmed plays at
+            // its full size: only slimming checks what slimming needs.
+            let light = slim::check(&cfg).ok().and_then(|()| {
+                let value = light_value(&slim::breakpoints(&cfg))?;
+                let (slimmed, w) =
+                    slim::slim(&cfg, &weights, &slim::channels_for(&cfg, value)).ok()?;
+                let net = wavenet(&slimmed, &w, given_rate).ok()?;
+                Some(Variant {
+                    value,
+                    ..variant(Net::WaveNet(net), "WaveNet")
+                })
+            });
             Ok((full, light))
         }
         "LSTM" => Ok((

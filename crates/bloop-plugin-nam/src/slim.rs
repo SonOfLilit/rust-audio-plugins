@@ -102,10 +102,6 @@ pub fn check(config: &WaveNetConfig) -> Result<(), String> {
 
 /// A 1x1's weights for the first `slim_out` outputs of the first
 /// `slim_in` inputs.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the core's extract_conv1x1, argument for argument"
-)]
 fn conv1x1(
     src: &mut Weights,
     full_in: usize,
@@ -134,10 +130,6 @@ fn conv1x1(
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the core's extract_conv1d, argument for argument"
-)]
 fn conv1d(
     src: &mut Weights,
     full_in: usize,

@@ -41,7 +41,14 @@ pub const MAX_CHANNELS: usize = 64;
 
 /// The furthest back any convolution may look, in frames: A2's longest
 /// is 1,195, A1's 1,024.
-pub const MAX_LOOKBACK: usize = 1 << 16;
+pub const MAX_LOOKBACK: usize = 1 << 14;
+
+/// The most frames of history all of a model's layers may hold together,
+/// channels times frames: A2-Full holds 126,000, A1 standard 115,000.
+pub const MAX_HISTORY: usize = 1 << 22;
+
+/// The longest kernel any convolution may have: A2's is 16.
+pub const MAX_KERNEL: usize = 256;
 
 /// `channels` rows of [`MAX_BLOCK`] frames.
 #[derive(Clone, Debug)]
@@ -180,7 +187,23 @@ impl<'a> Weights<'a> {
         Ok(v)
     }
 
+    /// How many are left to read.
+    pub(crate) fn remaining(&self) -> usize {
+        self.values.len() - self.at
+    }
+
+    /// How many there are.
+    pub(crate) fn len(&self) -> usize {
+        self.values.len()
+    }
+
     pub(crate) fn take(&mut self, n: usize) -> Result<Vec<f32>, String> {
+        if n > self.remaining() {
+            return Err(format!(
+                "the model has {} weights, fewer than its layers need",
+                self.values.len()
+            ));
+        }
         (0..n).map(|_| self.next()).collect()
     }
 
@@ -292,7 +315,7 @@ impl Conv {
                 "a convolution of {inputs} channels into {outputs}; bloop runs 1 to {MAX_CHANNELS}"
             ));
         }
-        if groups == 0 || inputs % groups != 0 || outputs % groups != 0 {
+        if groups == 0 || !inputs.is_multiple_of(groups) || !outputs.is_multiple_of(groups) {
             return Err(format!(
                 "a convolution of {inputs} channels into {outputs} cannot be split into {groups} groups"
             ));
@@ -300,14 +323,27 @@ impl Conv {
         if kernel == 0 || dilation == 0 {
             return Err("a convolution has a kernel or a dilation of 0".into());
         }
-        let lookback = (kernel - 1) * dilation;
-        if lookback > MAX_LOOKBACK {
+        if kernel > MAX_KERNEL {
             return Err(format!(
-                "a convolution looks {lookback} frames back; bloop runs up to {MAX_LOOKBACK}"
+                "a convolution has a kernel of {kernel}; bloop runs up to {MAX_KERNEL}"
             ));
         }
+        let lookback = (kernel - 1)
+            .checked_mul(dilation)
+            .filter(|&l| l <= MAX_LOOKBACK)
+            .ok_or_else(|| {
+                format!("a convolution looks further back than bloop runs ({MAX_LOOKBACK} frames)")
+            })?;
         let ipg = inputs / groups;
         let per_output = kernel * ipg;
+        // Before anything is made of it: a file that names a convolution
+        // its weights cannot fill is refused, not allocated for.
+        if weights.remaining() < outputs * per_output {
+            return Err(format!(
+                "the model has {} weights, fewer than its layers need",
+                weights.len()
+            ));
+        }
         let mut weight = vec![0.0; outputs * per_output];
         for o in 0..outputs {
             for i in 0..ipg {
@@ -1081,6 +1117,21 @@ impl WaveNet {
 /// read out of bounds in the C++).
 fn check(arrays: &[ArrayConfig], condition: Option<&WaveNet>) -> Result<(), String> {
     let condition_size = condition.map_or(1, WaveNet::out_channels);
+    // What its histories would hold, before any is made: a file of few
+    // weights can still name thousands of layers that look far back.
+    let mut history = 0usize;
+    for cfg in arrays {
+        for (&k, &d) in cfg.kernel_sizes.iter().zip(&cfg.dilations) {
+            let lookback = k.saturating_sub(1).saturating_mul(d);
+            history = history.saturating_add(
+                cfg.channels
+                    .saturating_mul(lookback.saturating_mul(2).saturating_add(MAX_BLOCK)),
+            );
+        }
+    }
+    if history > MAX_HISTORY {
+        return Err("the model would hold more history than bloop runs".into());
+    }
     for (i, cfg) in arrays.iter().enumerate() {
         let n = cfg.dilations.len();
         if n == 0 {

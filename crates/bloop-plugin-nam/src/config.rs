@@ -126,11 +126,18 @@ impl WaveNetConfig {
     }
 }
 
+/// The largest count a config may give: far past any model, and small
+/// enough that sums and products of a few never overflow.
+const MAX_COUNT: u64 = 1 << 16;
+
 fn count(value: &Value, what: &str) -> Result<usize, String> {
-    value
+    let n = value
         .as_u64()
-        .map(|v| v as usize)
-        .ok_or_else(|| format!("the WaveNet's {what} is not a count"))
+        .ok_or_else(|| format!("the WaveNet's {what} is not a count"))?;
+    if n > MAX_COUNT {
+        return Err(format!("the WaveNet's {what} is {n}, more than bloop runs"));
+    }
+    usize::try_from(n).map_err(|_| format!("the WaveNet's {what} is {n}, more than bloop runs"))
 }
 
 fn key(obj: &Value, k: &str, i: usize) -> Result<usize, String> {
@@ -167,7 +174,8 @@ fn film(layer: &Value, k: &str) -> Option<FilmConfig> {
         groups: v
             .get("groups")
             .and_then(Value::as_u64)
-            .map_or(1, |g| g as usize),
+            .and_then(|g| usize::try_from(g.min(MAX_COUNT)).ok())
+            .unwrap_or(1),
     })
 }
 
@@ -199,6 +207,10 @@ fn gating_mode(name: &Value, i: usize) -> Result<&str, String> {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one layer array's keys, in the order the core's parser reads them"
+)]
 fn array(layer: &Value, i: usize) -> Result<ArrayConfig, String> {
     if !layer.is_object() {
         return Err(format!("layer array {i} is not an object"));

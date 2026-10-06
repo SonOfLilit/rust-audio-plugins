@@ -97,6 +97,10 @@ fn slimmable() -> Vec<(&'static str, String)> {
     ]
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table of every case, read top to bottom"
+)]
 fn cases() -> Vec<Case> {
     let mut cases = Vec::new();
     let mut add_sized =

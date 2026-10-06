@@ -238,6 +238,9 @@ fn what_the_reader_refuses() {
         ("stereo LSTM", r#"{"architecture": "LSTM", "config": {"input_size": 2, "hidden_size": 3, "num_layers": 1}, "weights": []}"#.to_string()),
         ("kernel 0", nano.replacen(r#""kernel_size": 3"#, r#""kernel_size": 0"#, 1)),
         ("dilation 0", nano.replacen("[1, 2, 4", "[0, 2, 4", 1)),
+        ("kernel 300", nano.replacen(r#""kernel_size": 3"#, r#""kernel_size": 300"#, 1)),
+        ("dilation 2^20", nano.replacen("[1, 2, 4", "[1048576, 2, 4", 1)),
+        ("history of 40x16k", nano.replacen("[1, 2, 4", &format!("[{}1, 2, 4", "8000, ".repeat(40)), 1)),
         ("a broken head", nano.replace(r#""head": null"#, r#""head": {"out_channels": 1}"#)),
         ("a stereo head", nano.replace(r#""head": null"#, r#""head": {"channels": 2, "out_channels": 2, "kernel_sizes": [1], "activation": "Tanh"}"#)),
         ("an LSTM condition", nano.replace(r#""head": null"#, r#""head": null, "condition_dsp": {"architecture": "LSTM"}"#)),
@@ -267,7 +270,7 @@ fn what_the_reader_refuses() {
         JSON, not a model   not a .nam file: it is JSON, but not a model
         ConvNet             bloop does not run ConvNet models yet
         A2-Full             read
-        a slimmed A2        layer array 0 has a head kernel of 16; bloop slims only 1x1 heads
+        a slimmed A2        read
         slimmed otherwise   layer array 0 slims by "prune", which bloop does not run
         a container         read
         out of order        the container's models are not in ascending max_value
@@ -279,6 +282,9 @@ fn what_the_reader_refuses() {
         stereo LSTM         the LSTM takes 2 inputs; bloop runs mono models
         kernel 0            layer array 0 has a kernel of 0
         dilation 0          layer array 0 has a dilation of 0
+        kernel 300          a convolution has a kernel of 300; bloop runs up to 256
+        dilation 2^20       the WaveNet's layer array 0's dilations is 1048576, more than bloop runs
+        history of 40x16k   the model would hold more history than bloop runs
         a broken head       the head's kernel_sizes is not a list
         a stereo head       the model outputs 2 channels; bloop runs mono models
         an LSTM condition   bloop runs only WaveNets as a condition DSP
