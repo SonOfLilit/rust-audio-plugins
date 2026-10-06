@@ -33,7 +33,7 @@
 use std::fmt::Write as _;
 
 use bloop_plugin_nam::preset::Shape;
-use bloop_plugin_nam::{Model, Tanh};
+use bloop_plugin_nam::{Model, Size, Tanh};
 use expect_test::{expect, Expect};
 
 #[cfg(target_arch = "wasm32")]
@@ -44,6 +44,13 @@ const RATE: f32 = 48_000.0;
 const OBSIDIAN: &str = include_str!("../models/obsidian.nam");
 const EXAMPLE: &str = include_str!("../models/example.nam");
 const TINY_LSTM: &str = include_str!("models/lstm.nam");
+/// NeuralAmpModelerCore's own examples (`example_models/`, the rev
+/// `vendor/nam` pins): every A2 feature in one model (not A2's shape, and
+/// not trained), a condition DSP, and the two ways a model is slimmable.
+const A2_FEATURES: &str = include_str!("models/wavenet_a2_feature_test.nam");
+const CONDITION_DSP: &str = include_str!("models/wavenet_condition_dsp.nam");
+const SLIMMABLE_WAVENET: &str = include_str!("models/slimmable_wavenet.nam");
+const SLIMMABLE_CONTAINER: &str = include_str!("models/slimmable_container.nam");
 
 /// What a guitar DI might be: a plucked note every quarter second, each a
 /// stack of decaying harmonics, at a peak of `level`, with a little noise.
@@ -76,18 +83,65 @@ struct Case {
     tanh: Tanh,
     input: Vec<f32>,
     block: usize,
+    /// Which of the capture's sizes runs: `Light` is NAM's
+    /// `SetSlimmableSize` at [`Model::slim_value`].
+    size: Size,
+}
+
+/// The models that come in more than one size, by name.
+fn slimmable() -> Vec<(&'static str, String)> {
+    vec![
+        ("a2-container", Shape::A2Container.nam(7)),
+        ("slimmable wavenet", SLIMMABLE_WAVENET.into()),
+        ("slimmable container", SLIMMABLE_CONTAINER.into()),
+    ]
 }
 
 fn cases() -> Vec<Case> {
     let mut cases = Vec::new();
-    let mut add = |name: &str, nam: String, tanh: Tanh, input: Vec<f32>, block: usize| {
-        cases.push(Case {
-            name: name.to_string(),
-            nam,
+    let mut add_sized =
+        |name: &str, nam: String, tanh: Tanh, input: Vec<f32>, block: usize, size: Size| {
+            cases.push(Case {
+                name: name.to_string(),
+                nam,
+                tanh,
+                input,
+                block,
+                size,
+            });
+        };
+    for tanh in [Tanh::Exact, Tanh::Fast] {
+        for (name, nam) in slimmable() {
+            for (size, label) in [(Size::Full, "full"), (Size::Light, "light")] {
+                add_sized(
+                    &format!("{name}, {label}"),
+                    nam.clone(),
+                    tanh,
+                    plucks(0.3, 0.5),
+                    128,
+                    size,
+                );
+            }
+        }
+        add_sized(
+            "a2 feature test",
+            A2_FEATURES.into(),
             tanh,
-            input,
-            block,
-        });
+            plucks(0.3, 0.5),
+            128,
+            Size::Full,
+        );
+        add_sized(
+            "condition dsp",
+            CONDITION_DSP.into(),
+            tanh,
+            plucks(0.3, 0.5),
+            128,
+            Size::Full,
+        );
+    }
+    let mut add = |name: &str, nam: String, tanh: Tanh, input: Vec<f32>, block: usize| {
+        add_sized(name, nam, tanh, input, block, Size::Full);
     };
     for tanh in [Tanh::Exact, Tanh::Fast] {
         add(
@@ -131,6 +185,8 @@ fn cases() -> Vec<Case> {
             Shape::NanoWith("Fasttanh"),
             Shape::Lstm(16),
             Shape::Lstm2(8),
+            Shape::A2Full,
+            Shape::A2Lite,
         ]) {
             add(&shape.name(), shape.nam(7), tanh, plucks(0.3, 0.5), 128);
         }
@@ -144,12 +200,25 @@ fn cases() -> Vec<Case> {
             plucks(0.1, 0.25),
             block,
         );
+        add(
+            &format!("a2-full, blocks of {block}"),
+            Shape::A2Full.nam(7),
+            Tanh::Fast,
+            plucks(0.3, 0.25),
+            block,
+        );
     }
     cases
 }
 
-fn run(case: &Case) -> Vec<f32> {
+fn model(case: &Case) -> Model {
     let mut model = Model::parse(&case.nam).unwrap();
+    model.set_size(case.size);
+    model
+}
+
+fn run(case: &Case) -> Vec<f32> {
+    let mut model = model(case);
     model.reset(case.tanh);
     let mut out = vec![0.0; case.input.len()];
     for (i, o) in case
@@ -196,6 +265,22 @@ fn check(expect: &Expect) {
 #[ignore = "heavy: cargo test -p bloop-plugin-nam -- --include-ignored"]
 fn every_case_through_the_port() {
     check(&expect![[r#"
+        a2-container, full           Exact  rms  -34.8 dB  peak  -33.4 dB  c4a7d089ca069331
+        a2-container, light          Exact  rms  -51.7 dB  peak  -47.9 dB  debd6dab70c16d9f
+        slimmable wavenet, full      Exact  rms   15.1 dB  peak   20.8 dB  e476c1e8eda85539
+        slimmable wavenet, light     Exact  rms   15.4 dB  peak   16.5 dB  b85b05e5c7a749d8
+        slimmable container, full    Exact  rms  -20.0 dB  peak  -11.5 dB  4a60461acf4d8459
+        slimmable container, light   Exact  rms  -39.3 dB  peak  -22.7 dB  e8202410e8462e75
+        a2 feature test              Exact  rms   19.7 dB  peak   20.3 dB  5cf0255af6a8d8b0
+        condition dsp                Exact  rms  -12.6 dB  peak  -11.1 dB  065be942d60a0ac6
+        a2-container, full           Fast  rms  -34.8 dB  peak  -33.4 dB  c4a7d089ca069331
+        a2-container, light          Fast  rms  -51.7 dB  peak  -47.9 dB  debd6dab70c16d9f
+        slimmable wavenet, full      Fast  rms   15.1 dB  peak   20.8 dB  e476c1e8eda85539
+        slimmable wavenet, light     Fast  rms   15.4 dB  peak   16.5 dB  b85b05e5c7a749d8
+        slimmable container, full    Fast  rms  -20.0 dB  peak  -11.5 dB  4a60461acf4d8459
+        slimmable container, light   Fast  rms  -39.3 dB  peak  -22.7 dB  7d32e6087055d6b3
+        a2 feature test              Fast  rms   19.7 dB  peak   20.3 dB  5cf0255af6a8d8b0
+        condition dsp                Fast  rms  -12.6 dB  peak  -11.1 dB  7290c1456c80c88b
         obsidian, DI level           Exact  rms  -26.1 dB  peak  -18.0 dB  27f0a67773907bd2
         obsidian, hot                Exact  rms  -22.1 dB  peak  -14.3 dB  c5740a2a68e77875
         obsidian, silence            Exact  rms  -85.4 dB  peak  -85.4 dB  21a04a0b722ea525
@@ -216,6 +301,8 @@ fn every_case_through_the_port() {
         nano-Fasttanh                Exact  rms  -46.7 dB  peak  -46.6 dB  73cf25fbd921f968
         lstm-16                      Exact  rms  -12.7 dB  peak  -12.6 dB  8845ec2139c756ab
         lstm-2x8                     Exact  rms  -19.0 dB  peak  -18.9 dB  2328f79ac5f8a9b2
+        a2-full                      Exact  rms  -43.8 dB  peak  -42.7 dB  0148a71d557bb18f
+        a2-lite                      Exact  rms  -51.7 dB  peak  -47.9 dB  debd6dab70c16d9f
         tiny lstm                    Exact  rms  -45.0 dB  peak  -35.6 dB  651046e958ad22c5
         obsidian, DI level           Fast  rms  -26.2 dB  peak  -18.1 dB  78b6f7623375129d
         obsidian, hot                Fast  rms  -22.1 dB  peak  -14.3 dB  4be1fc60aab841ff
@@ -237,19 +324,26 @@ fn every_case_through_the_port() {
         nano-Fasttanh                Fast  rms  -46.7 dB  peak  -46.6 dB  73cf25fbd921f968
         lstm-16                      Fast  rms  -12.7 dB  peak  -12.6 dB  b9eb585fe83172ec
         lstm-2x8                     Fast  rms  -19.0 dB  peak  -18.9 dB  5733730fbdc94d18
+        a2-full                      Fast  rms  -43.8 dB  peak  -42.7 dB  0148a71d557bb18f
+        a2-lite                      Fast  rms  -51.7 dB  peak  -47.9 dB  debd6dab70c16d9f
         tiny lstm                    Fast  rms  -45.1 dB  peak  -35.8 dB  40463df69a6cc105
         obsidian, blocks of 1        Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        a2-full, blocks of 1         Fast  rms  -43.8 dB  peak  -42.7 dB  52e7d2a569d7475b
         obsidian, blocks of 37       Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        a2-full, blocks of 37        Fast  rms  -43.8 dB  peak  -42.7 dB  52e7d2a569d7475b
         obsidian, blocks of 100      Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        a2-full, blocks of 100       Fast  rms  -43.8 dB  peak  -42.7 dB  52e7d2a569d7475b
         obsidian, blocks of 128      Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        a2-full, blocks of 128       Fast  rms  -43.8 dB  peak  -42.7 dB  52e7d2a569d7475b
         obsidian, blocks of 300      Fast  rms  -25.9 dB  peak  -18.2 dB  d02738a9c0d0a69e
+        a2-full, blocks of 300       Fast  rms  -43.8 dB  peak  -42.7 dB  52e7d2a569d7475b
     "#]]);
 }
 
 #[cfg(feature = "gold")]
 mod original {
     use super::Case;
-    use bloop_plugin_nam::Tanh;
+    use bloop_plugin_nam::{Size, Tanh};
     use std::io::Write as _;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
@@ -358,6 +452,9 @@ mod original {
         // built, so NAM's plug-in turns fast tanh on before loading any.
         let _ = writeln!(script, "fast {}", u8::from(case.tanh == Tanh::Fast));
         let _ = writeln!(script, "load {}", path.display());
+        if case.size == Size::Light {
+            let _ = writeln!(script, "slim {}", super::model(case).slim_value());
+        }
         let _ = writeln!(script, "reset 48000 {}", case.block.max(128));
         for block in case.input.chunks(case.block) {
             let _ = writeln!(script, "process {}", block.len());
@@ -415,6 +512,22 @@ fn gold_errors() {
     }
     let _ = writeln!(out, "worst: {worst:.1e} ({:.0} dB)", db(worst));
     expect![[r#"
+        a2-container, full           Exact  max |diff| 2.2e-8  of peak 1.0e-6
+        a2-container, light          Exact  max |diff| 4.2e-8  of peak 1.0e-5
+        slimmable wavenet, full      Exact  max |diff| 1.7e-5  of peak 1.5e-6
+        slimmable wavenet, light     Exact  max |diff| 2.9e-6  of peak 4.3e-7
+        slimmable container, full    Exact  max |diff| 1.5e-6  of peak 5.9e-6
+        slimmable container, light   Exact  max |diff| 1.0e-7  of peak 1.4e-6
+        a2 feature test              Exact  max |diff| 5.7e-6  of peak 5.5e-7
+        condition dsp                Exact  max |diff| 1.0e-7  of peak 3.8e-7
+        a2-container, full           Fast  max |diff| 2.2e-8  of peak 1.0e-6
+        a2-container, light          Fast  max |diff| 4.2e-8  of peak 1.0e-5
+        slimmable wavenet, full      Fast  max |diff| 1.7e-5  of peak 1.5e-6
+        slimmable wavenet, light     Fast  max |diff| 2.9e-6  of peak 4.3e-7
+        slimmable container, full    Fast  max |diff| 1.5e-6  of peak 5.9e-6
+        slimmable container, light   Fast  max |diff| 1.1e-7  of peak 1.5e-6
+        a2 feature test              Fast  max |diff| 5.7e-6  of peak 5.5e-7
+        condition dsp                Fast  max |diff| 1.2e-7  of peak 4.3e-7
         obsidian, DI level           Exact  max |diff| 1.8e-6  of peak 1.4e-5
         obsidian, hot                Exact  max |diff| 2.3e-6  of peak 1.2e-5
         obsidian, silence            Exact  max |diff| 4.8e-9  of peak 8.9e-5
@@ -435,6 +548,8 @@ fn gold_errors() {
         nano-Fasttanh                Exact  max |diff| 9.3e-10  of peak 2.0e-7
         lstm-16                      Exact  max |diff| 3.0e-8  of peak 1.3e-7
         lstm-2x8                     Exact  max |diff| 2.2e-8  of peak 2.0e-7
+        a2-full                      Exact  max |diff| 2.6e-8  of peak 3.6e-6
+        a2-lite                      Exact  max |diff| 4.2e-8  of peak 1.0e-5
         tiny lstm                    Exact  max |diff| 8.9e-8  of peak 5.4e-6
         obsidian, DI level           Fast  max |diff| 1.7e-6  of peak 1.4e-5
         obsidian, hot                Fast  max |diff| 2.2e-6  of peak 1.1e-5
@@ -456,12 +571,19 @@ fn gold_errors() {
         nano-Fasttanh                Fast  max |diff| 9.3e-10  of peak 2.0e-7
         lstm-16                      Fast  max |diff| 3.0e-8  of peak 1.3e-7
         lstm-2x8                     Fast  max |diff| 2.2e-8  of peak 2.0e-7
+        a2-full                      Fast  max |diff| 2.6e-8  of peak 3.6e-6
+        a2-lite                      Fast  max |diff| 4.2e-8  of peak 1.0e-5
         tiny lstm                    Fast  max |diff| 1.5e-7  of peak 9.2e-6
         obsidian, blocks of 1        Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        a2-full, blocks of 1         Fast  max |diff| 2.4e-8  of peak 3.3e-6
         obsidian, blocks of 37       Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        a2-full, blocks of 37        Fast  max |diff| 2.6e-8  of peak 3.6e-6
         obsidian, blocks of 100      Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        a2-full, blocks of 100       Fast  max |diff| 2.6e-8  of peak 3.6e-6
         obsidian, blocks of 128      Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        a2-full, blocks of 128       Fast  max |diff| 2.6e-8  of peak 3.6e-6
         obsidian, blocks of 300      Fast  max |diff| 1.4e-6  of peak 1.1e-5
+        a2-full, blocks of 300       Fast  max |diff| 2.6e-8  of peak 3.6e-6
         worst: 2.8e-5 (-91 dB)
     "#]]
     .assert_eq(&out);

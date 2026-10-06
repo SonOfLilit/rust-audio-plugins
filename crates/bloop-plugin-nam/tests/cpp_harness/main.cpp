@@ -4,6 +4,7 @@
 //   load <path>        read a .nam file (and forget the last model)
 //   fast <0|1>         NAM's fast tanh off or on, as the plug-in sets it
 //                      (`Activation::enable_fast_tanh`), before `reset`
+//   slim <value>       `SlimmableModel::SetSlimmableSize`, before `reset`
 //   reset <rate> <max> `DSP::Reset`, which prewarms
 //   process <n>        then 4·n bytes of little-endian float input;
 //                      writes 4·n bytes of output
@@ -19,6 +20,7 @@
 #include "NAM/activations.h"
 #include "NAM/dsp.h"
 #include "NAM/get_dsp.h"
+#include "NAM/slimmable.h"
 
 int main()
 {
@@ -42,6 +44,18 @@ int main()
         nam::activations::Activation::enable_fast_tanh();
       else
         nam::activations::Activation::disable_fast_tanh();
+    }
+    else if (command == "slim")
+    {
+      double value;
+      std::cin >> value;
+      auto* slimmable = dynamic_cast<nam::SlimmableModel*>(model.get());
+      if (slimmable == nullptr)
+      {
+        std::fprintf(stderr, "the model is not slimmable\n");
+        return 1;
+      }
+      slimmable->SetSlimmableSize(value);
     }
     else if (command == "reset")
     {
