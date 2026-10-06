@@ -9,7 +9,7 @@
 //!
 //! [`WavetablePlugin`] is the Plug-in; [`params`] lists its parameters,
 //! [`presets`] its factory presets, [`bank`] its wavetables. Every piece is
-//! held to the C++ it was ported from by `tests/gold.rs` (`--features
+//! held to the C++ it was ported from by `tests/it/gold.rs` (`--features
 //! gold`): bit for bit from a wavetable's frames on, and to within a
 //! millionth of full scale (about -120 dB) for the frames themselves,
 //! which the original band-limits with JUCE's FFT and bloop with its own

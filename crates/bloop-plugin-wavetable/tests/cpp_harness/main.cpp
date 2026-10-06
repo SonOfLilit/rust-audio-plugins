@@ -29,7 +29,7 @@
 //                                copies, u32 length and the floats
 //
 // Wavetable's sources are compiled into the harness unmodified, all but the
-// editor (tests/gold.rs copies them next to a stub PluginEditor.h). The
+// editor (tests/it/gold.rs copies them next to a stub PluginEditor.h). The
 // wavetables are handed in rather than read from disk because the original
 // band-limits them with JUCE's FFT and the port with its own, which differ
 // in the last bits; `wtload` compares those builds on their own.

@@ -14,11 +14,11 @@
 //                                the same way
 //
 // Each plugin's own PluginProcessor.cpp is compiled into the harness
-// unmodified (tests/gold.rs builds one unit per plugin, see
+// unmodified (tests/it/gold.rs builds one unit per plugin, see
 // slplugins_unit), so what runs here is the original, not a copy of it.
 // The Gin effects slPlugins has no plug-in for are wrapped in extras/, one
 // gin::Processor each, knobs and all; those wrappers are bloop's, and the
-// port's wrappers mirror them. tests/gold.rs writes the same program to the Rust port and compares the
+// port's wrappers mirror them. tests/it/gold.rs writes the same program to the Rust port and compares the
 // two outputs bit for bit.
 #include <JuceHeader.h>
 

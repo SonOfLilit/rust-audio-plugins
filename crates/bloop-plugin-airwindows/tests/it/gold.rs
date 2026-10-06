@@ -1596,8 +1596,8 @@ fn out_of_range_knobs_are_pinned() {
 }
 
 /// How many samples the gold run compared, once every scenario has run.
-/// Run alone, after the rest: `cargo test --features gold --test gold --
-/// --ignored gold_tally --nocapture` after the full run reports nothing,
+/// Run alone, after the rest: `cargo test --features gold --test it --
+/// --ignored gold::gold_tally --nocapture` after the full run reports nothing,
 /// so it reruns the scenarios itself.
 #[cfg(feature = "gold")]
 #[test]

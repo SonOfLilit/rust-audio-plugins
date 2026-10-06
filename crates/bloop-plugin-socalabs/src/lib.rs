@@ -11,7 +11,7 @@
 //!
 //! Every processor is held bit-exact against the C++ it was ported from:
 //! `cargo test -p bloop-plugin-socalabs --features gold` builds the
-//! originals and runs both over the same programs (tests/gold.rs).
+//! originals and runs both over the same programs (tests/it/gold.rs).
 
 mod gin;
 mod juce;

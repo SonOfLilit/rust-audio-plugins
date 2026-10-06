@@ -19,7 +19,7 @@ license = "BSD-3-Clause AND MIT AND CC0-1.0"
 # to that.
 
 [features]
-# Bit-exact comparison against the C++ original (tests/gold.rs). Needs g++
+# Bit-exact comparison against the C++ original (tests/it/gold.rs). Needs g++
 # and the vendor/wavetable, vendor/gin and vendor/juce submodules; switches
 # the transcendentals to the C library the C++ links.
 gold = ["bloop-plugin-socalabs/gold"]

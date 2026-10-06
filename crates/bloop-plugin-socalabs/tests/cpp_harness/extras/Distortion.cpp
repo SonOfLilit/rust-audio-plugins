@@ -1,5 +1,5 @@
 // gin::AirWindowsDistortion behind four knobs. Built with a 64-bit long
-// double (tests/gold.rs), which is what the port computes in: the class
+// double (tests/it/gold.rs), which is what the port computes in: the class
 // works in long double, and that is 80 bits here, 128 on arm64 Linux and
 // 64 on arm64 Apple, so there is no one original to match but the 64.
 #include <JuceHeader.h>

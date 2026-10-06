@@ -5,7 +5,7 @@
 //! cannot carry, so this is an iterative radix-2 transform of bloop's own
 //! with the same scaling. Its rounding is not JUCE's, which is why a
 //! wavetable's band-limited frames match the original's only to within
-//! about 1e-6 of full scale (`tests/gold.rs` measures how far); everything downstream
+//! about 1e-6 of full scale (`tests/it/gold.rs` measures how far); everything downstream
 //! of a frame is held bit for bit.
 //!
 //! Twiddles come from `libm` in double, so the transform rounds the same

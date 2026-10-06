@@ -3,7 +3,7 @@
 //! The voice is a 1:1 Rust port of `CustomSamplerVoice` from
 //! [Just-a-Sample](https://github.com/BOBONA/Just-a-Sample) (MIT, © 2024
 //! Binyamin Friedman), pinned at [`PORTED_FROM_JAS_REV`]. Agreement with the
-//! C++ original is enforced by the gold tests in `tests/gold.rs`, which compile
+//! C++ original is enforced by the gold tests in `tests/it/gold.rs`, which compile
 //! the reference voice and compare every rendered sample. The port matched bit
 //! for bit until the interpolation window was tabulated for speed; what is left
 //! is f32 rounding, and each scenario pins how much.

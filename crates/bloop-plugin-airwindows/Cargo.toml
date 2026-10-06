@@ -12,7 +12,7 @@ license = "MIT"
 # theirs.
 
 [features]
-# Bit-exact comparison against the C++ originals (tests/gold.rs). Needs g++
+# Bit-exact comparison against the C++ originals (tests/it/gold.rs). Needs g++
 # and the vendor/airwindows submodule. Also switches the transcendentals to
 # the platform C library the C++ links (src/math.rs).
 gold = []

@@ -1,7 +1,7 @@
 /*
     Gold-test driver for Just-a-Sample's `CustomSamplerVoice`.
 
-    Reads a program written by `tests/gold.rs` (argv[1]), drives the reference
+    Reads a program written by `tests/it/gold.rs` (argv[1]), drives the reference
     voice through it, and writes the rendered stereo output (argv[2]). The Rust
     port runs the same program, and the test compares the two sample by sample.
 

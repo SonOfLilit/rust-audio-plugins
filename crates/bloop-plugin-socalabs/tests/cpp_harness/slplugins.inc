@@ -1,5 +1,5 @@
 // The slPlugins processors the harness is built with, one per line; each
-// has a unit compiled from its own PluginProcessor.cpp (tests/gold.rs).
+// has a unit compiled from its own PluginProcessor.cpp (tests/it/gold.rs).
 SLPLUGIN(Compressor)
 SLPLUGIN(Limiter)
 SLPLUGIN(Gate)

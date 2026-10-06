@@ -27,7 +27,7 @@
 //! several times faster than multiplying a frame's handful of channels at
 //! a time. The C++ multiplies frame by frame through Eigen, so its sums
 //! are added in another order: the two agree to float rounding, not bit
-//! for bit (`tests/gold.rs`).
+//! for bit (`tests/it/gold.rs`).
 
 use crate::act::{Activation, Tanh};
 use crate::config::{ArrayConfig, FilmConfig, Gating, HeadConfig};
@@ -92,7 +92,7 @@ impl Rows {
 /// `ARMv8` core has: half the instructions of a multiply then an add, in the
 /// loop all of a model's time goes to. Fused, the product is not rounded
 /// before the add, so a phone's output differs from this machine's in the
-/// last bits — well inside what `tests/gold.rs` holds the port to. Elsewhere
+/// last bits — well inside what `tests/it/gold.rs` holds the port to. Elsewhere
 /// (x86 without a guaranteed FMA unit, and wasm, whose renders the tests
 /// compare against native ones) the multiply and the add stay separate.
 #[inline]

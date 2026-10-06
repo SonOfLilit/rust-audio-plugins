@@ -14,7 +14,7 @@ license = "MIT"
 # (src/bundled.rs).
 
 [features]
-# Comparison against the C++ original (tests/gold.rs). Needs g++ and the
+# Comparison against the C++ original (tests/it/gold.rs). Needs g++ and the
 # vendor/nam and vendor/eigen submodules.
 gold = []
 

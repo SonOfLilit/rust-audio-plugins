@@ -9,7 +9,7 @@ use core::f64::consts::PI;
 /// How long ToTape8 rings after its input stops, at most. The flutter
 /// line is under a thousand samples and ClipOnly2 holds sixteen; what
 /// lasts is the head bump, a resonant bandpass at 25 to 200 Hz fed by an
-/// integrator whose only leak is cubic. tests/behaviour.rs measures it
+/// integrator whose only leak is cubic. tests/it/behaviour.rs measures it
 /// falling below -90 dBFS within a third of a second at the knobs that
 /// stretch it most.
 pub const TAIL_SECONDS: f32 = 0.5;

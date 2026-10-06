@@ -1,6 +1,6 @@
 //! The effects as a host sees them: what each says about itself, what its
 //! knobs do with the values they are given, and what `process` and `reset`
-//! cost. What the audio sounds like is tests/gold.rs.
+//! cost. What the audio sounds like is tests/it/gold.rs.
 
 #![expect(
     clippy::expect_used,

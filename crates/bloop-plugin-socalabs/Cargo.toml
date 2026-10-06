@@ -20,7 +20,7 @@ license = "BSD-3-Clause AND MIT AND ISC AND WTFPL"
 # that.
 
 [features]
-# Bit-exact comparison against the C++ originals (tests/gold.rs). Needs g++
+# Bit-exact comparison against the C++ originals (tests/it/gold.rs). Needs g++
 # and the vendor/slplugins, vendor/gin and vendor/juce submodules. Also
 # switches the transcendentals to the platform C library the C++ links, so
 # that a mismatch is the port's and not the maths library's (src/math.rs).

@@ -9,7 +9,7 @@ use core::f64::consts::PI;
 /// How long Baxandall2 rings after its input stops, at most: its bass
 /// lowpass, at full boost a +24 dB resonance near 500 Hz, takes some tens
 /// of milliseconds to fall below -90 dBFS after a hot burst
-/// (tests/behaviour.rs).
+/// (tests/it/behaviour.rs).
 pub const TAIL_SECONDS: f32 = 0.05;
 
 /// `trebleAL[9]` and its kin: frequency, resonance, five coefficients and

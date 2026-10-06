@@ -1,6 +1,6 @@
 //! Wavetable as a host sees it: what it says about itself, how its
 //! tables, presets and voices behave, and what `process` costs. What it
-//! sounds like against the original is tests/gold.rs.
+//! sounds like against the original is tests/it/gold.rs.
 
 #![expect(
     clippy::expect_used,

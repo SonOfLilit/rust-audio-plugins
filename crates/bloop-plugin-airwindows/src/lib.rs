@@ -7,7 +7,7 @@
 //! floating-point dither every Airwindows plug-in ends on (src/math.rs).
 //! `cargo test -p bloop-plugin-airwindows --features gold` compiles the
 //! unmodified originals from `vendor/airwindows` and holds every port to
-//! them bit for bit (tests/gold.rs).
+//! them bit for bit (tests/it/gold.rs).
 //!
 //! Two things the originals leave to the platform, the port fixes:
 //!
