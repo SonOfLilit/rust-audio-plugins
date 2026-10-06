@@ -36,7 +36,7 @@ pub mod math;
 mod to_tape8;
 
 use baxandall2::Baxandall2;
-use console7::{Console7Buss, Console7Channel};
+pub use console7::{Console7Buss, Console7Channel};
 use density2::Density2;
 use galactic3::Galactic3;
 use to_tape8::ToTape8;

@@ -89,6 +89,7 @@ pub struct Console7Channel {
 }
 
 impl Console7Channel {
+    #[must_use]
     pub fn new(sample_rate: f32) -> Self {
         Self {
             params: [0.772_f64 as f32],
@@ -120,6 +121,12 @@ impl Console7Channel {
         b[1] = 1.618033988749894848204586;
         lowpass(b, tan(PI * b[0]));
 
+        // `pow(gainchase, 3)` the original computes twice a sample, of a
+        // gainchase that sits still once the fader does: the same bits
+        // each time, so it is worked out only when gainchase moves. The
+        // console on every strip of a mix spends most of its time here
+        // otherwise.
+        let mut cubed = (f64::NAN, f64::NAN);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             let mut sl = guard(*l, self.fpd_l);
             let mut sr = guard(*r, self.fpd_r);
@@ -127,8 +134,11 @@ impl Console7Channel {
             sr = run(b, sr, 11);
             let gainchase = self.chase.sample(inputgain);
             if 1.0 != gainchase {
-                sl *= pow(gainchase, 3.0);
-                sr *= pow(gainchase, 3.0);
+                if cubed.0.to_bits() != gainchase.to_bits() {
+                    cubed = (gainchase, pow(gainchase, 3.0));
+                }
+                sl *= cubed.1;
+                sr *= cubed.1;
             }
             sl = Self::saturate(sl);
             sr = Self::saturate(sr);
@@ -154,6 +164,7 @@ pub struct Console7Buss {
 }
 
 impl Console7Buss {
+    #[must_use]
     pub fn new(sample_rate: f32) -> Self {
         Self {
             params: [1.0],
