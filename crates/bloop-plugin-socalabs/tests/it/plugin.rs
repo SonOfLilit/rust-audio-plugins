@@ -858,7 +858,7 @@ fn clear_leaves_nothing_ringing() {
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn cargo_toml_cites_the_ported_revisions() {
-    let manifest = include_str!("../Cargo.toml");
+    let manifest = include_str!("../../Cargo.toml");
     for rev in [
         bloop_plugin_socalabs::PORTED_FROM_SLPLUGINS_REV,
         bloop_plugin_socalabs::PORTED_FROM_GIN_REV,
