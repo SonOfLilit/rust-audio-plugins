@@ -442,14 +442,28 @@ impl Effect {
     }
 
     /// What a dynamics processor's meters read — the level in, the level
-    /// out, the gain reduction — for the Compressor, Limiter, Gate and
-    /// Expander; `None` for any other. Allocation-free: the engine reads it
+    /// out, the gain reduction — for the Compressor, Limiter, Gate,
+    /// Expander and Maximizer; `None` for any other. Allocation-free: the engine reads it
     /// every block for the effect a screen is watching.
     #[must_use]
     pub fn meter(&self) -> Option<bloop_plugin_api::DynamicsMeter> {
         match &self.engine {
             Engine::Dynamics(dynamics) => Some(dynamics.meter()),
+            Engine::Maximizer(maximizer) => Some(maximizer.meter()),
             _ => None,
+        }
+    }
+
+    /// What the Maximizer and the TransientShaper traced over the last
+    /// block, for their screens (`bloop_plugin_api::trace`): empty for any
+    /// other effect. Allocation-free, read after every block for the effect
+    /// a screen is watching.
+    #[must_use]
+    pub fn trace(&self) -> &[[f32; 2]] {
+        match &self.engine {
+            Engine::Maximizer(maximizer) => maximizer.trace().points(),
+            Engine::TransientShaper(shaper) => shaper.trace().points(),
+            _ => &[],
         }
     }
 

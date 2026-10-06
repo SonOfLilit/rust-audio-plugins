@@ -21,6 +21,7 @@ use crate::gin::softclipper::SoftClipper;
 use crate::gin::text::Text;
 use crate::gin::transientshaper::TransientShaper;
 use crate::juce::{decibels_to_gain, jlimit, NormalisableRange as Range};
+use bloop_plugin_api::meter::{peak_of, DynamicsMeter, LevelTracker};
 
 const SMOOTH: Smoothing = Smoothing::Linear(0.1);
 
@@ -216,6 +217,14 @@ impl Default for TransientShaperProcessor {
     }
 }
 
+impl TransientShaperProcessor {
+    /// The last block's trace ([`TransientShaper::trace`]).
+    #[must_use]
+    pub fn trace(&self) -> &bloop_plugin_api::Trace {
+        self.shaper.trace()
+    }
+}
+
 impl Processor for TransientShaperProcessor {
     fn params(&self) -> &[Param] {
         &self.params
@@ -271,7 +280,16 @@ pub const MAXIMIZER: [ParamSpec; 3] = [
 pub struct MaximizerProcessor {
     params: Vec<Param>,
     maximizer: Maximizer,
+    /// The level in, the level out — after the ceiling — and the least
+    /// gain, as Gin's dynamics meter theirs: held 50 ms, then falling (or
+    /// rising) 30 dB a second. They touch no audio.
+    input_tracker: LevelTracker,
+    output_tracker: LevelTracker,
+    reduction_tracker: LevelTracker,
 }
+
+/// Gin's trackers' fall, in dB a second.
+const TRACKER_FALL: f32 = 30.0;
 
 impl Default for MaximizerProcessor {
     fn default() -> Self {
@@ -280,6 +298,28 @@ impl Default for MaximizerProcessor {
         Self {
             params: params(&MAXIMIZER),
             maximizer,
+            input_tracker: LevelTracker::new(TRACKER_FALL),
+            output_tracker: LevelTracker::new(TRACKER_FALL),
+            reduction_tracker: LevelTracker::new(-TRACKER_FALL),
+        }
+    }
+}
+
+impl MaximizerProcessor {
+    /// The last block's trace ([`Maximizer::trace`]).
+    #[must_use]
+    pub fn trace(&self) -> &bloop_plugin_api::Trace {
+        self.maximizer.trace()
+    }
+
+    /// What its screen's meters read: in, out and the gain reduction.
+    #[must_use]
+    pub fn meter(&self) -> DynamicsMeter {
+        DynamicsMeter {
+            input_db: self.input_tracker.level(),
+            output_db: self.output_tracker.level(),
+            reduction_db: [self.reduction_tracker.level(), 0.0, 0.0],
+            bands: 1,
         }
     }
 }
@@ -302,10 +342,26 @@ impl Processor for MaximizerProcessor {
     fn reset(&mut self) {
         reset_params(&mut self.params);
         self.maximizer.reset();
+        for tracker in [
+            &mut self.input_tracker,
+            &mut self.output_tracker,
+            &mut self.reduction_tracker,
+        ] {
+            tracker.reset();
+        }
     }
 
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
         let samples = left.len().min(right.len());
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a block's length, far inside f32"
+        )]
+        let seconds = samples as f32 / self.maximizer.sample_rate() as f32;
+        self.input_tracker.track(
+            peak_of(&left[..samples]).max(peak_of(&right[..samples])),
+            seconds,
+        );
         let [threshold, ceiling, release] = read(&mut self.params, samples);
         self.maximizer.set_threshold(threshold);
         self.maximizer.set_ceiling(ceiling);
@@ -316,6 +372,17 @@ impl Processor for MaximizerProcessor {
         for x in left[..samples].iter_mut().chain(&mut right[..samples]) {
             *x = jlimit(-limit, limit, *x);
         }
+        self.output_tracker.track(
+            peak_of(&left[..samples]).max(peak_of(&right[..samples])),
+            seconds,
+        );
+        let least = self
+            .maximizer
+            .trace()
+            .points()
+            .iter()
+            .fold(1.0f32, |g, [_, gain]| g.min(*gain));
+        self.reduction_tracker.track(least, seconds);
     }
 }
 

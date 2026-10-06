@@ -2,7 +2,12 @@
 //! from how far a fast and a slow envelope run ahead of and behind a
 //! baseline.
 //!
-//! Ported from Gin's `gin_dsp/dsp/gin_transientshaper.h`.
+//! Ported from Gin's `gin_dsp/dsp/gin_transientshaper.h`. bloop adds the
+//! trace its screen draws (`bloop_plugin_api::trace`): the detected
+//! envelope and the gain applied to the mid, read as it goes, which changes
+//! nothing that comes out.
+
+use bloop_plugin_api::trace::{Fold, Trace};
 
 use super::biquad::Biquad;
 use crate::juce::{decibels_to_gain, jlimit};
@@ -39,6 +44,8 @@ pub struct TransientShaper {
     gain: (f32, f32, f32),
     low_cut_filter: [Biquad; 2],
     high_cut_filter: [Biquad; 2],
+    /// The detected envelope and the mid's gain.
+    trace: Trace,
 }
 
 impl Default for TransientShaper {
@@ -63,6 +70,7 @@ impl Default for TransientShaper {
             gain: (0.0, 0.0, 0.0),
             low_cut_filter: [Biquad::default(); 2],
             high_cut_filter: [Biquad::default(); 2],
+            trace: Trace::new([Fold::Max, Fold::FarthestFromOne]),
         }
     }
 }
@@ -128,6 +136,16 @@ impl TransientShaper {
         {
             f.reset();
         }
+        self.trace.reset();
+    }
+
+    /// The block's trace: for every chunk, the detected envelope's peak —
+    /// the 10 Hz follower of the rectified detector that the attack and
+    /// sustain are measured against, as an amplitude — and the gain applied
+    /// to the mid farthest from unity.
+    #[must_use]
+    pub fn trace(&self) -> &Trace {
+        &self.trace
     }
 
     fn recalc(&mut self) {
@@ -155,6 +173,7 @@ impl TransientShaper {
     }
 
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.trace.begin();
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             let (mut in_l, mut in_r) = (*l, *r);
             let (mut dry_l, mut dry_r) = (0.0f32, 0.0f32);
@@ -199,8 +218,10 @@ impl TransientShaper {
             gain = std_min(std_max(self.gain.2, 0.0).sqrt(), gain);
             gain = std_min(gain, 64.0);
 
-            mid *= math::powf(gain, self.proc_mid);
+            let mid_gain = math::powf(gain, self.proc_mid);
+            mid *= mid_gain;
             side *= math::powf(gain, self.proc_side);
+            self.trace.sample(self.env.2, mid_gain);
 
             *l = (dry_l + (mid + side)) * self.output_gain;
             *r = (dry_r + (mid - side)) * self.output_gain;

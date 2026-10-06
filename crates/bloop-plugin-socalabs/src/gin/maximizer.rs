@@ -1,7 +1,14 @@
 //! `gin::Maximizer`: each half cycle scaled back to the threshold as a
 //! whole, after it is over, and the lot made up to the ceiling.
 //!
-//! Ported from Gin's `gin_dsp/dsp/gin_maximizer.h`.
+//! Ported from Gin's `gin_dsp/dsp/gin_maximizer.h`. bloop adds the trace
+//! its screen draws (`bloop_plugin_api::trace`): beside every buffered
+//! sample, the gain its half cycle was scaled by, so that as a sample goes
+//! out the trace reads it as it went in and the gain it was given — both
+//! in the output's time, half a cycle's lookahead behind the input. None
+//! of it changes what comes out.
+
+use bloop_plugin_api::trace::{Fold, Trace};
 
 use crate::juce::{decibels_to_gain, jlimit};
 use crate::math::{std_max, std_min};
@@ -11,6 +18,9 @@ const SAFETY_LIMIT: f32 = 10.0;
 #[derive(Clone, Debug)]
 struct Channel {
     buffer: Vec<f32>,
+    /// What each buffered sample has been scaled by so far: bloop's, for
+    /// the trace.
+    gains: Vec<f32>,
     length: i32,
     max_sample: f32,
     gain: f32,
@@ -31,12 +41,15 @@ pub struct Maximizer {
     release_active: bool,
     chans: [Channel; 2],
     channels: usize,
+    /// The input's peak and the gain applied, both channels together.
+    trace: Trace,
 }
 
 impl Default for Maximizer {
     fn default() -> Self {
         let channel = Channel {
             buffer: Vec::new(),
+            gains: Vec::new(),
             length: 0,
             max_sample: 0.0,
             gain: 1.0,
@@ -55,6 +68,7 @@ impl Default for Maximizer {
             release_active: false,
             chans: [channel.clone(), channel],
             channels: 0,
+            trace: Trace::new([Fold::Max, Fold::Min]),
         }
     }
 }
@@ -64,6 +78,12 @@ impl Maximizer {
         self.sample_rate = sample_rate;
         self.allocate();
         self.set_release(self.release_seconds);
+    }
+
+    /// The rate it is prepared for.
+    #[must_use]
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate
     }
 
     pub fn set_num_channels(&mut self, channels: usize) {
@@ -98,8 +118,10 @@ impl Maximizer {
         for c in &mut self.chans[..self.channels] {
             if c.buffer.len() == self.buffer_size as usize {
                 c.buffer.fill(0.0);
+                c.gains.fill(1.0);
             } else {
                 c.buffer = vec![0.0; self.buffer_size as usize];
+                c.gains = vec![1.0; self.buffer_size as usize];
             }
         }
         self.reset();
@@ -116,15 +138,26 @@ impl Maximizer {
     pub fn reset(&mut self) {
         for c in &mut self.chans[..self.channels] {
             c.buffer.fill(0.0);
+            c.gains.fill(1.0);
             c.length = 0;
             c.max_sample = 0.0;
             c.gain = 1.0;
             c.last_positive = false;
         }
         self.buffer_pos = 0;
+        self.trace.reset();
+    }
+
+    /// The block's trace: for every chunk of what goes out, the peak it had
+    /// going in (linear) and the least gain it was scaled by, before the
+    /// makeup.
+    #[must_use]
+    pub fn trace(&self) -> &Trace {
+        &self.trace
     }
 
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.trace.begin();
         if self.buffer_size <= 0 {
             return;
         }
@@ -136,6 +169,7 @@ impl Maximizer {
             for (ch, c) in self.chans[..n].iter_mut().enumerate() {
                 let input = if ch == 0 { left[i] } else { right[i] };
                 c.buffer[pos as usize] = input;
+                c.gains[pos as usize] = 1.0;
                 let positive = input > 0.0;
                 c.max_sample = std_max(c.max_sample, input.abs());
                 if positive != c.last_positive {
@@ -152,6 +186,7 @@ impl Maximizer {
                             idx += size;
                         }
                         c.buffer[idx as usize] *= c.gain;
+                        c.gains[idx as usize] *= c.gain;
                         back -= 1;
                     }
                     c.length = -1;
@@ -171,6 +206,17 @@ impl Maximizer {
             }
 
             let read = self.buffer_pos as usize;
+            let (mut peak, mut least) = (0.0f32, 1.0f32);
+            for c in &self.chans[..n] {
+                let gain = c.gains[read];
+                least = least.min(gain);
+                if gain > 0.0 {
+                    peak = peak.max((c.buffer[read] / gain).abs());
+                }
+            }
+            if n > 0 {
+                self.trace.sample(peak, least);
+            }
             for (ch, c) in self.chans[..n].iter_mut().enumerate() {
                 c.gain = if self.release_active {
                     std_min(c.gain / self.release, 1.0)

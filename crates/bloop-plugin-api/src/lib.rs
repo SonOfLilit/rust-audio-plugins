@@ -3,7 +3,9 @@
 use bloop_events::EventBuffer;
 
 pub mod meter;
+pub mod trace;
 pub use meter::{DynamicsMeter, LevelTracker};
+pub use trace::Trace;
 
 #[derive(Clone, Debug)]
 pub struct PluginInfo {
