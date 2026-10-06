@@ -37,6 +37,19 @@ fn process(effect: &mut Effect, left: &mut [f32], right: &mut [f32]) {
     effect.process(&mut context);
 }
 
+/// What a Maximizer at its defaults lets out of `input`'s left, in blocks
+/// of `block`.
+fn left_out(input: &[f32], block: usize) -> Vec<f32> {
+    let mut effect = Effect::new(Kind::Maximizer, RATE);
+    let mut out = Vec::new();
+    for chunk in input.chunks(block) {
+        let (mut l, mut r) = (chunk.to_vec(), chunk.to_vec());
+        process(&mut effect, &mut l, &mut r);
+        out.extend(l);
+    }
+    out
+}
+
 fn effect_release_zero(effect: &mut Effect) {
     effect.set_param(2, 0.0);
 }
@@ -144,22 +157,8 @@ fn the_maximizer_traces_its_input_and_gain() {
         points_128.len(),
         points_100[SETTLED..] == points_128[SETTLED..]
     ));
-    let (mut a, mut b) = (
-        Effect::new(Kind::Maximizer, RATE),
-        Effect::new(Kind::Maximizer, RATE),
-    );
-    let mut out_a = Vec::new();
-    for chunk in input.chunks(100) {
-        let (mut l, mut r) = (chunk.to_vec(), chunk.to_vec());
-        process(&mut a, &mut l, &mut r);
-        out_a.extend(l);
-    }
-    let mut out_b = Vec::new();
-    for chunk in input.chunks(128) {
-        let (mut l, mut r) = (chunk.to_vec(), chunk.to_vec());
-        process(&mut b, &mut l, &mut r);
-        out_b.extend(l);
-    }
+    let out_a = left_out(&input, 100);
+    let out_b = left_out(&input, 128);
     out.push(format!(
         "the audio out the same in either: {}",
         out_a == out_b
@@ -187,8 +186,8 @@ fn the_maximizer_traces_its_input_and_gain() {
     ));
     expect![[r#"
         -6 dBFS, half a second             last 16 points: input peak -6.00 dB, least gain -6.00 dB; meters in -6.00, out -1.00, GR -6.00 dB
-        then -20 dBFS, 100 ms              last 16 points: input peak -20.00 dB, least gain 0.00 dB; meters in -8.74, out -2.26, GR -5.54 dB
-        -20 dBFS, 300 ms in                last 16 points: input peak -20.00 dB, least gain 0.00 dB; meters in -14.74, out -8.26, GR 0.00 dB
+        then -20 dBFS, 100 ms              last 16 points: input peak -20.00 dB, least gain 0.00 dB; meters in -7.26, out -2.26, GR -5.54 dB
+        -20 dBFS, 300 ms in                last 16 points: input peak -20.00 dB, least gain 0.00 dB; meters in -13.26, out -8.26, GR 0.00 dB
         150 points from 9600 samples of 128-sample blocks
         blocks of 100: points a block [1, 2, 1, 2, 1, 2]…, 375 in all; blocks of 128: 375 in all; the same points once the Threshold has settled: true
         the audio out the same in either: true

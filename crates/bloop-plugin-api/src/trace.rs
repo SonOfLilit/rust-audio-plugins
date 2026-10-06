@@ -39,7 +39,10 @@ impl Fold {
         }
     }
 
-    fn fold(self, kept: f32, x: f32) -> f32 {
+    /// `x` folded into what is `kept`: the larger, the smaller, or the
+    /// one farther from one.
+    #[must_use]
+    pub fn fold(self, kept: f32, x: f32) -> f32 {
         match self {
             Fold::Max => kept.max(x),
             Fold::Min => kept.min(x),

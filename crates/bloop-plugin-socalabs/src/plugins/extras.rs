@@ -358,10 +358,6 @@ impl Processor for MaximizerProcessor {
             reason = "a block's length, far inside f32"
         )]
         let seconds = samples as f32 / self.maximizer.sample_rate() as f32;
-        self.input_tracker.track(
-            peak_of(&left[..samples]).max(peak_of(&right[..samples])),
-            seconds,
-        );
         let [threshold, ceiling, release] = read(&mut self.params, samples);
         self.maximizer.set_threshold(threshold);
         self.maximizer.set_ceiling(ceiling);
@@ -376,12 +372,14 @@ impl Processor for MaximizerProcessor {
             peak_of(&left[..samples]).max(peak_of(&right[..samples])),
             seconds,
         );
-        let least = self
-            .maximizer
-            .trace()
-            .points()
-            .iter()
-            .fold(1.0f32, |g, [_, gain]| g.min(*gain));
+        // In and reduction from the trace, which reads each sample as it
+        // goes out: the three meters in step, the lookahead behind the
+        // input. A block too short to finish a chunk reads silence and no
+        // reduction, and only moves the meters' clocks on.
+        let points = self.maximizer.trace().points();
+        let peak = points.iter().fold(0.0f32, |m, [p, _]| m.max(*p));
+        let least = points.iter().fold(1.0f32, |g, [_, gain]| g.min(*gain));
+        self.input_tracker.track(peak, seconds);
         self.reduction_tracker.track(least, seconds);
     }
 }
