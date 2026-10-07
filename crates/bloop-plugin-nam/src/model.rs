@@ -222,14 +222,18 @@ impl Model {
     }
 
     fn active(&self) -> &Variant {
-        match (&self.light, self.size) {
+        self.variant(self.size)
+    }
+
+    fn variant(&self, size: Size) -> &Variant {
+        match (&self.light, size) {
             (Some(l), Size::Light) => l,
             _ => &self.full,
         }
     }
 
-    fn active_mut(&mut self) -> &mut Variant {
-        match (&mut self.light, self.size) {
+    fn variant_mut(&mut self, size: Size) -> &mut Variant {
+        match (&mut self.light, size) {
             (Some(l), Size::Light) => l,
             _ => &mut self.full,
         }
@@ -243,7 +247,14 @@ impl Model {
     /// file says: each size of an A2 capture is measured on its own.
     #[must_use]
     pub fn loudness(&self) -> Option<f64> {
-        self.active().loudness.or(self.metadata.loudness)
+        self.loudness_in(self.size)
+    }
+
+    /// How loud `size` plays NAM's test signal, as [`Self::loudness`]
+    /// says for the size that runs.
+    #[must_use]
+    pub fn loudness_in(&self, size: Size) -> Option<f64> {
+        self.variant(size).loudness.or(self.metadata.loudness)
     }
 
     /// How many samples of silence NAM runs through a fresh model before
@@ -290,7 +301,15 @@ impl Model {
 
     /// Runs `input` into `output`, mono, as far as the shorter goes.
     pub fn process(&mut self, input: &[f32], output: &mut [f32], tanh: Tanh) {
-        let v = self.active_mut();
+        self.process_in(self.size, input, output, tanh);
+    }
+
+    /// [`Self::process`] in `size` rather than the size that runs: each
+    /// size keeps its own state, so the size switched away from can play
+    /// on beside the one switched to while one fades into the other. A
+    /// capture with one size runs it whatever `size` says.
+    pub fn process_in(&mut self, size: Size, input: &[f32], output: &mut [f32], tanh: Tanh) {
+        let v = self.variant_mut(size);
         let n = input.len().min(output.len());
         for (i, o) in input[..n]
             .chunks(MAX_BLOCK)
