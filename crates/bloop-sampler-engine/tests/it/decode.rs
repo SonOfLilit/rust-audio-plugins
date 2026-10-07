@@ -351,3 +351,209 @@ fn a_resumable_decode_rejects_rubbish_up_front() {
         .expect("must fail");
     expect!["UnrecognisedFormat"].assert_eq(&format!("{error:?}"));
 }
+
+// ---------------------------------------------------------------------------
+// The fmt chunk's length
+// ---------------------------------------------------------------------------
+
+/// How the samples of a [`wav_with_fmt`] file are stored.
+#[derive(Clone, Copy)]
+enum Encoding {
+    /// `WAVE_FORMAT_PCM`, 16-bit.
+    Pcm16,
+    /// `WAVE_FORMAT_IEEE_FLOAT`, 32-bit.
+    Float32,
+    /// `WAVE_FORMAT_EXTENSIBLE` around 16-bit PCM.
+    Extensible16,
+}
+
+/// A stereo 8-frame WAV whose fmt chunk is the standard 16 bytes followed
+/// by `extension`, its length field saying `16 + extension.len()`, and a pad
+/// byte after it when that is odd, as RIFF asks.
+fn wav_with_fmt(encoding: Encoding, extension: &[u8]) -> Vec<u8> {
+    wav_with_fmt_len(encoding, extension, 16 + extension.len() as u32)
+}
+
+/// [`wav_with_fmt`], with the fmt chunk's length field set to `declared`
+/// whatever the chunk really holds.
+fn wav_with_fmt_len(encoding: Encoding, extension: &[u8], declared: u32) -> Vec<u8> {
+    let channels = signal(2, 8);
+    let (tag, bits): (u16, u16) = match encoding {
+        Encoding::Pcm16 => (1, 16),
+        Encoding::Float32 => (3, 32),
+        Encoding::Extensible16 => (0xFFFE, 16),
+    };
+    let block_align = 2 * bits / 8;
+    let rate = 44_100u32;
+
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&tag.to_le_bytes());
+    fmt.extend_from_slice(&2u16.to_le_bytes());
+    fmt.extend_from_slice(&rate.to_le_bytes());
+    fmt.extend_from_slice(&(rate * u32::from(block_align)).to_le_bytes());
+    fmt.extend_from_slice(&block_align.to_le_bytes());
+    fmt.extend_from_slice(&bits.to_le_bytes());
+    fmt.extend_from_slice(extension);
+    if fmt.len() % 2 == 1 {
+        fmt.push(0);
+    }
+
+    let mut data = Vec::new();
+    for frame in 0..8 {
+        for channel in &channels {
+            let value = channel[frame];
+            match encoding {
+                Encoding::Pcm16 | Encoding::Extensible16 => {
+                    data.extend_from_slice(&((value * 32768.0) as i16).to_le_bytes());
+                }
+                Encoding::Float32 => data.extend_from_slice(&value.to_le_bytes()),
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&((4 + 8 + fmt.len() + 8 + data.len()) as u32).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&declared.to_le_bytes());
+    out.extend_from_slice(&fmt);
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    out.extend_from_slice(&data);
+    out
+}
+
+/// `WAVE_FORMAT_EXTENSIBLE`'s 24 bytes after the common 16: cbSize 22,
+/// valid bits, a stereo channel mask and the PCM sub-format GUID.
+fn extensible_pcm_extension() -> Vec<u8> {
+    let mut extension = Vec::new();
+    extension.extend_from_slice(&22u16.to_le_bytes());
+    extension.extend_from_slice(&16u16.to_le_bytes());
+    extension.extend_from_slice(&3u32.to_le_bytes());
+    extension.extend_from_slice(&[
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B,
+        0x71,
+    ]);
+    extension
+}
+
+/// The bundled pack's darbuka hits carry a 20-byte PCM fmt chunk: the 16
+/// that matter, then four zero bytes. Players read them; so must import.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_pcm_fmt_chunk_with_trailing_bytes_decodes() {
+    check(
+        wav_with_fmt(Encoding::Pcm16, &[0, 0, 0, 0]),
+        Some("wav"),
+        expect![[r#"
+            2 ch, 8 frames @44100 Hz
+            ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+            ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000"#]],
+    );
+}
+
+/// The same for IEEE float, with a cbSize that is not 0 either.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_float_fmt_chunk_with_trailing_bytes_decodes() {
+    check(
+        wav_with_fmt(Encoding::Float32, &[2, 0, 0xAB, 0xCD]),
+        Some("wav"),
+        expect![[r#"
+            2 ch, 8 frames @44100 Hz
+            ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+            ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000"#]],
+    );
+}
+
+/// An odd length is followed by RIFF's pad byte, which goes too.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_pcm_fmt_chunk_of_odd_length_decodes() {
+    check(
+        wav_with_fmt(Encoding::Pcm16, &[0, 0, 0]),
+        Some("wav"),
+        expect![[r#"
+            2 ch, 8 frames @44100 Hz
+            ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+            ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000"#]],
+    );
+}
+
+/// The lengths symphonia reads itself keep working: 18 bytes with cbSize 0,
+/// and the 40-byte `WAVE_FORMAT_EXTENSIBLE`.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn standard_fmt_chunk_lengths_still_decode() {
+    let decoded = |bytes: Vec<u8>| match decode(bytes, Some("wav")) {
+        Ok(buffer) => describe(&buffer),
+        Err(error) => format!("rejected: {error:?}"),
+    };
+    expect![[r#"
+        pcm 18: 2 ch, 8 frames @44100 Hz
+        ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+        ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000
+        float 18: 2 ch, 8 frames @44100 Hz
+        ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+        ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000
+        extensible 40: 2 ch, 8 frames @44100 Hz
+        ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+        ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000"#]]
+    .assert_eq(&format!(
+        "pcm 18: {}\nfloat 18: {}\nextensible 40: {}",
+        decoded(wav_with_fmt(Encoding::Pcm16, &[0, 0])),
+        decoded(wav_with_fmt(Encoding::Float32, &[0, 0])),
+        decoded(wav_with_fmt(
+            Encoding::Extensible16,
+            &extensible_pcm_extension()
+        )),
+    ));
+}
+
+/// A fmt chunk too short to hold a format is still refused, and says so.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_fmt_chunk_shorter_than_16_bytes_is_refused() {
+    check(
+        wav_with_fmt_len(Encoding::Pcm16, &[], 12),
+        Some("wav"),
+        expect![[
+            r#"rejected: Corrupt("wav: malformed fmt chunk") — this file is damaged (wav: malformed fmt chunk)"#
+        ]],
+    );
+}
+
+/// A fmt chunk whose length runs past the end of the file is refused, not
+/// read out of bounds.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_fmt_chunk_longer_than_the_file_is_refused() {
+    check(
+        wav_with_fmt_len(Encoding::Pcm16, &[0, 0, 0, 0], 4096),
+        Some("wav"),
+        expect![[
+            r#"rejected: Corrupt("riff: chunk length exceeds parent (list) chunk length") — this file is damaged (riff: chunk length exceeds parent (list) chunk length)"#
+        ]],
+    );
+}
+
+/// The darbuka files' header through the resumable decoder, which IMPORT
+/// and the Browser use.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_resumable_decode_reads_a_20_byte_fmt_chunk() {
+    let bytes = wav_with_fmt(Encoding::Pcm16, &[0, 0, 0, 0]);
+    let result = SampleDecoder::new(bytes, Some("wav")).and_then(|mut decoder| loop {
+        if let Some(buffer) = decoder.step(1)? {
+            break Ok(buffer);
+        }
+    });
+    expect![[r#"
+        2 ch, 8 frames @44100 Hz
+        ch0: -0.468750 -0.437500 -0.406250 -0.375000 -0.343750 -0.312500
+        ch1: -0.437500 -0.375000 -0.312500 -0.250000 -0.187500 -0.125000"#]]
+    .assert_eq(&match result {
+        Ok(buffer) => describe(&buffer),
+        Err(error) => format!("rejected: {error:?}"),
+    });
+}

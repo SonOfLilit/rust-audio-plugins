@@ -98,7 +98,8 @@ pub struct SampleDecoder {
 
 impl SampleDecoder {
     /// Open `bytes` and get as far as the first packet.
-    pub fn new(bytes: Vec<u8>, extension: Option<&str>) -> Result<Self, ImportError> {
+    pub fn new(mut bytes: Vec<u8>, extension: Option<&str>) -> Result<Self, ImportError> {
+        trim_wav_fmt(&mut bytes);
         let mut hint = Hint::new();
         if let Some(extension) = extension {
             hint.with_extension(extension);
@@ -121,6 +122,8 @@ impl SampleDecoder {
                 // its header — "damaged" is a truer thing to tell the user
                 // than "not an audio file".
                 SymphoniaError::IoError(_) => ImportError::Corrupt("it ends early".to_string()),
+                // Recognised, but its header makes no sense.
+                SymphoniaError::DecodeError(why) => ImportError::Corrupt(why.to_string()),
                 _ => ImportError::UnrecognisedFormat,
             })?;
 
@@ -225,6 +228,72 @@ impl SampleDecoder {
         }
         let done = self.channels.first().map_or(0, Vec::len) as f64;
         (done / self.expected_frames as f64).clamp(0.0, 1.0) as f32
+    }
+}
+
+/// Cut a WAV's PCM or IEEE-float fmt chunk back to its 16 bytes when it
+/// carries extra ones symphonia refuses.
+///
+/// Those two formats say everything in the first 16 bytes; anything after is
+/// an empty extension. symphonia 0.6 reads only the lengths 16, 18 and 40
+/// (and for float, 18 only with a cbSize of 0) and calls the rest malformed,
+/// but writers do pad it — the bundled pack's darbuka hits have 20 bytes, four
+/// of them zero — and other players read them. Anything else, including a fmt
+/// chunk too short or running past the end of the file, is left for
+/// symphonia to refuse.
+fn trim_wav_fmt(bytes: &mut Vec<u8>) {
+    const PCM: u16 = 0x0001;
+    const IEEE_FLOAT: u16 = 0x0003;
+    const COMMON: usize = 16;
+
+    let read_u32 = |bytes: &[u8], at: usize| -> Option<u32> {
+        Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+    };
+    if bytes.get(0..4) != Some(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
+        return;
+    }
+    let mut at = 12;
+    while let (Some(id), Some(len)) = (bytes.get(at..at + 4), read_u32(bytes, at + 4)) {
+        let Ok(len) = usize::try_from(len) else {
+            return;
+        };
+        let body = at + 8;
+        if id != b"fmt " {
+            match len
+                .checked_add(len % 2)
+                .and_then(|padded| body.checked_add(padded))
+            {
+                Some(next) if next < bytes.len() => at = next,
+                _ => return,
+            }
+            continue;
+        }
+        let Some(fmt) = bytes.get(body..body.saturating_add(len)) else {
+            return;
+        };
+        if len <= COMMON {
+            return;
+        }
+        let tag = u16::from_le_bytes([fmt[0], fmt[1]]);
+        let cb_size_zero = fmt.get(16..18) == Some(&[0, 0][..]);
+        let refused = match tag {
+            PCM => !matches!(len, 18 | 40),
+            IEEE_FLOAT => !(len == 40 || (len == 18 && cb_size_zero)),
+            _ => false,
+        };
+        if !refused {
+            return;
+        }
+        // The fmt chunk lies inside `bytes`, so `body + len` cannot overflow.
+        let end = (body + len).saturating_add(len % 2).min(bytes.len());
+        let removed = end - (body + COMMON);
+        bytes.drain(body + COMMON..end);
+        bytes[at + 4..at + 8].copy_from_slice(&(COMMON as u32).to_le_bytes());
+        if let Some(riff) = read_u32(bytes, 4) {
+            let riff = riff.saturating_sub(u32::try_from(removed).unwrap_or(u32::MAX));
+            bytes[4..8].copy_from_slice(&riff.to_le_bytes());
+        }
+        return;
     }
 }
 
