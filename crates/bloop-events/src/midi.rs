@@ -20,19 +20,44 @@ use core::fmt;
 pub enum MidiMessage {
     /// A key went down. `velocity` is 1–127: a note-on at velocity 0 is a
     /// note-off, and arrives as [`MidiMessage::NoteOff`].
-    NoteOn { channel: u8, note: u8, velocity: u8 },
+    NoteOn {
+        channel: u8,
+        note: u8,
+        velocity: u8,
+    },
     /// A key came up, as fast as `velocity` says.
-    NoteOff { channel: u8, note: u8, velocity: u8 },
+    NoteOff {
+        channel: u8,
+        note: u8,
+        velocity: u8,
+    },
     /// A held key pressed harder or softer (polyphonic aftertouch).
-    PolyPressure { channel: u8, note: u8, pressure: u8 },
+    PolyPressure {
+        channel: u8,
+        note: u8,
+        pressure: u8,
+    },
     /// The whole keyboard pressed harder or softer (channel aftertouch):
     /// what most keyboards that have aftertouch send.
-    ChannelPressure { channel: u8, pressure: u8 },
+    ChannelPressure {
+        channel: u8,
+        pressure: u8,
+    },
     /// A knob, a fader, a pedal or the mod wheel (controller 1).
-    ControlChange { channel: u8, controller: u8, value: u8 },
+    ControlChange {
+        channel: u8,
+        controller: u8,
+        value: u8,
+    },
     /// The pitch wheel: 0–16383, at rest at [`PITCH_BEND_CENTRE`].
-    PitchBend { channel: u8, value: u16 },
-    ProgramChange { channel: u8, program: u8 },
+    PitchBend {
+        channel: u8,
+        value: u16,
+    },
+    ProgramChange {
+        channel: u8,
+        program: u8,
+    },
 }
 
 /// Where a pitch wheel rests: no bend.
@@ -334,7 +359,15 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn split_and_joined_deliveries() {
         check(
-            &[&[0x90], &[60], &[100, 0x80, 60], &[0, 62], &[0], &[0xE0, 0x00], &[0x50]],
+            &[
+                &[0x90],
+                &[60],
+                &[100, 0x80, 60],
+                &[0, 62],
+                &[0],
+                &[0xE0, 0x00],
+                &[0x50],
+            ],
             expect![[r#"
                 ch1 on 60 @100
                 ch1 off 60 @0
@@ -367,7 +400,10 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn real_time_inside_a_dump_does_not_end_it() {
-        check(&[&[0xF0, 1, 0xF8, 2, 0xFE, 3, 0xF7, 0x90, 60, 100]], expect!["ch1 on 60 @100"]);
+        check(
+            &[&[0xF0, 1, 0xF8, 2, 0xFE, 3, 0xF7, 0x90, 60, 100]],
+            expect!["ch1 on 60 @100"],
+        );
     }
 
     /// An end-of-dump byte with no dump is nothing: the message it lands
@@ -375,9 +411,12 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn a_stray_end_of_dump_is_ignored() {
-        check(&[&[0x90, 60, 0xF7, 100, 62, 100]], expect![[r#"
+        check(
+            &[&[0x90, 60, 0xF7, 100, 62, 100]],
+            expect![[r#"
             ch1 on 60 @100
-            ch1 on 62 @100"#]]);
+            ch1 on 62 @100"#]],
+        );
     }
 
     /// Running status for the messages of one data byte: three channel
@@ -385,19 +424,25 @@ mod tests {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn running_status_with_one_data_byte() {
-        check(&[&[0xD0, 0x10, 0x20, 0x30, 0xC2, 4, 5]], expect![[r#"
+        check(
+            &[&[0xD0, 0x10, 0x20, 0x30, 0xC2, 4, 5]],
+            expect![[r#"
             ch1 pressure @16
             ch1 pressure @32
             ch1 pressure @48
             ch3 program 4
-            ch3 program 5"#]]);
+            ch3 program 5"#]],
+        );
     }
 
     /// A dump whose end byte is lost ends at the next status byte.
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn a_status_byte_ends_an_unterminated_dump() {
-        check(&[&[0xF0, 1, 2, 3, 0x91, 60, 100]], expect!["ch2 on 60 @100"]);
+        check(
+            &[&[0xF0, 1, 2, 3, 0x91, 60, 100]],
+            expect!["ch2 on 60 @100"],
+        );
     }
 
     /// Clock and active sensing may land inside a message, and leave it
@@ -420,7 +465,9 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
     fn system_common_is_skipped_and_cancels_running_status() {
         check(
-            &[&[0x90, 60, 100, 0xF2, 10, 20, 61, 100, 0xF6, 62, 100, 0x90, 63, 100]],
+            &[&[
+                0x90, 60, 100, 0xF2, 10, 20, 61, 100, 0xF6, 62, 100, 0x90, 63, 100,
+            ]],
             expect![[r#"
                 ch1 on 60 @100
                 ch1 on 63 @100"#]],
@@ -488,6 +535,7 @@ mod tests {
             ch16 pressure @99 -> ch16 pressure @99
             ch1 cc1 64 -> ch1 cc1 64
             ch1 bend 12345 -> ch1 bend 12345
-            ch2 program 7 -> ch2 program 7"#]].assert_eq(&out.join("\n"));
+            ch2 program 7 -> ch2 program 7"#]]
+        .assert_eq(&out.join("\n"));
     }
 }

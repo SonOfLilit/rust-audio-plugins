@@ -144,6 +144,10 @@ impl EventBuffer {
         self.events[..self.len].iter()
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut NoteEvent> {
+        self.events[..self.len].iter_mut()
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
