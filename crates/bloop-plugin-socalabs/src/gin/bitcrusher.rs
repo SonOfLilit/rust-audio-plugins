@@ -88,6 +88,14 @@ impl BitCrusher {
             .set_value((f64::from(rate_hz) / self.sample_rate) as f32);
     }
 
+    /// The bit depth and rate where they were last set, at once, and
+    /// nothing else moved.
+    pub fn snap(&mut self) {
+        self.bits.snap_to_value();
+        self.bits_os.snap_to_value();
+        self.rate.snap_to_value();
+    }
+
     pub fn reset(&mut self) {
         self.oversampler.reset();
         self.phase = 1.0;

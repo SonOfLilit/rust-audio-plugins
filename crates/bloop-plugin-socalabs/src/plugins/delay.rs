@@ -100,6 +100,9 @@ pub struct DelayProcessor {
     /// which is the order smoothing is checked in.
     params: Vec<Param>,
     delay: StereoDelay,
+    /// Settled before a block whose tempo it does not know yet: the delay
+    /// time a synced Beat resolves to jumps there on that block.
+    settling: bool,
 }
 
 impl Default for DelayProcessor {
@@ -133,6 +136,7 @@ impl DelayProcessor {
         Self {
             params,
             delay: StereoDelay::new(room),
+            settling: false,
         }
     }
 
@@ -158,6 +162,10 @@ impl DelayProcessor {
 
     fn process_block(&mut self, left: &mut [f32], right: &mut [f32], host: Host) {
         self.update_internal_params(host.bpm);
+        if self.settling {
+            self.settling = false;
+            self.params[DELAY_PARAM].reset();
+        }
         let samples = left.len().min(right.len());
         if any_smoothing(&self.params) {
             for i in 0..samples {
@@ -191,6 +199,12 @@ impl Processor for DelayProcessor {
     fn reset(&mut self) {
         reset_params(&mut self.params);
         self.delay.reset();
+    }
+
+    /// The knobs, and the delay time once the block says the tempo.
+    fn settle(&mut self) {
+        reset_params(&mut self.params);
+        self.settling = true;
     }
 
     fn process(&mut self, left: &mut [f32], right: &mut [f32], host: Host) {

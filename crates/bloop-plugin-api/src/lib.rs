@@ -152,6 +152,21 @@ pub trait Plugin: Send {
 
     fn reset(&mut self, sample_rate: f32, max_buffer_size: usize);
 
+    /// Where every value set so far is headed, there at once: a knob the
+    /// plug-in smooths jumps to where it was set rather than easing there
+    /// from where it stood. Whatever the plug-in holds — a voice, a
+    /// delay's line, an LFO's phase — stays as it is.
+    ///
+    /// The engine calls it on a plug-in's first block, once everything it
+    /// was told before then has arrived: a Project opened, an export or a
+    /// bounce starts each knob where the Project has it, not at the
+    /// plug-in's default for the first tenth of a second. A knob turned
+    /// while it plays still eases. Called on the audio thread, so it must
+    /// be allocation-free.
+    ///
+    /// The default is for a plug-in that smooths nothing.
+    fn settle(&mut self) {}
+
     /// What every voice is doing right now, for a screen to draw while it
     /// plays: overwrites all of `out`. Called on the audio thread after
     /// `process`, so it must be allocation-free and cheap.

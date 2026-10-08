@@ -35,6 +35,14 @@ pub trait Processor: Send {
     fn clear(&mut self) {
         self.reset();
     }
+    /// Every knob at once where it was last set, and whatever the DSP
+    /// eases on its own with it: [`bloop_plugin_api::Plugin::settle`]. A
+    /// JUCE host gets the same by setting the knobs before
+    /// `prepareToPlay`. The default is for a processor whose knobs are
+    /// all it smooths.
+    fn settle(&mut self) {
+        reset_params(self.params_mut());
+    }
     /// `processBlock`, on a stereo pair in place.
     fn process(&mut self, left: &mut [f32], right: &mut [f32], host: Host);
 }

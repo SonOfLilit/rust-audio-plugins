@@ -124,6 +124,13 @@ impl TransientShaper {
         self.gain.2 = 1.0;
     }
 
+    /// The gain where silence leaves it, unity, for a shaper that has
+    /// heard nothing yet: its first sound is shaped, not swelled in from
+    /// zero. Nothing else moves.
+    pub fn settle(&mut self) {
+        self.gain.2 = 1.0;
+    }
+
     pub fn reset(&mut self) {
         self.env.2 = 0.0;
         self.env_att.2 = 0.0;

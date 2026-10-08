@@ -51,8 +51,8 @@ use plugins::extras::{
     PlateReverbProcessor, SoftClipperProcessor, TransientShaperProcessor,
 };
 use plugins::graphiceq::GraphicEqProcessor;
-use plugins::scopes::{Analyser, ScopeProcessor};
 pub use plugins::scopes::oscilloscope;
+use plugins::scopes::{Analyser, ScopeProcessor};
 use plugins::simpleverb::SimpleVerbProcessor;
 use plugins::stereo::{StereoEnhancerProcessor, StereoProcessorProcessor};
 use plugins::{Host, Processor};
@@ -306,6 +306,10 @@ impl Engine {
     fn clear(&mut self) {
         dispatch!(self, p => p.clear());
     }
+
+    fn settle(&mut self) {
+        dispatch!(self, p => p.settle());
+    }
 }
 
 /// One SocaLabs effect, as a bloop Plug-in.
@@ -367,7 +371,9 @@ impl Effect {
             Kind::Exciter => Engine::Exciter(Box::default()),
             Kind::SoftClipper => Engine::SoftClipper(Box::default()),
             Kind::Chorus => Engine::Chorus(Box::default()),
-            Kind::Oscilloscope => Engine::Scope(Box::new(ScopeProcessor::new(Analyser::Oscilloscope))),
+            Kind::Oscilloscope => {
+                Engine::Scope(Box::new(ScopeProcessor::new(Analyser::Oscilloscope)))
+            }
             Kind::SpectrumAnalyzer => {
                 Engine::Scope(Box::new(ScopeProcessor::new(Analyser::SpectrumAnalyzer)))
             }
@@ -615,5 +621,9 @@ impl Plugin for Effect {
         let sample_rate = playable(sample_rate);
         self.sample_rate = sample_rate;
         self.engine.prepare(sample_rate);
+    }
+
+    fn settle(&mut self) {
+        self.engine.settle();
     }
 }

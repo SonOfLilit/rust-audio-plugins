@@ -315,7 +315,8 @@ impl Matrix {
     pub fn set_routes(&mut self, slots: impl Iterator<Item = (usize, usize, f32)>) {
         self.counts = [0; DESTINATION_COUNT];
         for (source, destination, depth) in slots {
-            let (Some(source), Some(destination)) = (source.checked_sub(1), destination.checked_sub(1))
+            let (Some(source), Some(destination)) =
+                (source.checked_sub(1), destination.checked_sub(1))
             else {
                 continue;
             };
@@ -346,6 +347,14 @@ impl Matrix {
     #[must_use]
     pub fn mono(&self, source: usize) -> f32 {
         self.mono[source]
+    }
+
+    /// The matrix's own smoothers at their targets: the knobs as the
+    /// whole synth sees them, there at once.
+    pub fn snap(&mut self) {
+        for s in &mut self.smoothers {
+            s.snap_to_value();
+        }
     }
 
     /// `ModMatrix::finishBlock`: the matrix's own smoothers `samples` on.

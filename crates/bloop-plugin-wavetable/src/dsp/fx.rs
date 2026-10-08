@@ -207,7 +207,11 @@ impl LongDelayLine {
 
     /// `setSize (2, 120.1, rate)`, keeping the ring: allocates nothing.
     fn set_rate(&mut self, sample_rate: f64) {
-        self.sample_rate = if sample_rate > 0.0 { sample_rate } else { 44100.0 };
+        self.sample_rate = if sample_rate > 0.0 {
+            sample_rate
+        } else {
+            44100.0
+        };
         self.logical = ((ORIGINAL_ROOM * self.sample_rate).ceil() as i32).max(1);
         self.clear();
     }
@@ -238,7 +242,8 @@ impl LongDelayLine {
         let n = self.logical;
         let reach = (self.channels[0].len() - 4) as f64 / self.sample_rate;
         let t = t.clamp(0.0, (f64::from(n - 1) / self.sample_rate).min(reach));
-        let read_pos = ((f64::from(self.write_pos - 1 + n) - t * self.sample_rate) as f32) % (n as f32);
+        let read_pos =
+            ((f64::from(self.write_pos - 1 + n) - t * self.sample_rate) as f32) % (n as f32);
         let i1 = read_pos.floor() as i32;
         let fraction = read_pos - i1 as f32;
         let ys = [
@@ -336,6 +341,11 @@ impl StereoDelay {
 
     pub fn reset(&mut self) {
         self.line.clear();
+        self.snap();
+    }
+
+    /// Every setting at its target, the line as it is.
+    pub fn snap(&mut self) {
         for v in [
             &mut self.mix,
             &mut self.delay,
@@ -413,6 +423,11 @@ impl Default for Gain {
 impl Gain {
     pub fn set_gain(&mut self, gain: f32) {
         self.gain = gain;
+    }
+
+    /// At the gain set, with no ramp from the last.
+    pub fn snap(&mut self) {
+        self.last = self.gain;
     }
 
     /// `juce::AudioBuffer::applyGainRamp (0, n, last, gain)` on both

@@ -57,6 +57,13 @@ impl Default for BitCrusherProcessor {
     }
 }
 
+impl BitCrusherProcessor {
+    /// Bits, Rate and Dirty as the DSP takes them, each moved on `steps`.
+    fn knobs(&mut self, steps: usize) -> [f32; 3] {
+        [0, 1, 2].map(|knob| self.params[knob].proc_value(steps))
+    }
+}
+
 impl Processor for BitCrusherProcessor {
     fn params(&self) -> &[Param] {
         &self.params
@@ -77,14 +84,20 @@ impl Processor for BitCrusherProcessor {
         self.crusher.reset();
     }
 
+    /// The knobs, and the crusher's own smoothing with them.
+    fn settle(&mut self) {
+        reset_params(&mut self.params);
+        let [bits, rate, dirty] = self.knobs(0);
+        self.crusher.set_params(bits, rate, dirty > 0.5);
+        self.crusher.snap();
+    }
+
     /// The knobs are read once a block, smoothing or not: the crusher
     /// smooths its own.
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
         let samples = left.len().min(right.len());
-        let bits = self.params[0].proc_value(samples);
-        let rate = self.params[1].proc_value(samples);
-        let dirty = self.params[2].proc_value(samples) > 0.5;
-        self.crusher.set_params(bits, rate, dirty);
+        let [bits, rate, dirty] = self.knobs(samples);
+        self.crusher.set_params(bits, rate, dirty > 0.5);
         self.crusher
             .process(&mut left[..samples], &mut right[..samples]);
     }

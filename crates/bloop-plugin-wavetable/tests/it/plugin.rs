@@ -94,7 +94,12 @@ fn render(plugin: &mut WavetablePlugin, events: &[NoteEvent], samples: usize) ->
 }
 
 /// As `render`, into buffers the caller allocated: allocates nothing.
-fn render_into(plugin: &mut WavetablePlugin, events: &[NoteEvent], left: &mut [f32], right: &mut [f32]) {
+fn render_into(
+    plugin: &mut WavetablePlugin,
+    events: &[NoteEvent],
+    left: &mut [f32],
+    right: &mut [f32],
+) {
     let rate = plugin.sample_rate();
     let mut first = true;
     for (l, r) in left.chunks_mut(512).zip(right.chunks_mut(512)) {
@@ -143,7 +148,10 @@ fn with_tables(mut plugin: WavetablePlugin) -> WavetablePlugin {
 fn frequency(samples: &[f32], rate: f64) -> f64 {
     let skip = (rate / 10.0) as usize;
     let tail = &samples[skip..];
-    let crossings = tail.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
+    let crossings = tail
+        .windows(2)
+        .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+        .count();
     crossings as f64 * rate / tail.len() as f64
 }
 
@@ -167,8 +175,21 @@ fn what_it_says_about_itself() {
         plugin.param_count()
     );
     for uid in [
-        "osc1pos", "osc1level", "osc1unison", "fltfreq", "flttype", "lfo1rate", "lfo1fade",
-        "env1sustain", "voices", "dlTime", "wt1", "wt2", "mod1src", "mod1dst", "mod1depth",
+        "osc1pos",
+        "osc1level",
+        "osc1unison",
+        "fltfreq",
+        "flttype",
+        "lfo1rate",
+        "lfo1fade",
+        "env1sustain",
+        "voices",
+        "dlTime",
+        "wt1",
+        "wt2",
+        "mod1src",
+        "mod1dst",
+        "mod1depth",
     ] {
         let index = params::index_of(uid).expect("a listed parameter");
         let p = param_info(index);
@@ -188,8 +209,14 @@ fn what_it_says_about_itself() {
         p.default,
         presets::PRESETS.len()
     );
-    let _ = writeln!(text, "past the end: {:?}", param_info(PARAM_PRESET + 1).name);
-    check(&text, &expect![[r#"
+    let _ = writeln!(
+        text,
+        "past the end: {:?}",
+        param_info(PARAM_PRESET + 1).name
+    );
+    check(
+        &text,
+        &expect![[r#"
         Wavetable by SocaLabs, Instrument, 0 in, 2 out, 304 parameters
           6 osc1pos      OSC1 Pos         0 to 100, default 0
           5 osc1level    OSC1 Level       -100 to 0, default 0
@@ -208,7 +235,8 @@ fn what_it_says_about_itself() {
         233 mod1depth    Mod 1 Depth      -1 to 1, default 0
         303 preset       Preset           0 to 8, default 8 (8 factory presets, then Init)
         past the end: ""
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -288,12 +316,15 @@ fn a_sub_sine_plays_in_tune_at_every_rate() {
         plugin.sample_rate(),
         frequency(&out, 44100.0)
     );
-    check(&text, &expect![[r#"
+    check(
+        &text,
+        &expect![[r#"
         44100 Hz: A4 at 440.0 Hz
         48000 Hz: A4 at 440.0 Hz
         96000 Hz: A4 at 440.0 Hz
         reset from 48000 to 44100 Hz: A4 at 440.0 Hz
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -312,10 +343,13 @@ fn voices_are_bounded() {
             plugin.active_voices()
         );
     }
-    check(&text, &expect![[r#"
+    check(
+        &text,
+        &expect![[r#"
         Voices 40: 64 notes held, 40 sounding (slots: 50)
         Voices 4: 64 notes held, 4 sounding (slots: 50)
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -331,9 +365,18 @@ fn choke_cuts_and_aftertouch_is_ignored() {
     };
     let note = Note::new(60);
     let (untouched, _) = held(&[]);
-    let (touched, _) = held(&[NoteEvent::Aftertouch { time: 0, channel: 0, note, pressure: 1.0 }]);
+    let (touched, _) = held(&[NoteEvent::Aftertouch {
+        time: 0,
+        channel: 0,
+        note,
+        pressure: 1.0,
+    }]);
     let (released, released_voices) = held(&[off(0, 60)]);
-    let (choked, choked_voices) = held(&[NoteEvent::Choke { time: 0, channel: 0, note }]);
+    let (choked, choked_voices) = held(&[NoteEvent::Choke {
+        time: 0,
+        channel: 0,
+        note,
+    }]);
     check(
         &format!(
             "100 ms on, held: {}\n\
@@ -385,11 +428,14 @@ fn presets_load_through_the_preset_knob() {
     show(&plugin, &mut text);
     plugin.set_param(PARAM_PRESET, 999.0);
     show(&plugin, &mut text);
-    check(&text, &expect![[r#"
+    check(
+        &text,
+        &expect![[r#"
         preset 0 (DT Siren 1): tables [113, 31], osc1pos 51.153572, fltenable 1, 2 mod slots
         preset 8 (Init): tables [26, 31], osc1pos 0, fltenable 1, 0 mod slots
         preset 8 (Init): tables [26, 31], osc1pos 0, fltenable 1, 0 mod slots
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -398,7 +444,14 @@ fn presets_load_through_the_preset_knob() {
 fn the_audio_thread_never_allocates() {
     let mut plugin = with_tables(WavetablePlugin::at(RATE));
     let spare = bank::tables_for(plugin.table_indices(), RATE);
-    for uid in ["chEnable", "dsEnable", "dlEnable", "rvEnable", "gateenable", "lfo1enable"] {
+    for uid in [
+        "chEnable",
+        "dsEnable",
+        "dlEnable",
+        "rvEnable",
+        "gateenable",
+        "lfo1enable",
+    ] {
         set(&mut plugin, uid, 1.0);
     }
     render(&mut plugin, &[on(0, 40)], 512);
@@ -412,7 +465,12 @@ fn the_audio_thread_never_allocates() {
     let count = allocations_during(|| {
         for preset in 0..=presets::PRESETS.len() {
             plugin.set_param(PARAM_PRESET, preset as f32);
-            render_into(&mut plugin, &[on(0, 60), off(300, 60)], &mut left, &mut right);
+            render_into(
+                &mut plugin,
+                &[on(0, 60), off(300, 60)],
+                &mut left,
+                &mut right,
+            );
         }
     });
     let _ = writeln!(text, "every preset loaded and played: {count}");
@@ -428,10 +486,90 @@ fn the_audio_thread_never_allocates() {
         "tables swapped, reset at the same rate, silenced, played: {count} (old set returned: {})",
         returned.is_some()
     );
-    check(&text, &expect![[r#"
+    check(
+        &text,
+        &expect![[r#"
         64 notes into every voice, every effect on: 0
         every preset loaded and played: 0
         tables swapped, reset at the same rate, silenced, played: 0 (old set returned: true)
-    "#]]);
+    "#]],
+    );
 }
 
+/// How far `a` is from `b`, and from which sample.
+fn apart(a: &[f32], b: &[f32]) -> String {
+    let worst = a
+        .iter()
+        .zip(b)
+        .map(|(x, y)| (x - y).abs())
+        .fold(0.0f32, f32::max);
+    a.iter()
+        .zip(b)
+        .position(|(x, y)| x != y)
+        .map_or("bit for bit".to_string(), |at| {
+            format!("{} from sample {at}", db(worst))
+        })
+}
+
+/// Each shipped preset played a C4 for a quarter second as it is loaded,
+/// against the same preset left a second of silence first: unsettled, its
+/// smoothed knobs and its matrix ease in from their defaults and the two
+/// differ from the first sample; settled, they start where the preset
+/// has them. What moves on its own is switched off, the same both ways —
+/// the LFOs, the step LFO, the chorus's sweep, the reverb's modulation,
+/// the distortion's dither, the gate and the noise — so what is left is
+/// the Delay of DT Siren Complex 2 and DT Siren complex, whose time
+/// rounds to no delay at all and reads wherever its line has got to.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn every_preset_starts_where_its_knobs_are() {
+    let mut text = String::new();
+    for preset in 0..presets::PRESETS.len() {
+        let loaded = || {
+            let mut plugin = WavetablePlugin::at(RATE);
+            plugin.set_param(PARAM_PRESET, preset as f32);
+            for uid in [
+                "lfo1enable",
+                "lfo2enable",
+                "lfo3enable",
+                "slfoenable",
+                "chEnable",
+                "rvEnable",
+                "dsEnable",
+                "gateenable",
+                "noiseenable",
+            ] {
+                set(&mut plugin, uid, 0.0);
+            }
+            with_tables(plugin)
+        };
+        let mut waited = loaded();
+        let _ = render(&mut waited, &[], 48_128);
+        let steady = render(&mut waited, &[on(0, 60)], 12_000);
+        let eased = render(&mut loaded(), &[on(0, 60)], 12_000);
+        let mut settled = loaded();
+        settled.settle();
+        let settled = render(&mut settled, &[on(0, 60)], 12_000);
+        let _ = writeln!(
+            text,
+            "{:<18} unsettled {}; settled {}",
+            presets::name(preset),
+            apart(&eased, &steady),
+            apart(&settled, &steady),
+        );
+    }
+    check(
+        &text,
+        &expect![[r#"
+        DT Siren 1         unsettled -35.6 dB from sample 1; settled bit for bit
+        DT Siren Complex 2 unsettled -10.1 dB from sample 0; settled -15.2 dB from sample 1
+        DT Siren complex   unsettled -22.6 dB from sample 0; settled -87.4 dB from sample 1
+        DT Sweeper 6       unsettled -25.9 dB from sample 0; settled bit for bit
+        VOX Dist Vocal I   unsettled -34.8 dB from sample 0; settled bit for bit
+        Guitar Pad         unsettled -39.2 dB from sample 0; settled bit for bit
+        Noise Riserish     unsettled bit for bit; settled bit for bit
+        Whip               unsettled bit for bit; settled bit for bit
+    "#]],
+    );
+}

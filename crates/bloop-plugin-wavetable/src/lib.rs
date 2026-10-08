@@ -290,6 +290,10 @@ impl Plugin for WavetablePlugin {
         self.synth.prepare(f64::from(sample_rate));
         self.synth.reset();
     }
+
+    fn settle(&mut self) {
+        self.synth.settle();
+    }
 }
 
 /// What parameter `index` is called and where it runs.

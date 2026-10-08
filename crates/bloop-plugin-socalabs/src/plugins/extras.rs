@@ -250,6 +250,11 @@ impl Processor for TransientShaperProcessor {
         self.shaper.clear();
     }
 
+    fn settle(&mut self) {
+        reset_params(&mut self.params);
+        self.shaper.settle();
+    }
+
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
         let samples = left.len().min(right.len());
         let [attack, sustain, smoothing, low_cut, high_cut, detector, balance, output] =

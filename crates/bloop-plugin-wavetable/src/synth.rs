@@ -9,6 +9,7 @@
 //! JUCE's classes are written here from their documented behaviour; the
 //! gold tests run the real ones.
 
+use crate::bank::TableSet;
 use crate::dsp::derez::DeRez2;
 use crate::dsp::fireamp::FireAmp;
 use crate::dsp::fx::{distort, Gain, Gate, StereoDelay};
@@ -18,7 +19,6 @@ use crate::dsp::random::JuceRandom;
 use crate::dsp::tables::NoiseSource;
 use crate::modmatrix::{src, Matrix, DESTINATION_OF};
 use crate::params::{id, Values, MOD_SLOTS, PARAMS};
-use crate::bank::TableSet;
 use crate::voice::{Context, GlideInfo, KeyState, MpeValue, Note, Voice, MAX_BLOCK};
 use bloop_plugin_socalabs::shared::{GlibcRand, Modulation, PlateReverb, DURATIONS};
 
@@ -35,14 +35,24 @@ pub const DELAY_ROOM: f64 = 4.0;
 /// A MIDI-like event, at a sample of the block.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Event {
-    NoteOn { note: u8, velocity: u8 },
-    NoteOff { note: u8 },
+    NoteOn {
+        note: u8,
+        velocity: u8,
+    },
+    NoteOff {
+        note: u8,
+    },
     /// 14-bit, 8192 at rest.
     PitchWheel(i32),
     /// Controller `cc` to a 7-bit value.
-    Controller { cc: u8, value: u8 },
+    Controller {
+        cc: u8,
+        value: u8,
+    },
     /// The note cut without a release.
-    Choke { note: u8 },
+    Choke {
+        note: u8,
+    },
 }
 
 impl Event {
@@ -150,6 +160,9 @@ pub struct Synth {
     bpm: f32,
     preset_loaded: bool,
     last_mono: bool,
+    /// Settled before the block that says the tempo and the knobs as the
+    /// matrix sees them: that block starts them where they are headed.
+    settling: bool,
 }
 
 impl Synth {
@@ -209,6 +222,7 @@ impl Synth {
             bpm: 120.0,
             preset_loaded: false,
             last_mono: false,
+            settling: false,
         };
         synth.prepare(44100.0);
         synth
@@ -226,8 +240,10 @@ impl Synth {
         for v in &mut self.voices {
             v.set_sample_rate(sample_rate);
         }
-        self.matrix
-            .set_sample_rate(sample_rate, self.voices.iter_mut().map(|v| &mut v.modulation));
+        self.matrix.set_sample_rate(
+            sample_rate,
+            self.voices.iter_mut().map(|v| &mut v.modulation),
+        );
         self.gate.set_sample_rate(sample_rate);
         self.chorus.prepare(sample_rate);
         self.delay.set_sample_rate(sample_rate);
@@ -349,7 +365,11 @@ impl Synth {
 
     // ——— voices ———
 
-    fn with_context<R>(&mut self, voice: usize, f: impl FnOnce(&mut Voice, &mut Context) -> R) -> R {
+    fn with_context<R>(
+        &mut self,
+        voice: usize,
+        f: impl FnOnce(&mut Voice, &mut Context) -> R,
+    ) -> R {
         let tables = self.tables.as_deref();
         let wt = |i: usize| {
             tables.and_then(|t| {
@@ -541,8 +561,7 @@ impl Synth {
     fn instrument_note_on(&mut self, number: u8, velocity: MpeValue) {
         let mut note = Note::new(1, number, velocity);
         note.pitchbend = self.last_pitchbend;
-        note.total_pitchbend =
-            f64::from(note.pitchbend.signed() * self.pitchbend_range as f32);
+        note.total_pitchbend = f64::from(note.pitchbend.signed() * self.pitchbend_range as f32);
         self.release_note(note.id);
         self.notes.push(note);
         self.note_added(note);
@@ -695,11 +714,7 @@ impl Synth {
 
         let in_range = |&&(time, _): &&(u32, Event)| (start..end).contains(&(time as usize));
         if before == 0 && self.notes.len > 0 {
-            if let Some((time, _)) = events
-                .iter()
-                .filter(in_range)
-                .find(|(_, e)| e.is_note_on())
-            {
+            if let Some((time, _)) = events.iter().filter(in_range).find(|(_, e)| e.is_note_on()) {
                 self.note_on_index = *time as i32 - start as i32;
             }
         }
@@ -769,7 +784,8 @@ impl Synth {
             let n = self.values.user(id::SLFO_LENGTH) as usize;
             self.mono_step.set_num_points(n);
             for i in (0..n).rev() {
-                self.mono_step.set_point(i, self.values.user(id::SLFO_STEP1 + i));
+                self.mono_step
+                    .set_point(i, self.values.user(id::SLFO_STEP1 + i));
             }
             self.mono_step.process(block);
             let out = self.mono_step.output();
@@ -943,6 +959,14 @@ impl Synth {
         let mut pos = 0;
         while pos < total {
             let n = (total - pos).min(MAX_BLOCK);
+            if self.settling {
+                self.settling = false;
+                self.update_params(0);
+                self.matrix.snap();
+                self.update_params(0);
+                self.delay.snap();
+                self.output_gain.snap();
+            }
             self.update_params(n);
             self.render_next_block(left, right, events, pos, n);
             let (l, r) = (&mut left[pos..pos + n], &mut right[pos..pos + n]);
@@ -954,6 +978,12 @@ impl Synth {
             self.matrix.finish_block(n);
             pos += n;
         }
+    }
+
+    /// Every knob, the matrix's smoothing and the effects' with them,
+    /// where it is headed, from the next block on: [`bloop_plugin_api::Plugin::settle`].
+    pub fn settle(&mut self) {
+        self.settling = true;
     }
 
     /// Every voice stopped and every effect's tail emptied, now: Choke

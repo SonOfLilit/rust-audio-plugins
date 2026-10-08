@@ -92,6 +92,16 @@ impl Processor for CrossfeedProcessor {
         reset_params(&mut self.params);
     }
 
+    /// Crossfeed on or off at once, with no fade from off.
+    fn settle(&mut self) {
+        reset_params(&mut self.params);
+        let on = self.params[0].user_value() > 0.5;
+        self.enable
+            .set_current_and_target(if on { 1.0 } else { 0.0 });
+        self.disable
+            .set_current_and_target(if on { 0.0 } else { 1.0 });
+    }
+
     fn process(&mut self, left: &mut [f32], right: &mut [f32], _host: Host) {
         let on = self.params[0].user_value() > 0.5;
         self.enable.set_target(if on { 1.0 } else { 0.0 });
