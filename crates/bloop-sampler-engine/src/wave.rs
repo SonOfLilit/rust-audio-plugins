@@ -49,6 +49,13 @@ pub struct WaveView {
     pub view: (f32, f32),
     /// Edit points drawn over the wave, positioned in view space.
     pub marks: Vec<WaveMark>,
+    /// On an overview, the part another display shows zoomed in, in view
+    /// space: drawn as a frame. `None` on the zoomed view itself, and
+    /// where it shows the whole sample.
+    pub window: Option<(f32, f32)>,
+    /// A span picked out, in view space: on an overview of a sliced
+    /// sample, the focused Slice.
+    pub focus: Option<(f32, f32)>,
 }
 
 /// A labelled position on the waveform.
@@ -181,7 +188,25 @@ impl WaveView {
                 to as f32 / total_frames as f32,
             ),
             marks: Vec::new(),
+            window: None,
+            focus: None,
         }
+    }
+
+    /// A span of the whole sample, `from..to` in fractions, as fractions
+    /// of this view — what [`WaveView::window`] and [`WaveView::focus`]
+    /// hold. `None` when none of it is in view: a span that only touches
+    /// the view's edge is not in it, a span of no width inside it is.
+    pub fn span_in_view(&self, from: f32, to: f32) -> Option<(f32, f32)> {
+        let (view_from, view_to) = self.view;
+        let width = view_to - view_from;
+        let (from, to) = (from.min(to), from.max(to));
+        if width <= 0.0 || to < view_from || from > view_to {
+            return None;
+        }
+        let at = |position: f32| ((position - view_from) / width).clamp(0.0, 1.0);
+        let (start, end) = (at(from), at(to));
+        (end > start || to == from).then_some((start, end))
     }
 
     /// Place a mark at an absolute frame, dropping it if it falls outside the
@@ -240,9 +265,30 @@ impl WaveView {
             }
         }
 
-        grid.into_iter()
+        let mut lines: Vec<String> = grid
+            .into_iter()
             .map(|row| row.into_iter().collect::<String>().trim_end().to_string())
-            .collect()
+            .collect();
+        // Under the wave, the spans it picks out: `=` under the window
+        // another display shows, `^` under the focus.
+        if self.window.is_some() || self.focus.is_some() {
+            let columns = self.peaks.len();
+            let column_of = |at: f32| {
+                ((at.clamp(0.0, 1.0) * columns as f32) as usize).min(columns.saturating_sub(1))
+            };
+            let mut under = vec![' '; columns];
+            for (span, glyph) in [(self.window, '='), (self.focus, '^')] {
+                if let Some((from, to)) = span {
+                    let first = column_of(from);
+                    let last = column_of(to - f32::EPSILON).max(first);
+                    for cell in &mut under[first..=last] {
+                        *cell = glyph;
+                    }
+                }
+            }
+            lines.push(under.into_iter().collect::<String>().trim_end().to_string());
+        }
+        lines
     }
 }
 
@@ -277,6 +323,92 @@ mod tests {
                                         ###          ###
                                           ############"#]]
         .assert_eq(&view.to_text(9).join("\n"));
+    }
+
+    /// A span of the whole sample as fractions of a view of its middle
+    /// half: one inside it scales, one across an edge is cut at the edge,
+    /// one backwards comes back low first, one outside it or only
+    /// touching its edge is not in view, and one of no width inside it is.
+    /// A view of no width has nothing in it.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_span_is_placed_in_the_view() {
+        let view = WaveView {
+            view: (0.25, 0.75),
+            ..WaveView::default()
+        };
+        let empty = WaveView {
+            view: (0.5, 0.5),
+            ..WaveView::default()
+        };
+        let out: Vec<String> = [
+            ("inside", view.span_in_view(0.375, 0.5)),
+            ("whole", view.span_in_view(0.0, 1.0)),
+            ("across the start", view.span_in_view(0.0, 0.5)),
+            ("across the end", view.span_in_view(0.5, 1.0)),
+            ("backwards", view.span_in_view(0.5, 0.375)),
+            ("before", view.span_in_view(0.0, 0.125)),
+            ("touching the start", view.span_in_view(0.0, 0.25)),
+            ("touching the end", view.span_in_view(0.75, 1.0)),
+            ("no width inside", view.span_in_view(0.5, 0.5)),
+            ("in a view of no width", empty.span_in_view(0.0, 1.0)),
+        ]
+        .iter()
+        .map(|(name, span)| format!("{name}: {span:?}"))
+        .collect();
+        expect![[r#"
+            inside: Some((0.25, 0.5))
+            whole: Some((0.0, 1.0))
+            across the start: Some((0.0, 0.5))
+            across the end: Some((0.5, 1.0))
+            backwards: Some((0.25, 0.5))
+            before: None
+            touching the start: None
+            touching the end: None
+            no width inside: Some((0.5, 0.5))
+            in a view of no width: None"#]].assert_eq(&out.join("\n"));
+    }
+
+    /// Under a wave with a window or a focus, one more line: `=` under the
+    /// window, `^` under the focus over it. A window to the very end
+    /// reaches the last column, a focus of no width is one column, and a
+    /// wave with neither has no line more.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn the_window_and_the_focus_are_underlined() {
+        let audio = vec![0.5f32; 160];
+        let wave = WaveView::reduce([audio.as_slice()].into_iter(), (0, 160), 160, 16);
+        let with = |window: Option<(f32, f32)>, focus: Option<(f32, f32)>| {
+            WaveView {
+                window,
+                focus,
+                ..wave.clone()
+            }
+            .to_text(2)
+            .join("\n")
+        };
+        expect![[r#"
+            neither:
+            ################
+
+            window to the end, a focus in it:
+            ################
+
+                    ==^^====
+            a focus of no width:
+            ################
+
+                ^"#]].assert_eq(
+            &[
+                format!("neither:\n{}", with(None, None)),
+                format!(
+                    "window to the end, a focus in it:\n{}",
+                    with(Some((0.5, 1.0)), Some((0.625, 0.75)))
+                ),
+                format!("a focus of no width:\n{}", with(None, Some((0.25, 0.25)))),
+            ]
+            .join("\n"),
+        );
     }
 
     /// Min/max keeps a transient that averaging would flatten: one loud frame
