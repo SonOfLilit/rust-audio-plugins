@@ -56,6 +56,10 @@ pub struct WaveView {
     /// A span picked out, in view space: on an overview of a sliced
     /// sample, the focused Slice.
     pub focus: Option<(f32, f32)>,
+    /// The play range, in view space and not clamped to it — a start
+    /// left of the view is below 0. What lies outside it is drawn greyed
+    /// out. `None` where there is no play range to show.
+    pub play: Option<(f32, f32)>,
 }
 
 /// A labelled position on the waveform.
@@ -190,7 +194,38 @@ impl WaveView {
             marks: Vec::new(),
             window: None,
             focus: None,
+            play: None,
         }
+    }
+
+    /// Set the play range from where it starts and ends in the whole
+    /// sample, as fractions: [`WaveView::play`], in this view's space.
+    pub fn set_play(&mut self, from: f32, to: f32) {
+        let (view_from, view_to) = self.view;
+        let width = view_to - view_from;
+        if width <= 0.0 {
+            return;
+        }
+        let at = |position: f32| (position - view_from) / width;
+        self.play = Some((at(from.min(to)), at(from.max(to))));
+    }
+
+    /// The parts of this view outside the play range, as fractions of
+    /// the view: what is greyed out. None without a play range, or when
+    /// it covers the whole view; all of it when it lies off to a side.
+    pub fn outside_play(&self) -> Vec<(f32, f32)> {
+        let Some((from, to)) = self.play else {
+            return Vec::new();
+        };
+        let (from, to) = (from.clamp(0.0, 1.0), to.clamp(0.0, 1.0));
+        let mut spans = Vec::new();
+        if from > 0.0 {
+            spans.push((0.0, from));
+        }
+        if to < 1.0 && to >= from {
+            spans.push((to, 1.0));
+        }
+        spans
     }
 
     /// A span of the whole sample, `from..to` in fractions, as fractions
@@ -243,8 +278,20 @@ impl WaveView {
 
         let mut grid = vec![vec![' '; self.peaks.len()]; rows];
         let half = rows as f32 / 2.0;
+        // Audio outside the play range is greyed out: `.` for `#`.
+        let outside = self.outside_play();
+        let columns = self.peaks.len() as f32;
 
         for (column, &(low, high)) in self.peaks.iter().enumerate() {
+            let centre = (column as f32 + 0.5) / columns;
+            let ink = if outside
+                .iter()
+                .any(|(from, to)| centre >= *from && centre < *to)
+            {
+                '.'
+            } else {
+                '#'
+            };
             // Row 0 is the top (+1.0), the last row is the bottom (-1.0).
             let to_row = |value: f32| {
                 let scaled = half - value.clamp(-1.0, 1.0) * half;
@@ -252,7 +299,7 @@ impl WaveView {
             };
             let (top, bottom) = (to_row(high), to_row(low));
             for row in grid.iter_mut().take(bottom + 1).skip(top) {
-                row[column] = '#';
+                row[column] = ink;
             }
         }
 
@@ -366,7 +413,65 @@ mod tests {
             touching the start: None
             touching the end: None
             no width inside: Some((0.5, 0.5))
-            in a view of no width: None"#]].assert_eq(&out.join("\n"));
+            in a view of no width: None"#]]
+        .assert_eq(&out.join("\n"));
+    }
+
+    /// The play range greys out what is outside it, `.` for `#`: both
+    /// ends trimmed, a view zoomed inside it (nothing greyed), a view
+    /// wholly before its start (all of it), a range given backwards, and
+    /// no play range at all.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn outside_the_play_range_is_greyed_out() {
+        let audio = vec![0.5f32; 160];
+        let whole = WaveView::reduce([audio.as_slice()].into_iter(), (0, 160), 160, 16);
+        let zoomed = WaveView::reduce([audio.as_slice()].into_iter(), (40, 80), 160, 16);
+        let show = |name: &str, wave: &WaveView, from: f32, to: f32| {
+            let mut wave = wave.clone();
+            wave.set_play(from, to);
+            format!(
+                "{name}: play {:?}, outside {:?}\n{}",
+                wave.play,
+                wave.outside_play(),
+                wave.to_text(2).join("\n")
+            )
+        };
+        let none = format!(
+            "no play range: outside {:?}\n{}",
+            whole.outside_play(),
+            whole.to_text(2).join("\n")
+        );
+        expect![[r#"
+            trimmed: play Some((0.25, 0.75)), outside [(0.0, 0.25), (0.75, 1.0)]
+            ....########....
+
+            zoomed inside: play Some((-1.0, 3.0)), outside []
+            ################
+
+            zoomed before the start: play Some((2.0, 3.0)), outside [(0.0, 1.0)]
+            ................
+
+            zoomed across the end: play Some((-1.0, 0.75)), outside [(0.75, 1.0)]
+            ############....
+
+            backwards: play Some((0.25, 0.75)), outside [(0.0, 0.25), (0.75, 1.0)]
+            ....########....
+
+            no play range: outside []
+            ################
+        "#]]
+        .assert_eq(
+            &[
+                show("trimmed", &whole, 0.25, 0.75),
+                show("zoomed inside", &zoomed, 0.0, 1.0),
+                show("zoomed before the start", &zoomed, 0.75, 1.0),
+                show("zoomed across the end", &zoomed, 0.0, 0.4375),
+                show("backwards", &whole, 0.75, 0.25),
+                none,
+            ]
+            .join("\n"),
+        );
     }
 
     /// Under a wave with a window or a focus, one more line: `=` under the
@@ -398,7 +503,8 @@ mod tests {
             a focus of no width:
             ################
 
-                ^"#]].assert_eq(
+                ^"#]]
+        .assert_eq(
             &[
                 format!("neither:\n{}", with(None, None)),
                 format!(
