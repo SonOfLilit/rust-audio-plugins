@@ -482,6 +482,23 @@ impl Effect {
             .map_or("", |p| p.spec().unit)
     }
 
+    /// The unit a parameter reads in over its knob, as bloop's spec names
+    /// units, and what its value is multiplied by to read in it — a fader's
+    /// 0 to 1 reads as a percentage: what a finger resting on the knob
+    /// settles it by (bloop#knob-feel). `None` for one that reads as a
+    /// name, a note length or a bare number.
+    #[must_use]
+    pub fn param_reads_in(&self, index: usize) -> Option<(&'static str, f32)> {
+        use crate::gin::text::Text;
+        let spec = self.engine.params().get(index)?.spec();
+        match spec.text {
+            Text::Number if !spec.unit.is_empty() => Some((spec.unit, 1.0)),
+            Text::Frequency => Some(("Hz", 1.0)),
+            Text::Percent => Some(("%", 100.0)),
+            _ => None,
+        }
+    }
+
     /// A parameter at `value`, as the original prints it over its knob:
     /// its own text function where it has one ("On", "1/8d", "12.0 kHz"),
     /// Gin's number format and its unit where it does not.
