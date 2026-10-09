@@ -63,9 +63,9 @@ impl LookupTable {
         for note in table_notes(notes_per_table) {
             let freq = midi_note_in_hertz(note);
             let start = table.data.len();
-            table
-                .data
-                .extend((0..table_size).map(|i| function(i as f32 / table_size as f32, freq, sample_rate)));
+            table.data.extend(
+                (0..table_size).map(|i| function(i as f32 / table_size as f32, freq, sample_rate)),
+            );
             table.data.push(table.data[start]);
             table.count += 1;
         }
@@ -314,12 +314,33 @@ impl AnalogTables {
     #[must_use]
     pub fn new(sample_rate: f64) -> Self {
         let rate = sample_rate as f32;
+        let sine = || LookupTable::from_function(sine, rate, 64, 2048);
+        let saw_up = || LookupTable::from_function(saw_up, rate, 3, 2048);
+        let saw_down = || LookupTable::from_function(saw_down, rate, 3, 2048);
+        let triangle = || LookupTable::from_function(triangle, rate, 3, 2048);
+        // The three that sum harmonics are each a third of the wait, and
+        // independent: built side by side where there are threads, the
+        // first Wavetable loaded stalls the UI a third as long.
+        #[cfg(not(target_arch = "wasm32"))]
+        let (saw_up, saw_down, triangle) = std::thread::scope(|scope| {
+            let up = scope.spawn(saw_up);
+            let down = scope.spawn(saw_down);
+            let triangle = triangle();
+            let join = |handle: std::thread::ScopedJoinHandle<'_, LookupTable>| {
+                handle
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            };
+            (join(up), join(down), triangle)
+        });
+        #[cfg(target_arch = "wasm32")]
+        let (saw_up, saw_down, triangle) = (saw_up(), saw_down(), triangle());
         Self {
             sample_rate,
-            sine: LookupTable::from_function(sine, rate, 64, 2048),
-            saw_up: LookupTable::from_function(saw_up, rate, 3, 2048),
-            saw_down: LookupTable::from_function(saw_down, rate, 3, 2048),
-            triangle: LookupTable::from_function(triangle, rate, 3, 2048),
+            sine: sine(),
+            saw_up,
+            saw_down,
+            triangle,
         }
     }
 
@@ -366,9 +387,10 @@ impl AnalogTables {
     pub fn process(&self, wave: Wave, note: f32, phase: f32, pw: f32) -> f32 {
         match wave {
             Wave::Sine => self.sine.linear(0, phase),
-            Wave::Triangle => self
-                .triangle
-                .linear(Self::index(&self.triangle, self.triangle.count, note), phase),
+            Wave::Triangle => self.triangle.linear(
+                Self::index(&self.triangle, self.triangle.count, note),
+                phase,
+            ),
             Wave::SawUp => self
                 .saw_up
                 .linear(Self::index(&self.saw_up, self.saw_up.count, note), phase),

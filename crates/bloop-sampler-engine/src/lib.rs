@@ -144,20 +144,37 @@ pub fn encode_wav(
     }
     buf.extend_from_slice(b"data");
     buf.extend_from_slice(&data_size.to_le_bytes());
-    for (&l, &r) in samples_l.iter().zip(samples_r).take(frames) {
-        for sample in [l, r] {
-            match format {
-                WavFormat::Int16 => {
-                    buf.extend_from_slice(&((sample.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
-                }
-                WavFormat::Int24 => {
-                    let value = (f64::from(sample.clamp(-1.0, 1.0)) * 8_388_607.0).round() as i32;
-                    buf.extend_from_slice(&value.to_le_bytes()[..3]);
-                }
-                WavFormat::Float32 => buf.extend_from_slice(&sample.to_le_bytes()),
+    // Written into place, a format's loop of its own: pushed two bytes
+    // at a time, a sample asked which format it was, the gold runner's
+    // hash of each page spent as long encoding as hashing.
+    let start = buf.len();
+    buf.resize(start + data_size as usize, 0);
+    let frames_out = buf[start..].chunks_exact_mut(usize::from(align));
+    let pairs = samples_l.iter().zip(samples_r).take(frames).zip(frames_out);
+    match format {
+        WavFormat::Int16 => {
+            for ((&l, &r), out) in pairs {
+                let (left, right) = out.split_at_mut(2);
+                left.copy_from_slice(&((l.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+                right.copy_from_slice(&((r.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+            }
+        }
+        WavFormat::Int24 => {
+            let step =
+                |sample: f32| (f64::from(sample.clamp(-1.0, 1.0)) * 8_388_607.0).round() as i32;
+            for ((&l, &r), out) in pairs {
+                let (left, right) = out.split_at_mut(3);
+                left.copy_from_slice(&step(l).to_le_bytes()[..3]);
+                right.copy_from_slice(&step(r).to_le_bytes()[..3]);
+            }
+        }
+        WavFormat::Float32 => {
+            for ((&l, &r), out) in pairs {
+                let (left, right) = out.split_at_mut(4);
+                left.copy_from_slice(&l.to_le_bytes());
+                right.copy_from_slice(&r.to_le_bytes());
             }
         }
     }
     buf
 }
-
