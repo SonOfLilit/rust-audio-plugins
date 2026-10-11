@@ -353,6 +353,7 @@ fn preset_level(index: usize, quality: Quality) -> (f64, bool) {
                 channel: 0,
                 note: Note::new(60),
                 velocity: 0.8,
+                id: bloop_events::NoteId::NONE,
             });
         }
         if block == blocks * 2 / 3 {
@@ -360,6 +361,7 @@ fn preset_level(index: usize, quality: Quality) -> (f64, bool) {
                 time: 0,
                 channel: 0,
                 note: Note::new(60),
+                id: bloop_events::NoteId::NONE,
             });
         }
         let (mut l, mut r) = (vec![0.0f32; 256], vec![0.0f32; 256]);

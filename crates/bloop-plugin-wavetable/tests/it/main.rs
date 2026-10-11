@@ -4,4 +4,5 @@
 mod compact;
 mod draw;
 mod gold;
+mod mpe;
 mod plugin;

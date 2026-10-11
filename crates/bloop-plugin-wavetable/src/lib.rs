@@ -24,6 +24,7 @@ pub mod bank;
 pub mod draw;
 pub mod dsp;
 pub mod modmatrix;
+pub mod mpe;
 pub mod params;
 pub mod preset_file;
 pub mod presets;
@@ -36,7 +37,6 @@ pub mod watch;
 pub use bank::TableSet;
 pub use synth::{Event, DELAY_ROOM, VOICE_SLOTS};
 
-use bloop_events::NoteEvent;
 use bloop_plugin_api::{ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext};
 use params::{id, PARAMS};
 use std::sync::Arc;
@@ -95,6 +95,8 @@ pub struct WavetablePlugin {
     synth: Synth,
     preset: usize,
     events: Box<[(u32, Event); MAX_EVENTS]>,
+    /// Which MPE channel holds which note ([`mpe`]).
+    channels: mpe::Channels,
 }
 
 impl Default for WavetablePlugin {
@@ -119,7 +121,16 @@ impl WavetablePlugin {
         Self {
             synth,
             preset: presets::PRESETS.len(),
-            events: Box::new([(0, Event::PitchWheel(8192)); MAX_EVENTS]),
+            events: Box::new(
+                [(
+                    0,
+                    Event::PitchWheel {
+                        channel: mpe::MASTER,
+                        value: 8192,
+                    },
+                ); MAX_EVENTS],
+            ),
+            channels: mpe::Channels::default(),
         }
     }
 
@@ -238,40 +249,23 @@ impl WavetablePlugin {
         self.synth.preset_loaded();
     }
 
+    /// The block's events as the synth's: each note on a channel of its
+    /// own while the MPE switch is on ([`mpe::Channels`]).
     fn take_events(&mut self, context: &ProcessContext) -> usize {
+        let mpe = self.synth.values.is_on(id::MPE);
         let mut n = 0;
         for event in context.input_events.iter() {
-            if n == MAX_EVENTS {
-                break;
-            }
-            let converted = match *event {
-                NoteEvent::NoteOn { note, velocity, .. } => Event::NoteOn {
-                    note: note.as_u8(),
-                    velocity: seven_bit(velocity),
-                },
-                NoteEvent::NoteOff { note, .. } => Event::NoteOff { note: note.as_u8() },
-                NoteEvent::PitchBend { value, .. } => {
-                    Event::PitchWheel((value * 16383.0).round().clamp(0.0, 16383.0) as i32)
+            let time = event.time();
+            let events = &mut self.events;
+            self.channels.translate(mpe, event, |converted| {
+                if n < MAX_EVENTS {
+                    events[n] = (time, converted);
+                    n += 1;
                 }
-                NoteEvent::CC { cc, value, .. } => Event::Controller {
-                    cc,
-                    value: seven_bit(value),
-                },
-                NoteEvent::Choke { note, .. } => Event::Choke { note: note.as_u8() },
-                // Legacy MIDI mode ignores poly aftertouch, as the original's
-                // `MPEInstrument` does.
-                NoteEvent::Aftertouch { .. } => continue,
-            };
-            self.events[n] = (event.time(), converted);
-            n += 1;
+            });
         }
         n
     }
-}
-
-/// A 0-to-1 value as the 7-bit MIDI value it would arrive as.
-fn seven_bit(value: f32) -> u8 {
-    (value * 127.0).round().clamp(0.0, 127.0) as u8
 }
 
 impl Plugin for WavetablePlugin {

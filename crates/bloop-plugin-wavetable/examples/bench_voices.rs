@@ -91,6 +91,7 @@ fn main() {
                         channel: 0,
                         note: Note::new(36 + n),
                         velocity: 1.0,
+                        id: bloop_events::NoteId::NONE,
                     });
                 }
             }

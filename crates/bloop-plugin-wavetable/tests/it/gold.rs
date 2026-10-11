@@ -25,7 +25,7 @@
 use wasm_bindgen_test::*;
 
 use bloop_core::Note;
-use bloop_events::{EventBuffer, NoteEvent};
+use bloop_events::{EventBuffer, Expression, NoteEvent, NoteId};
 use bloop_plugin_api::{Plugin, ProcessContext};
 use bloop_plugin_wavetable::{bank, modmatrix, params, presets, WavetablePlugin, PARAM_PRESET};
 use expect_test::{expect, Expect};
@@ -65,6 +65,52 @@ enum Midi {
     Off(u8),
     Bend(u16),
     Cc(u8, u8),
+    /// A note with an id of its own, which expression can name.
+    OnAs(u8, u8, u32),
+    OffAs(u8, u32),
+    /// One note's expression, by its id.
+    Express(u32, Expression),
+}
+
+impl Midi {
+    /// As bloop hands it to the Plug-in, at `time`.
+    fn event(self, time: u32) -> NoteEvent {
+        let on = |note: u8, velocity: u8, id: NoteId| NoteEvent::NoteOn {
+            time,
+            channel: 0,
+            note: Note::new(note),
+            velocity: f32::from(velocity) / 127.0,
+            id,
+        };
+        let off = |note: u8, id: NoteId| NoteEvent::NoteOff {
+            time,
+            channel: 0,
+            note: Note::new(note),
+            id,
+        };
+        match self {
+            Midi::On(note, velocity) => on(note, velocity, NoteId::NONE),
+            Midi::OnAs(note, velocity, id) => on(note, velocity, NoteId(id)),
+            Midi::Off(note) => off(note, NoteId::NONE),
+            Midi::OffAs(note, id) => off(note, NoteId(id)),
+            Midi::Bend(value) => NoteEvent::PitchBend {
+                time,
+                channel: 0,
+                value: f32::from(value) / 16383.0,
+            },
+            Midi::Cc(cc, value) => NoteEvent::CC {
+                time,
+                channel: 0,
+                cc,
+                value: f32::from(value) / 127.0,
+            },
+            Midi::Express(id, expression) => NoteEvent::NoteExpression {
+                time,
+                id: NoteId(id),
+                expression,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -140,6 +186,41 @@ impl Program {
         self
     }
 
+    /// A note struck under id `id`.
+    fn on_as(mut self, at: u32, note: u8, velocity: u8, id: u32) -> Self {
+        self.steps
+            .push(Step::Midi(at, Midi::OnAs(note, velocity, id)));
+        self
+    }
+
+    fn off_as(mut self, at: u32, note: u8, id: u32) -> Self {
+        self.steps.push(Step::Midi(at, Midi::OffAs(note, id)));
+        self
+    }
+
+    /// Note `id` bent by `semitones`.
+    fn note_bend(mut self, at: u32, id: u32, semitones: f32) -> Self {
+        self.steps.push(Step::Midi(
+            at,
+            Midi::Express(id, Expression::Bend(semitones)),
+        ));
+        self
+    }
+
+    fn note_timbre(mut self, at: u32, id: u32, value: f32) -> Self {
+        self.steps
+            .push(Step::Midi(at, Midi::Express(id, Expression::Timbre(value))));
+        self
+    }
+
+    fn note_pressure(mut self, at: u32, id: u32, value: f32) -> Self {
+        self.steps.push(Step::Midi(
+            at,
+            Midi::Express(id, Expression::Pressure(value)),
+        ));
+        self
+    }
+
     fn play(self, label: &'static str, seconds: f64) -> Self {
         self.play_in(label, seconds, 512)
     }
@@ -205,17 +286,27 @@ fn retimed(event: NoteEvent, at: u32) -> NoteEvent {
             channel,
             note,
             velocity,
+            id,
             ..
         } => NoteEvent::NoteOn {
             time: at,
             channel,
             note,
             velocity,
+            id,
         },
-        NoteEvent::NoteOff { channel, note, .. } => NoteEvent::NoteOff {
+        NoteEvent::NoteOff {
+            channel, note, id, ..
+        } => NoteEvent::NoteOff {
             time: at,
             channel,
             note,
+            id,
+        },
+        NoteEvent::NoteExpression { id, expression, .. } => NoteEvent::NoteExpression {
+            time: at,
+            id,
+            expression,
         },
         NoteEvent::Aftertouch {
             channel,
@@ -285,35 +376,18 @@ fn run_rust(program: &Program) -> Vec<(&'static str, Signal)> {
                 hand_tables(&mut plugin, rate);
             }
             Step::Tempo(bpm) => tempo = bpm,
-            Step::Midi(time, midi) => pending.push(match midi {
-                Midi::On(note, velocity) => NoteEvent::NoteOn {
-                    time,
-                    channel: 0,
-                    note: Note::new(note),
-                    velocity: f32::from(velocity) / 127.0,
-                },
-                Midi::Off(note) => NoteEvent::NoteOff {
-                    time,
-                    channel: 0,
-                    note: Note::new(note),
-                },
-                Midi::Bend(value) => NoteEvent::PitchBend {
-                    time,
-                    channel: 0,
-                    value: f32::from(value) / 16383.0,
-                },
-                Midi::Cc(cc, value) => NoteEvent::CC {
-                    time,
-                    channel: 0,
-                    cc,
-                    value: f32::from(value) / 127.0,
-                },
-            }),
+            Step::Midi(time, midi) => pending.push(midi.event(time)),
             Step::Play {
                 label,
                 seconds,
                 block,
             } => {
+                // The engine hands a Plug-in its events in time order, and
+                // the original's MidiBuffer keeps them so.
+                assert!(
+                    pending.windows(2).all(|w| w[0].time() <= w[1].time()),
+                    "{label}: a passage's MIDI is written in time order"
+                );
                 let n = samples(seconds, rate);
                 let mut out = Signal {
                     left: vec![0.0; n],
@@ -497,6 +571,7 @@ mod cpp {
     use super::{hand_tables, samples, set, source_slot, table_index, Midi, Program, Signal, Step};
     use bloop_plugin_api::Plugin as _;
     use bloop_plugin_wavetable::dsp::tables::Wavetable;
+    use bloop_plugin_wavetable::mpe;
     use bloop_plugin_wavetable::{bank, params, presets, WavetablePlugin, PARAM_PRESET};
     use std::io::Write as _;
     use std::path::{Path, PathBuf};
@@ -801,6 +876,10 @@ mod cpp {
         let _ = writeln!(input, "new {rate:?}");
         send_tables(&mut input, &mut plugin, rate);
         let mut lengths = Vec::new();
+        // The original hears the MIDI the Plug-in's own MPE zone makes of
+        // bloop's notes (`mpe::Channels`), each note on its channel.
+        let mut channels = mpe::Channels::default();
+        let mpe_switch = params::index_of("mpe").expect("Wavetable has an MPE switch");
         for step in &program.steps {
             match *step {
                 Step::Set(uid, value) => {
@@ -849,18 +928,18 @@ mod cpp {
                     let midi: Vec<(u32, Midi)> = program_midi_before(program, step);
                     let mut start = 0;
                     let mut sizes = Vec::new();
+                    let mpe = plugin.get_param(mpe_switch) >= 0.5;
                     while start < n {
                         let len = block.min(n - start);
                         for &(t, m) in &midi {
                             let t = t as usize;
                             if (start..start + len).contains(&t) {
-                                let (b0, b1, b2) = match m {
-                                    Midi::On(note, velocity) => (0x90, note, velocity),
-                                    Midi::Off(note) => (0x80, note, 0),
-                                    Midi::Bend(v) => (0xE0, (v & 0x7F) as u8, (v >> 7) as u8),
-                                    Midi::Cc(cc, v) => (0xB0, cc, v),
-                                };
-                                let _ = writeln!(input, "midi {} {b0} {b1} {b2}", t - start);
+                                channels.translate(mpe, &m.event(0), |event| {
+                                    if let Some([b0, b1, b2]) = event.midi() {
+                                        let _ =
+                                            writeln!(input, "midi {} {b0} {b1} {b2}", t - start);
+                                    }
+                                });
                             }
                         }
                         let _ = writeln!(input, "process {len}");
@@ -1386,6 +1465,189 @@ fn more_notes_than_voices_steal() {
         &expect![[r#"
         six notes on four voices: L peak -8.7 rms -19.8 | R peak -8.7 rms -19.8 #60b39995c02dafc5
     "#]],
+    );
+}
+
+/// The MPE zone (bloop#pad-expression): two notes, each bent on its own
+/// channel — one up an octave in steps, one down a fifth — then the
+/// track's wheel bending both from the master channel, a bend back to
+/// rest, and the release. A third note struck after the first let go
+/// starts at rest on the channel the first had.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn mpe_each_note_bent_on_its_own() {
+    check(
+        &Program::new()
+            .set("mpe", 1.0)
+            .on_as(0, 60, 100, 1)
+            .on_as(40, 67, 90, 2)
+            .play("struck", 0.2)
+            .note_bend(0, 1, 4.0)
+            .note_bend(100, 2, -7.0)
+            .note_bend(300, 1, 8.0)
+            .note_bend(600, 1, 12.0)
+            .play("bent apart", 0.3)
+            .bend(0, 16383)
+            .play("and the wheel", 0.2)
+            .note_bend(0, 1, 0.0)
+            .bend(0, 8192)
+            .play("back to rest", 0.2)
+            .off_as(0, 60, 1)
+            .on_as(200, 64, 100, 3)
+            .play("a new note on a freed channel", 0.3)
+            .off_as(0, 67, 2)
+            .off_as(0, 64, 3)
+            .play("released", 0.3),
+        &expect![[r#"
+            struck: L peak -16.1 rms -25.3 | R peak -16.1 rms -25.3 #daf128e2bbd56255
+            bent apart: L peak -18.2 rms -26.5 | R peak -18.2 rms -26.5 #54104b7f6a8fbfb5
+            and the wheel: L peak -21.3 rms -27.8 | R peak -21.3 rms -27.8 #b08d04f7b486094d
+            back to rest: L peak -16.8 rms -21.1 | R peak -16.8 rms -21.1 #b816773e4b32510d
+            a new note on a freed channel: L peak -17.4 rms -24.8 | R peak -17.4 rms -24.8 #0cfc598a1e0f689d
+            released: L peak -19.2 rms -39.7 | R peak -19.2 rms -39.7 #4b29338d459eda35
+        "#]],
+    );
+}
+
+/// Pressure and timbre into the matrix (`mpep`, `mpet`): the filter
+/// opens with one note's pressure and the table moves with the other's
+/// timbre, each note alone; a note let go of and struck again starts
+/// with no pressure and timbre at rest.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn mpe_pressure_and_timbre_through_the_matrix() {
+    check(
+        &Program::new()
+            .tables("NK - INERT", "AKWP bw_squ")
+            .set("mpe", 1.0)
+            .set("fltenable", 1.0)
+            .set("fltfreq", 30.0)
+            .modulate("mpep", "fltfreq", 0.6)
+            .modulate("mpet", "osc1pos", 0.8)
+            .on_as(0, 48, 100, 1)
+            .on_as(0, 60, 100, 2)
+            .play("struck", 0.2)
+            .note_pressure(0, 1, 0.3)
+            .note_timbre(200, 2, 0.1)
+            .note_pressure(500, 1, 0.9)
+            .note_timbre(800, 2, 1.0)
+            .play("leaned and slid", 0.4)
+            .off_as(0, 48, 1)
+            .on_as(100, 48, 100, 3)
+            .play("struck again", 0.3)
+            .off_as(0, 60, 2)
+            .off_as(0, 48, 3)
+            .play("released", 0.3),
+        &expect![[r#"
+            struck: L peak -35.2 rms -41.2 | R peak -35.2 rms -41.2 #9fd2579f657b41b5
+            leaned and slid: L peak -15.1 rms -20.7 | R peak -15.1 rms -20.7 #c212f620d2999e69
+            struck again: L peak -18.3 rms -34.4 | R peak -18.3 rms -34.4 #dc889cd946e54761
+            released: L peak -39.3 rms -55.9 | R peak -39.3 rms -55.9 #d658107307461715
+        "#]],
+    );
+}
+
+/// The MPE switch turned off with notes held: every note lets go, and
+/// what follows is legacy MIDI on one channel, where controller 74 is the
+/// timbre of the last note struck and the wheel bends by the Pitch Bend
+/// knob's range. Turned on again, it lets go once more.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn mpe_switched_with_notes_held() {
+    check(
+        &Program::new()
+            .set("mpe", 1.0)
+            .set("pitchbend", 12.0)
+            .modulate("mpet", "osc1pos", 0.8)
+            .on_as(0, 55, 100, 1)
+            .note_bend(100, 1, 2.0)
+            .play("in the zone", 0.2)
+            .set("mpe", 0.0)
+            .play("switched off", 0.3)
+            .on(0, 57, 100)
+            .on(50, 61, 100)
+            .cc(300, 74, 127)
+            .bend(600, 12000)
+            .play("legacy, with timbre and the wheel", 0.3)
+            .set("mpe", 1.0)
+            .play("switched on", 0.3),
+        &expect![[r#"
+            in the zone: L peak -21.8 rms -30.1 | R peak -21.8 rms -30.1 #39a3f0990968b375
+            switched off: L peak -24.9 rms -44.6 | R peak -24.9 rms -44.6 #13072eec513cea15
+            legacy, with timbre and the wheel: L peak -18.0 rms -28.2 | R peak -18.0 rms -28.2 #e53c93fa86ba0235
+            switched on: L peak -21.4 rms -42.4 | R peak -21.4 rms -42.4 #13db304439f79b05
+        "#]],
+    );
+}
+
+/// More notes than member channels and than voices: seventeen held on
+/// eight voices, the sixteenth and seventeenth on the master channel,
+/// each struck with its pressure at once (as bloop starts a note at its
+/// strike's velocity), then every note bent and the master's wheel
+/// moved, and all let go.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn mpe_more_notes_than_channels_and_voices() {
+    let mut program = Program::new()
+        .set("mpe", 1.0)
+        .set("voices", 8.0)
+        .set("release", 0.3)
+        .modulate("mpep", "osc1level", -0.5);
+    for n in 1..=17u32 {
+        let note = 40 + n as u8 * 2;
+        program = program
+            .on_as(n * 30, note, 100, n)
+            .note_pressure(n * 30, n, n as f32 / 17.0);
+    }
+    program = program.play("seventeen struck", 0.4);
+    for n in 1..=17u32 {
+        program = program.note_bend(n * 10, n, n as f32 - 9.0);
+    }
+    program = program.bend(300, 4000).play("bent", 0.3);
+    for n in 1..=17u32 {
+        program = program.off_as(n * 5, 40 + n as u8 * 2, n);
+    }
+    check(
+        &program.play("released", 0.4),
+        &expect![[r#"
+        seventeen struck: L peak -12.8 rms -22.8 | R peak -12.8 rms -22.8 #3320258c8ca2dbc9
+        bent: L peak -13.6 rms -22.2 | R peak -13.6 rms -22.2 #4d16401d13c00445
+        released: L peak -14.9 rms -33.5 | R peak -14.9 rms -33.5 #4eb1c06e15492745
+    "#]],
+    );
+}
+
+/// A factory preset that plays its filter by pressure, with each of two
+/// notes leaned on in turn.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn mpe_a_factory_preset_played_by_pressure() {
+    check(
+        &Program::new()
+            .preset("Simbad")
+            .on_as(0, 45, 110, 1)
+            .on_as(0, 52, 110, 2)
+            .play("struck", 0.3)
+            .note_pressure(0, 1, 1.0)
+            .note_pressure(0, 2, 0.0)
+            .play("the low one leaned on", 0.3)
+            .note_pressure(0, 1, 0.0)
+            .note_pressure(0, 2, 1.0)
+            .play("the high one leaned on", 0.3)
+            .off_as(0, 45, 1)
+            .off_as(0, 52, 2)
+            .play("released", 0.4),
+        &expect![[r#"
+            struck: L peak -9.9 rms -21.9 | R peak -8.3 rms -20.5 #9367eb39357837a0
+            the low one leaned on: L peak -3.3 rms -12.6 | R peak -3.6 rms -12.6 #87f74bf77e83665a
+            the high one leaned on: L peak -4.6 rms -14.5 | R peak -3.4 rms -14.5 #ba02010706c8c405
+            released: L peak -5.8 rms -19.2 | R peak -8.1 rms -19.4 #9b0d3fddc0d0e7fd
+        "#]],
     );
 }
 

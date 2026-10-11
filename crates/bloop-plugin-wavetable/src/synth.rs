@@ -2,9 +2,11 @@
 //! `processBlock`, `updateParams` and effects (`PluginProcessor.cpp`), and
 //! the note handling it inherits — `gin::Synthesiser`
 //! (`gin_synthesiser.h`: mono and legato, glide, voice stealing) over
-//! JUCE's `MPESynthesiser` and `MPEInstrument` in legacy mode (one MIDI
-//! channel, notes rendered sample-accurately with sub-blocks of at least
-//! 32 samples after the first).
+//! JUCE's `MPESynthesiser` and `MPEInstrument` — in legacy mode, every
+//! channel bent by its own pitch wheel, or, with the MPE switch on, as an
+//! MPE lower zone of fifteen member channels (`gin::Synthesiser::setMPE`)
+//! — with notes rendered sample-accurately in sub-blocks of at least 32
+//! samples after the first.
 //!
 //! JUCE's classes are written here from their documented behaviour; the
 //! gold tests run the real ones.
@@ -32,30 +34,69 @@ pub const VOICE_SLOTS: usize = 50;
 /// preset asks of it, and a longer time is held at this.
 pub const DELAY_ROOM: f64 = 4.0;
 
-/// A MIDI-like event, at a sample of the block.
+/// A MIDI-like event, at a sample of the block. Channels count from 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Event {
     NoteOn {
+        channel: u8,
         note: u8,
         velocity: u8,
     },
     NoteOff {
+        channel: u8,
         note: u8,
     },
     /// 14-bit, 8192 at rest.
-    PitchWheel(i32),
+    PitchWheel {
+        channel: u8,
+        value: i32,
+    },
     /// Controller `cc` to a 7-bit value.
     Controller {
+        channel: u8,
         cc: u8,
+        value: u8,
+    },
+    /// Channel aftertouch, 7-bit.
+    ChannelPressure {
+        channel: u8,
         value: u8,
     },
     /// The note cut without a release.
     Choke {
+        channel: u8,
         note: u8,
     },
 }
 
 impl Event {
+    /// The MIDI message this is, as its three bytes (a two-byte message
+    /// padded with 0): for the gold harness, which hands the original the
+    /// same. `None` for a choke, which MIDI has no message for.
+    #[must_use]
+    pub fn midi(self) -> Option<[u8; 3]> {
+        let status = |kind: u8, channel: u8| kind | (channel.clamp(1, 16) - 1);
+        Some(match self {
+            Self::NoteOn {
+                channel,
+                note,
+                velocity,
+            } => [status(0x90, channel), note, velocity],
+            Self::NoteOff { channel, note } => [status(0x80, channel), note, 0],
+            Self::PitchWheel { channel, value } => {
+                let value = value.clamp(0, 16383) as u16;
+                [
+                    status(0xE0, channel),
+                    (value & 0x7F) as u8,
+                    (value >> 7) as u8,
+                ]
+            }
+            Self::Controller { channel, cc, value } => [status(0xB0, channel), cc, value],
+            Self::ChannelPressure { channel, value } => [status(0xD0, channel), value, 0],
+            Self::Choke { .. } => return None,
+        })
+    }
+
     fn is_note_on(self) -> bool {
         matches!(self, Self::NoteOn { velocity, .. } if velocity > 0)
     }
@@ -112,6 +153,21 @@ impl Notes {
     }
 }
 
+/// `MPEInstrument`'s three dimensions, as [`Synth::last_received`]
+/// indexes them.
+const PITCHBEND: usize = 0;
+const PRESSURE: usize = 1;
+const TIMBRE: usize = 2;
+
+/// A note's value in `dimension`.
+fn dimension_of(note: &mut Note, dimension: usize) -> &mut MpeValue {
+    match dimension {
+        PITCHBEND => &mut note.pitchbend,
+        PRESSURE => &mut note.pressure,
+        _ => &mut note.timbre,
+    }
+}
+
 /// The synth: Wavetable's processor, voices and effects.
 #[expect(
     clippy::struct_excessive_bools,
@@ -129,8 +185,19 @@ pub struct Synth {
 
     notes: Notes,
     note_stack: Notes,
-    last_pitchbend: MpeValue,
+    /// `MPEInstrument`'s dimensions: per channel, the last value each
+    /// received, and the lower 7 bits of a 14-bit pressure or timbre
+    /// sent ahead of its upper (`None` until one is).
+    last_received: [[MpeValue; 16]; 3],
+    lower_bits: [[Option<u8>; 16]; 2],
+    /// Whether the instrument plays an MPE lower zone rather than legacy
+    /// MIDI (`gin::Synthesiser::mpe`).
+    mpe: bool,
+    /// `gin::Synthesiser::pitchbend`: the Pitch Bend knob as last read.
     pitchbend_range: i32,
+    /// `MPEInstrument`'s legacy-mode pitch bend range, which follows the
+    /// knob while the zone is off.
+    legacy_range: i32,
     mono: bool,
     legato: bool,
     glissando: bool,
@@ -193,8 +260,15 @@ impl Synth {
             system: JuceRandom::new(i64::from(seed) ^ 0x5DEE_CE66),
             notes: Notes::default(),
             note_stack: Notes::default(),
-            last_pitchbend: MpeValue::CENTRE,
+            last_received: [
+                [MpeValue::CENTRE; 16],
+                [MpeValue::MIN; 16],
+                [MpeValue::CENTRE; 16],
+            ],
+            lower_bits: [[None; 16]; 2],
+            mpe: false,
             pitchbend_range: 2,
+            legacy_range: 2,
             mono: false,
             legato: false,
             glissando: false,
@@ -621,22 +695,93 @@ impl Synth {
         }
     }
 
+    // ——— the instrument: `MPEInstrument` ———
+
+    /// `isMemberChannel`: in legacy mode every channel; in the zone,
+    /// channels 2 to 16.
+    fn is_member(&self, channel: u8) -> bool {
+        (if self.mpe { 2 } else { 1 }..=16).contains(&channel)
+    }
+
+    /// `isMasterChannel`: the zone's channel 1, and none in legacy mode.
+    fn is_master(&self, channel: u8) -> bool {
+        self.mpe && channel == 1
+    }
+
+    /// `trackingMode`: legacy mode bends every note on a channel
+    /// (`allNotesOnChannel`), the zone the last played; pressure and
+    /// timbre follow the last played either way.
+    fn all_notes_on_channel(&self, dimension: usize) -> bool {
+        dimension == PITCHBEND && !self.mpe
+    }
+
+    /// `getLastNotePlayedPtr`: the newest note on `channel` still held.
+    fn last_note_played(&self, channel: u8) -> Option<usize> {
+        (0..self.notes.len).rev().find(|&at| {
+            let note = &self.notes.notes[at];
+            note.channel == channel && note.key == KeyState::Down
+        })
+    }
+
+    /// `getInitialValueForNewNote`.
+    fn initial_value(&self, channel: u8, dimension: usize) -> MpeValue {
+        if self.mpe && self.last_note_played(channel).is_some() {
+            return if dimension == PRESSURE {
+                MpeValue::MIN
+            } else {
+                MpeValue::CENTRE
+            };
+        }
+        self.last_received[dimension][usize::from(channel - 1)]
+    }
+
+    /// `updateNoteTotalPitchbend`.
+    fn total_pitchbend(&self, note: &Note) -> f64 {
+        if !self.mpe {
+            return f64::from(note.pitchbend.signed() * self.legacy_range as f32);
+        }
+        let own = if (2..=16).contains(&note.channel) {
+            note.pitchbend.signed() * crate::mpe::NOTE_BEND_RANGE
+        } else {
+            0.0
+        };
+        let master = self.last_received[PITCHBEND][0].signed() * 2.0;
+        f64::from(own + master)
+    }
+
     /// `MPEInstrument::noteOn`.
-    fn instrument_note_on(&mut self, number: u8, velocity: MpeValue) {
-        let mut note = Note::new(1, number, velocity);
-        note.pitchbend = self.last_pitchbend;
-        note.total_pitchbend = f64::from(note.pitchbend.signed() * self.pitchbend_range as f32);
+    fn instrument_note_on(&mut self, channel: u8, number: u8, velocity: MpeValue) {
+        if !(1..=16).contains(&channel) {
+            return;
+        }
+        let mut note = Note::new(channel, number, velocity);
+        note.pitchbend = self.initial_value(channel, PITCHBEND);
+        note.pressure = self.initial_value(channel, PRESSURE);
+        note.timbre = self.initial_value(channel, TIMBRE);
+        note.total_pitchbend = self.total_pitchbend(&note);
         self.release_note(note.id);
         self.notes.push(note);
         self.note_added(note);
     }
 
-    /// `MPEInstrument::noteOff`.
-    fn instrument_note_off(&mut self, number: u8) {
-        if self.notes.len == 0 {
+    /// `MPEInstrument::noteOff`: in the zone, a channel with no note left
+    /// held starts its next note at rest.
+    fn instrument_note_off(&mut self, channel: u8, number: u8) {
+        if self.notes.len == 0 || !(1..=16).contains(&channel) {
             return;
         }
-        self.release_note((1 << 7) + u16::from(number));
+        let id = (u16::from(channel) << 7) + u16::from(number);
+        let Some(at) = self.notes.position(id) else {
+            return;
+        };
+        self.notes.notes[at].key = KeyState::Off;
+        if self.mpe && self.last_note_played(channel).is_none() {
+            let ch = usize::from(channel - 1);
+            self.last_received[PRESSURE][ch] = MpeValue::MIN;
+            self.last_received[PITCHBEND][ch] = MpeValue::CENTRE;
+            self.last_received[TIMBRE][ch] = MpeValue::CENTRE;
+        }
+        self.release_note(id);
     }
 
     /// A held note let go: the listeners hear of it while it is still
@@ -679,49 +824,155 @@ impl Synth {
         self.last_note = -1.0;
     }
 
-    fn pitch_wheel(&mut self, value: i32) {
-        let value = MpeValue(value.clamp(0, 16383));
-        self.last_pitchbend = value;
-        for at in (0..self.notes.len).rev() {
-            let note = &mut self.notes.notes[at];
-            if note.pitchbend != value {
-                note.pitchbend = value;
-                note.total_pitchbend = f64::from(value.signed() * self.pitchbend_range as f32);
-                let changed = *note;
-                for v in &mut self.voices {
-                    if v.is_playing(&changed) {
-                        v.note = changed;
-                        v.pitchbend_changed();
+    /// `updateDimension`: a channel's pitch wheel, pressure or timbre.
+    fn update_dimension(&mut self, channel: u8, dimension: usize, value: MpeValue) {
+        if !(1..=16).contains(&channel) {
+            return;
+        }
+        self.last_received[dimension][usize::from(channel - 1)] = value;
+        if self.notes.len == 0 {
+            return;
+        }
+        if self.is_member(channel) {
+            if self.all_notes_on_channel(dimension) {
+                for at in (0..self.notes.len).rev() {
+                    if self.notes.notes[at].channel == channel {
+                        self.update_dimension_for_note(at, dimension, value);
                     }
+                }
+            } else if let Some(at) = self.last_note_played(channel) {
+                self.update_dimension_for_note(at, dimension, value);
+            }
+        } else if self.is_master(channel) {
+            // `updateDimensionMaster`: every note of the zone. The master's
+            // wheel changes no note's own bend, only its total.
+            for at in (0..self.notes.len).rev() {
+                if dimension == PITCHBEND {
+                    let total = self.total_pitchbend(&self.notes.notes[at]);
+                    self.notes.notes[at].total_pitchbend = total;
+                    self.dimension_changed(at, dimension);
+                } else if *dimension_of(&mut self.notes.notes[at], dimension) != value {
+                    *dimension_of(&mut self.notes.notes[at], dimension) = value;
+                    self.dimension_changed(at, dimension);
                 }
             }
         }
-        let range = self.pitchbend_range as f32;
+    }
+
+    /// `updateDimensionForNote`.
+    fn update_dimension_for_note(&mut self, at: usize, dimension: usize, value: MpeValue) {
+        if *dimension_of(&mut self.notes.notes[at], dimension) == value {
+            return;
+        }
+        *dimension_of(&mut self.notes.notes[at], dimension) = value;
+        if dimension == PITCHBEND {
+            let total = self.total_pitchbend(&self.notes.notes[at]);
+            self.notes.notes[at].total_pitchbend = total;
+        }
+        self.dimension_changed(at, dimension);
+    }
+
+    /// `callListenersDimensionChanged`, as `MPESynthesiser` hears it: each
+    /// voice playing the note takes it as it now is.
+    fn dimension_changed(&mut self, at: usize, dimension: usize) {
+        let changed = self.notes.notes[at];
         for v in &mut self.voices {
-            if v.is_playing_but_released() {
-                v.note.total_pitchbend = f64::from(value.signed() * range);
+            if v.is_playing(&changed) {
+                v.note = changed;
+                match dimension {
+                    PITCHBEND => v.pitchbend_changed(),
+                    PRESSURE => v.pressure_changed(),
+                    _ => v.timbre_changed(),
+                }
+            }
+        }
+    }
+
+    /// `handlePressureMSB` / `handleTimbreMSB`: the upper 7 bits, with
+    /// the lower if they came first.
+    fn upper_bits(&mut self, channel: u8, dimension: usize, value: u8) {
+        if !(1..=16).contains(&channel) {
+            return;
+        }
+        let lower = self.lower_bits[dimension - 1][usize::from(channel - 1)];
+        let value = match lower {
+            None => MpeValue::from_7bit(i32::from(value)),
+            Some(lower) => MpeValue(i32::from(lower) + (i32::from(value) << 7)),
+        };
+        self.update_dimension(channel, dimension, value);
+    }
+
+    fn pitch_wheel(&mut self, channel: u8, value: i32) {
+        let value = MpeValue(value.clamp(0, 16383));
+        self.update_dimension(channel, PITCHBEND, value);
+        // gin: in legacy mode a voice ringing out bends with the wheel too.
+        if !self.mpe {
+            let range = self.legacy_range as f32;
+            for v in &mut self.voices {
+                if v.is_playing_but_released() {
+                    v.note.total_pitchbend = f64::from(value.signed() * range);
+                }
             }
         }
         self.matrix
             .set_mono(src::PITCH_BEND, value.0 as f32 / 8192.0 - 1.0);
     }
 
+    /// `gin::Synthesiser::setMPE`, then `setPitchBendRange`, as each block
+    /// begins: switching between legacy MIDI and the zone lets go of every
+    /// note; the knob's range is legacy mode's, and changing it there does
+    /// too.
+    fn set_mpe(&mut self, mpe: bool, range: i32) {
+        if mpe != self.mpe {
+            self.release_all_notes();
+            self.mpe = mpe;
+            if !mpe {
+                self.legacy_range = self.pitchbend_range;
+            }
+        }
+        if range != self.pitchbend_range {
+            self.pitchbend_range = range;
+            if !self.mpe {
+                self.release_all_notes();
+                self.legacy_range = range;
+            }
+        }
+    }
+
     fn handle_event(&mut self, event: Event) {
         match event {
-            Event::NoteOn { note, velocity } if velocity > 0 => {
-                self.instrument_note_on(note, MpeValue::from_7bit(i32::from(velocity)));
+            Event::NoteOn {
+                channel,
+                note,
+                velocity,
+            } if velocity > 0 => {
+                self.instrument_note_on(channel, note, MpeValue::from_7bit(i32::from(velocity)));
             }
-            Event::NoteOn { note, .. } | Event::NoteOff { note } => self.instrument_note_off(note),
-            Event::PitchWheel(value) => self.pitch_wheel(value),
-            Event::Controller { cc, value } => {
+            Event::NoteOn { channel, note, .. } | Event::NoteOff { channel, note } => {
+                self.instrument_note_off(channel, note);
+            }
+            Event::PitchWheel { channel, value } => self.pitch_wheel(channel, value),
+            Event::Controller { channel, cc, value } => {
                 if cc <= 119 {
                     self.matrix
                         .set_mono(src::CC0 + usize::from(cc), f32::from(value) / 127.0);
                 }
+                match cc {
+                    70 => self.upper_bits(channel, PRESSURE, value),
+                    74 => self.upper_bits(channel, TIMBRE, value),
+                    102 | 106 if (1..=16).contains(&channel) => {
+                        let dimension = if cc == 102 { PRESSURE } else { TIMBRE };
+                        self.lower_bits[dimension - 1][usize::from(channel - 1)] = Some(value);
+                    }
+                    _ => {}
+                }
             }
-            Event::Choke { note } => {
-                let id = (1 << 7) + u16::from(note);
-                self.instrument_note_off(note);
+            Event::ChannelPressure { channel, value } => {
+                self.update_dimension(channel, PRESSURE, MpeValue::from_7bit(i32::from(value)));
+            }
+            Event::Choke { channel, note } => {
+                let id = (u16::from(channel) << 7) + u16::from(note);
+                self.instrument_note_off(channel, note);
                 for i in 0..self.voices.len() {
                     if self.voices[i].is_active() && self.voices[i].note.id == id {
                         let playing = self.voices[i].note;
@@ -1003,11 +1254,9 @@ impl Synth {
             self.turn_off_all_voices(false);
         }
 
+        let mpe = self.values.is_on(id::MPE);
         let range = self.values.user(id::PITCH_BEND) as i32;
-        if range != self.pitchbend_range {
-            self.release_all_notes();
-            self.pitchbend_range = range;
-        }
+        self.set_mpe(mpe, range);
 
         left.fill(0.0);
         right.fill(0.0);

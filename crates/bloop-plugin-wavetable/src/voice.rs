@@ -466,6 +466,16 @@ impl Voice {
         self.modulation.values[src::MPE_BEND] = self.note.pitchbend.unsigned();
     }
 
+    /// `notePressureChanged`.
+    pub fn pressure_changed(&mut self) {
+        self.modulation.values[src::PRESSURE] = self.note.pressure.unsigned();
+    }
+
+    /// `noteTimbreChanged`.
+    pub fn timbre_changed(&mut self) {
+        self.modulation.values[src::TIMBRE] = self.note.timbre.unsigned();
+    }
+
     /// `updateParams (blockSize)`.
     #[expect(
         clippy::too_many_lines,

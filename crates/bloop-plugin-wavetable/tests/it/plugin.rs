@@ -74,6 +74,7 @@ fn on(time: u32, note: u8) -> NoteEvent {
         channel: 0,
         note: Note::new(note),
         velocity: 0.8,
+        id: bloop_events::NoteId::NONE,
     }
 }
 
@@ -82,6 +83,7 @@ fn off(time: u32, note: u8) -> NoteEvent {
         time,
         channel: 0,
         note: Note::new(note),
+        id: bloop_events::NoteId::NONE,
     }
 }
 

@@ -719,7 +719,8 @@ fn event_time(event: &NoteEvent) -> u32 {
         | NoteEvent::Aftertouch { time, .. }
         | NoteEvent::PitchBend { time, .. }
         | NoteEvent::CC { time, .. }
-        | NoteEvent::Choke { time, .. } => time,
+        | NoteEvent::Choke { time, .. }
+        | NoteEvent::NoteExpression { time, .. } => time,
     }
 }
 
@@ -809,6 +810,7 @@ mod tests {
             channel: 0,
             note: bloop_core::Note::new(note),
             velocity,
+            id: bloop_events::NoteId::NONE,
         })
     }
 
@@ -817,6 +819,7 @@ mod tests {
             time: 0,
             channel: 0,
             note: bloop_core::Note::new(note),
+            id: bloop_events::NoteId::NONE,
         })
     }
 
@@ -1398,6 +1401,7 @@ mod tests {
             channel: 0,
             note: bloop_core::Note::new(69),
             velocity: 1.0,
+            id: bloop_events::NoteId::NONE,
         });
         let mut left = vec![0.0f32; 2 * BLOCK];
         let mut right = vec![0.0f32; 2 * BLOCK];
@@ -1519,6 +1523,7 @@ mod tests {
                 channel: 0,
                 note: bloop_core::Note::new(69),
                 velocity: 1.0,
+                id: bloop_events::NoteId::NONE,
             });
             let empty = EventBuffer::new();
             let mut all = Vec::new();
@@ -2164,6 +2169,7 @@ mod watch_tests {
                             time: 0,
                             channel: 0,
                             note: note(n),
+                            id: bloop_events::NoteId::NONE,
                         });
                         continue;
                     }
@@ -2177,6 +2183,7 @@ mod watch_tests {
                     channel: 0,
                     note: note(n),
                     velocity,
+                    id: bloop_events::NoteId::NONE,
                 });
             }
             let (mut left, mut right) = ([0.0f32; BLOCK], [0.0f32; BLOCK]);
