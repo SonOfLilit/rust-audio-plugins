@@ -318,7 +318,27 @@ fn a_release_by_id_never_takes_a_pattern_notes_channel() {
     lines.push("off 60 #20".to_string());
     lines.push("off 60".to_string());
     let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-    check(&lines, expect![[""]]);
+    check(&lines, expect![[r#"
+        mpe on
+        on 60            ch2 on 60 v127
+        on 71 #1         ch3 on 71 v127
+        on 72 #2         ch4 on 72 v127
+        on 73 #3         ch5 on 73 v127
+        on 74 #4         ch6 on 74 v127
+        on 75 #5         ch7 on 75 v127
+        on 76 #6         ch8 on 76 v127
+        on 77 #7         ch9 on 77 v127
+        on 78 #8         ch10 on 78 v127
+        on 79 #9         ch11 on 79 v127
+        on 80 #10        ch12 on 80 v127
+        on 81 #11        ch13 on 81 v127
+        on 82 #12        ch14 on 82 v127
+        on 83 #13        ch15 on 83 v127
+        on 84 #14        ch16 on 84 v127
+        on 60 #20        ch1 on 60 v127
+        off 60 #20       ch1 off 60
+        off 60           ch2 off 60
+    "#]]);
 }
 
 /// The softest strike goes out at velocity 1, not 0 (a note-on at 0 is a

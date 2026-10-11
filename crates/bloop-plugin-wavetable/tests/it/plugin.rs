@@ -1073,6 +1073,7 @@ fn the_watched_knobs_move_with_their_routes() {
             channel: 0,
             note: Note::new(67),
             velocity: 0.2,
+            id: bloop_events::NoteId::NONE,
         }],
         ms(65.0),
     );
