@@ -4,7 +4,9 @@
 //! `unpack_patch` is a port of `patch.cc` from Google's
 //! music-synthesizer-for-android (Copyright 2013 Google Inc., Apache-2.0);
 //! this file exists only in the original repo — Dexed unpacks voices in its
-//! GPL plugin layer, which we don't use. Bank/sysex framing follows the
+//! GPL plugin layer, which we don't use. What it does past `patch.cc` —
+//! keeping each field to its bits ([`into_bounds`]) — is from the bulk
+//! dump format's own layout. Bank/sysex framing follows the
 //! DX7 bulk-dump spec (size-based validation, like Dexed: 4104 bytes with
 //! the sysex frame or 4096 raw).
 
@@ -131,6 +133,13 @@ pub static BANKS: [BankInfo; NUM_BANKS] = [
 /// reads (21 bytes per operator, then pitch env, algorithm, feedback, LFO,
 /// transpose, name, operator-enable).
 pub fn unpack_patch(bulk: &[u8; PACKED_VOICE_SIZE]) -> [u8; VOICE_SIZE] {
+    let mut patch = unpack_unbounded(bulk);
+    into_bounds(&mut patch);
+    patch
+}
+
+/// [`unpack_patch`] as `patch.cc` has it: every field's bits as they are.
+fn unpack_unbounded(bulk: &[u8; PACKED_VOICE_SIZE]) -> [u8; VOICE_SIZE] {
     let mut patch = [0u8; VOICE_SIZE];
     for op in 0..6 {
         let (b, p) = (op * 17, op * 21);
@@ -163,6 +172,69 @@ pub fn unpack_patch(bulk: &[u8; PACKED_VOICE_SIZE]) -> [u8; VOICE_SIZE] {
     patch[144..155].copy_from_slice(&bulk[117..128]); // transpose, name
     patch[155] = 0x3f; // operator on/off
     patch
+}
+
+/// A single voice dump's 155 bytes (VCED: the engine's own order) as the
+/// engine plays it, every operator on.
+#[must_use]
+pub fn unpack_single(vced: &[u8; VOICE_SIZE - 1]) -> [u8; VOICE_SIZE] {
+    let mut patch = [0u8; VOICE_SIZE];
+    patch[..VOICE_SIZE - 1].copy_from_slice(vced);
+    patch[VOICE_SIZE - 1] = 0x3f;
+    into_bounds(&mut patch);
+    patch
+}
+
+/// Keep every byte of an unpacked voice to the bits the bulk dump format
+/// gives its parameter, so that no voice, however a file was damaged, can
+/// send the engine past the end of a table:
+///
+/// - each field packed with others keeps only its own bits (the format's
+///   "don't care" bits dropped): the curves, rate scaling, AM and velocity
+///   sensitivity, mode, coarse, detune, feedback, key sync, LFO sync and
+///   wave, pitch mod sensitivity;
+/// - the algorithm keeps five bits;
+/// - the pitch envelope's rates and levels, which index tables of a
+///   hundred, and the LFO's speed, delay and depths stop at 99;
+/// - every other byte keeps seven bits, as a SysEx data byte has.
+///
+/// The operators' envelopes, scaling depths, levels and fine tuning keep
+/// a value above 99 that a cartridge holds: the engine reads them past
+/// their range without harm, and the shipped cartridges have such voices
+/// (ROM3B's E.GRAND 1 has an EG rate of 127).
+fn into_bounds(patch: &mut [u8; VOICE_SIZE]) {
+    for byte in patch.iter_mut() {
+        *byte &= 0x7f;
+    }
+    for op in 0..6 {
+        let p = op * 21;
+        for (field, bits) in [
+            (11, 3),  // left curve
+            (12, 3),  // right curve
+            (13, 7),  // rate scaling
+            (14, 3),  // AM sensitivity
+            (15, 7),  // velocity sensitivity
+            (17, 1),  // mode
+            (18, 31), // coarse
+            (20, 15), // detune
+        ] {
+            patch[p + field] &= bits;
+        }
+    }
+    for at in (126..134).chain(137..141) {
+        patch[at] = patch[at].min(99);
+    }
+    for (offset, bits) in [
+        (134, 31), // algorithm
+        (135, 7),  // feedback
+        (136, 1),  // osc key sync
+        (141, 1),  // LFO sync
+        (142, 7),  // LFO wave
+        (143, 7),  // pitch mod sensitivity
+    ] {
+        patch[offset] &= bits;
+    }
+    patch[155] &= 0x3f;
 }
 
 /// The classic DX7 "INIT VOICE", in the unpacked engine layout: algorithm
@@ -355,6 +427,36 @@ mod tests {
               Chip Pizz  12 String  Muted Gtr  PipeOrgan1 PipeOrgan2 Hrpsichord Rigel EP/B BakketDrum
             Drums (DRM)
               KICK DRUM  Swissnare  SYNT TOM 1 DMX TOMS 1 HANDCLAPS5 **tom 2**  Hi-Hat 1"#]].assert_eq(&text);
+    }
+
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn bounds_leave_the_shipped_voices_alone() {
+        // Every byte `into_bounds` moves in the cartridges bloop ships: only
+        // osc key sync (136), whose packed bit shares its byte with spare
+        // bits some ROM voices set, and which the engine never reads.
+        let mut moved = Vec::new();
+        for (b, info) in BANKS.iter().enumerate() {
+            let bank = Bank::builtin(b);
+            for v in 0..info.voices {
+                let raw = unpack_unbounded(&bank.voices[v]);
+                let bounded = bank.voice(v);
+                for at in (0..VOICE_SIZE).filter(|&at| raw[at] != bounded[at]) {
+                    moved.push(format!(
+                        "{} {:<10} byte {at}: {} -> {}",
+                        info.short,
+                        bank.name(v),
+                        raw[at],
+                        bounded[at]
+                    ));
+                }
+            }
+        }
+        expect![[r#"
+            3A HARPSICH 1 byte 136: 3 -> 1
+            3A BRIGHT BOW byte 136: 11 -> 1
+            3A JAZZ GUIT1 byte 136: 4 -> 0
+            3B HONKY TONK byte 136: 3 -> 1"#]].assert_eq(&moved.join("\n"));
     }
 
     #[test]

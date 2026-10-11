@@ -5,7 +5,9 @@
 //! linked — Apache-2.0 needs no dynamic-linking boundary (unlike PAPU's
 //! LGPL). Ported files carry their original attribution in each module
 //! header. Left for the roadmap: portamento, microtuning, MPE, CC
-//! modulation routing (mod wheel etc.), custom cartridge loading.
+//! modulation routing (mod wheel etc.). A user's own cartridges are read by
+//! [`read_sysex`] and played under the preset numbers [`add_voice`] gives
+//! them, past the built-in library's.
 
 mod dx7note;
 mod env;
@@ -13,7 +15,9 @@ mod fm_core;
 mod lfo;
 mod patch;
 mod pitchenv;
+mod sysex;
 mod tables;
+mod user;
 
 /// The 32 algorithms' routing bytes, the ones the engine renders with —
 /// for a picture of an algorithm that cannot disagree with its sound.
@@ -23,6 +27,8 @@ pub use patch::{
     init_voice, Bank, BankError, BankInfo, BANKS, BANK_SIZE, NUM_BANKS, NUM_LIBRARY_VOICES,
     PACKED_VOICE_SIZE, VOICE_SIZE,
 };
+pub use sysex::{checksum, read_sysex, voice_name, Remark, SysexError, Voices};
+pub use user::{add_voice, user_voice, PRESET_LAST, PRESET_USER, USER_VOICES};
 
 /// The Dexed revision whose `Source/msfa` engine this crate is a port of.
 /// The manual's License page cites it (test-guarded, like the papurs pin).
@@ -76,14 +82,15 @@ pub const PRESET_COUNT: usize = NUM_LIBRARY_VOICES + 1;
 /// The Init preset (all params at their defaults — the DX7 INIT VOICE).
 pub const PRESET_INIT: usize = NUM_LIBRARY_VOICES;
 
-/// The unpacked voice a preset index selects (out-of-range clamps to
-/// Init). The single library lookup behind both preset loads and the UI
-/// knob-mirror seed. Allocation-free.
+/// The unpacked voice a preset index selects: a built-in one, Init, or
+/// past Init a voice the user imported ([`add_voice`]); a number that is
+/// none of them is Init. The single library lookup behind both preset
+/// loads and the UI knob-mirror seed. Allocation-free and lock-free.
 pub fn preset_voice(preset: usize) -> [u8; VOICE_SIZE] {
-    if preset >= PRESET_INIT {
-        patch::init_voice()
-    } else {
+    if preset < PRESET_INIT {
         Bank::builtin(preset / BANK_SIZE).voice(preset % BANK_SIZE)
+    } else {
+        user_voice(preset).unwrap_or_else(patch::init_voice)
     }
 }
 
@@ -97,11 +104,12 @@ pub const RENAMED_VOICES: [(&str, &str); 3] = [
 ];
 
 /// A preset's library name: bank short tag + voice name ("1A BRASS   1"),
-/// or "Init" for the blank-slate preset (and anything out of range). A
-/// voice in [`RENAMED_VOICES`] goes by its new name.
+/// an imported voice's own name, or "Init" for the blank-slate preset (and
+/// anything out of range). A voice in [`RENAMED_VOICES`] goes by its new
+/// name.
 pub fn preset_name(preset: usize) -> String {
     if preset >= PRESET_INIT {
-        "Init".to_string()
+        user_voice(preset).map_or_else(|| "Init".to_string(), |voice| voice_name(&voice))
     } else {
         let bank = preset / BANK_SIZE;
         let voice = Bank::builtin(bank).name(preset % BANK_SIZE);
@@ -254,11 +262,11 @@ pub fn param_info(index: usize) -> ParamInfo {
 /// operators on. Seeds/mirrors the UI knob display when a preset loads
 /// (the FM counterpart of `bloop_plugin_papurs::preset_positions`).
 pub fn preset_positions(preset: usize) -> [f32; PARAM_COUNT] {
-    let preset = preset.min(PRESET_COUNT - 1);
+    let preset = preset.min(PRESET_LAST);
     let voice = preset_voice(preset);
     let mut positions = [0.0f32; PARAM_COUNT];
     positions[PARAM_VOLUME] = 1.0;
-    positions[PARAM_PRESET] = preset as f32 / (PRESET_COUNT - 1) as f32;
+    positions[PARAM_PRESET] = (preset as f32 / (PRESET_COUNT - 1) as f32).min(1.0);
     for offset in 0..NUM_VOICE_PARAMS {
         let (_, max) = voice_param_meta(offset);
         positions[PARAM_VOICE_BASE + offset] = f32::from(voice[offset]) / f32::from(max);
@@ -558,7 +566,7 @@ impl Plugin for DexedPlugin {
         match index {
             PARAM_VOLUME => self.volume = value.clamp(0.0, 1.0),
             PARAM_PRESET => {
-                let preset = (value.round().max(0.0) as usize).min(PRESET_COUNT - 1);
+                let preset = (value.round().max(0.0) as usize).min(PRESET_LAST);
                 // The same preset said again reloads its patch, and is no
                 // program change: what is sounding goes on.
                 if preset != self.preset {
@@ -951,7 +959,7 @@ mod tests {
         // out-of-range clamps to Init. Names and algorithms come through
         // `preset_voice`, the same lookup `load_preset` plays.
         let text = [
-            0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 358, 359, 400,
+            0usize, 10, 31, 32, 63, 64, 255, 256, 320, 351, 352, 358, 359, PRESET_LAST + 1,
         ]
         .iter()
         .map(|&p| {
@@ -975,10 +983,97 @@ mod tests {
             352: DRM KICK DRUM  alg=16
             358: DRM Hi-Hat 1   alg=11
             359: Init           alg= 1
-            400: Init           alg= 1"#]]
+            4456: Init           alg= 1"#]]
         .assert_eq(&format!(
             "presets={PRESET_COUNT} init={PRESET_INIT}\n{text}"
         ));
+    }
+
+    /// The whole library imported as the user's own: every voice of every
+    /// cartridge bloop ships, read from its file at run time
+    /// ([`read_sysex`]) and played under the number [`add_voice`] gives
+    /// it, sounds as the built-in preset does, sample for sample, and
+    /// leaves every parameter where the built-in one does.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn an_imported_voice_plays_as_the_built_in_one() {
+        let mut differ = Vec::new();
+        let mut checked = 0;
+        for (b, bank) in BANKS.iter().enumerate() {
+            let read = read_sysex(bank.data).map(|r| r.voices).unwrap_or_default();
+            for (v, voice) in read.iter().enumerate().take(bank.voices) {
+                let built_in = b * BANK_SIZE + v;
+                let Some(imported) = add_voice(voice) else {
+                    differ.push(format!("{} {v}: no number", bank.name));
+                    continue;
+                };
+                let play = |preset: usize| {
+                    let mut synth = DexedPlugin::new();
+                    synth.reset(SR, 1024);
+                    synth.set_param(PARAM_PRESET, preset as f32);
+                    let params: Vec<f32> = (PARAM_VOICE_BASE..PARAM_COUNT)
+                        .map(|p| synth.get_param(p))
+                        .collect();
+                    let audio = render_blocks(
+                        &mut synth,
+                        12,
+                        &[(0, note_on(60, 0.8)), (6, note_off(60))],
+                    );
+                    (params, audio)
+                };
+                checked += 1;
+                if play(built_in) != play(imported) {
+                    differ.push(format!("{} {v}", bank.name));
+                }
+            }
+        }
+        expect!["359 voices, differ: []"].assert_eq(&format!("{checked} voices, differ: {differ:?}"));
+    }
+
+    /// A damaged file's voices play without taking the audio thread
+    /// down: every data byte at its highest (0x7F) and every byte at
+    /// nought, as a cartridge and as a single voice, each played on every
+    /// algorithm the masked byte can name.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_damaged_voice_plays() {
+        let mut out = Vec::new();
+        for fill in [0x7fu8, 0x00] {
+            let mut single = vec![0xf0, 0x43, 0x00, 0x00, 0x01, 0x1b];
+            single.extend(std::iter::repeat_n(fill, VOICE_SIZE - 1));
+            single.extend([0x00, 0xf7]);
+            let cartridge = vec![fill; PACKED_VOICE_SIZE * BANK_SIZE];
+            for (what, bytes) in [("single", single), ("cartridge", cartridge)] {
+                let voices = read_sysex(&bytes).map(|r| r.voices).unwrap_or_default();
+                let Some(voice) = voices.first() else {
+                    out.push(format!("{fill:#04x} {what}: no voice"));
+                    continue;
+                };
+                let mut peak = 0.0f32;
+                for algorithm in 0..32u8 {
+                    let mut voice = *voice;
+                    voice[134] = algorithm;
+                    let Some(preset) = add_voice(&voice) else {
+                        continue;
+                    };
+                    let mut synth = DexedPlugin::new();
+                    synth.reset(SR, 1024);
+                    synth.set_param(PARAM_PRESET, preset as f32);
+                    let audio = render_blocks(
+                        &mut synth,
+                        6,
+                        &[(0, note_on(127, 1.0)), (1, note_on(0, 1.0)), (3, note_off(127))],
+                    );
+                    peak = audio.iter().fold(peak, |p, s| p.max(s.abs()));
+                }
+                out.push(format!("{fill:#04x} {what}: plays, finite {}", peak.is_finite()));
+            }
+        }
+        expect![[r#"
+            0x7f single: plays, finite true
+            0x7f cartridge: plays, finite true
+            0x00 single: plays, finite true
+            0x00 cartridge: plays, finite true"#]].assert_eq(&out.join("\n"));
     }
 
     #[test]
