@@ -7,7 +7,7 @@ use crate::dsp::env::{Adsr, AnalogAdsr, AnalogState};
 use crate::dsp::lfo::{Lfo, LfoParams, Shape, StepLfo};
 use crate::dsp::osc::{StereoOscillator, StereoParams, VoicedParams, VoicedWtOscillator, MAX_UNISON};
 use crate::dsp::random::JuceRandom;
-use crate::dsp::tables::{AnalogTables, NoiseSource, Wave, Wavetable};
+use crate::dsp::tables::{AnalogTables, NoiseSource, Table, Wave};
 use crate::modmatrix::{src, Matrix, VoiceMod, DESTINATION_OF};
 use crate::params::{id, Values, FILTER_MAX_NOTE};
 use bloop_plugin_socalabs::shared::{
@@ -127,7 +127,7 @@ impl Default for GlideInfo {
 pub struct Context<'a> {
     pub values: &'a Values,
     pub matrix: &'a Matrix,
-    pub tables: [Option<&'a Wavetable>; 2],
+    pub tables: [Option<&'a Table>; 2],
     pub analog: Option<&'a AnalogTables>,
     pub noise: &'a mut NoiseSource,
     /// `proc.rng`.

@@ -1,15 +1,25 @@
 //! The wavetables bloop ships, and turning one into the band-limited
 //! frames an oscillator reads.
 //!
-//! Building a table is slow (an FFT and twenty-one inverse FFTs a frame,
-//! a few hundred frames) and large (about 170 kB a frame at 2048 samples),
-//! so it happens on the UI thread, once per table and sample rate, and the
-//! result is shared: [`tables_for`] keeps what is in use and hands every
-//! synth that asks the same `Arc`. The synth holds a [`TableSet`] — the
-//! two oscillators' tables and the analog shapes the sub reads — handed
-//! to it whole.
+//! A table is built in one of two forms ([`Table`]), by the quality a
+//! render asks for:
+//!
+//! - **exact** ([`Quality::Render`]): what Wavetable's `loadWaveTable`
+//!   builds, bit for bit — an FFT and twenty-one inverse FFTs a frame, a
+//!   band-limited copy every six notes, each the whole frame long: about
+//!   170 kB a frame at 2048 samples, 44 MB for a 256-frame table;
+//! - **compact** ([`Quality::Live`]): a copy an octave, shorter as it
+//!   holds fewer harmonics, in 16 bits (`dsp::tables::CompactFrame`):
+//!   about a sixth of that.
+//!
+//! Either is slow to build, so it happens on the UI thread, once per
+//! table, sample rate and form, and the result is shared: [`tables_for`]
+//! keeps what is in use and hands every synth that asks the same `Arc`.
+//! The synth holds a [`TableSet`] — the two oscillators' tables and the
+//! analog shapes the sub reads — handed to it whole.
 
-use crate::dsp::tables::{AnalogTables, Wavetable};
+use crate::dsp::tables::{AnalogTables, CompactWavetable, Table, Wavetable};
+pub use bloop_plugin_api::Quality;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -87,24 +97,48 @@ pub enum LoadError {
     Decode(String),
 }
 
+
+/// Table `index`'s samples, as the original reads them from its file:
+/// the samples, their rate and how many make a frame.
+fn source(index: usize) -> Result<(Vec<f32>, f64, usize), LoadError> {
+    let entry = CATALOGUE.get(index).ok_or(LoadError::NoSuchTable)?;
+    let bytes = entry.bytes().ok_or(LoadError::NotCarried)?;
+    let (samples, file_rate) = decode(entry.format, entry.frame, bytes)?;
+    Ok((samples, file_rate, entry.frame))
+}
+
 /// Table `index` decoded and band-limited for `sample_rate`: what
-/// Wavetable's `loadWaveTable` builds. Slow; UI thread.
+/// Wavetable's `loadWaveTable` builds, the exact form. Slow; UI thread.
 ///
 /// # Errors
 /// When there is no such table, this build lacks its audio, or it does not
 /// decode.
 pub fn load(index: usize, sample_rate: f64) -> Result<Wavetable, LoadError> {
-    let entry = CATALOGUE.get(index).ok_or(LoadError::NoSuchTable)?;
-    let bytes = entry.bytes().ok_or(LoadError::NotCarried)?;
-    let (samples, file_rate) = decode(entry.format, entry.frame, bytes)?;
+    let (samples, file_rate, frame) = source(index)?;
     // A WAV reads only whole frames; a FLAC reads all, and the frames
     // come out the same.
-    Ok(Wavetable::load(
-        sample_rate,
-        &samples,
-        file_rate,
-        entry.frame,
-    ))
+    Ok(Wavetable::load(sample_rate, &samples, file_rate, frame))
+}
+
+/// Table `index` in the compact form, for `sample_rate`. Slow; UI thread.
+///
+/// # Errors
+/// As [`load`].
+pub fn load_compact(index: usize, sample_rate: f64) -> Result<CompactWavetable, LoadError> {
+    let (samples, _, frame) = source(index)?;
+    Ok(CompactWavetable::load(sample_rate, &samples, frame))
+}
+
+/// Table `index` in the form `quality` plays: exact for a render, compact
+/// live.
+///
+/// # Errors
+/// As [`load`].
+pub fn build(index: usize, sample_rate: f64, quality: Quality) -> Result<Table, LoadError> {
+    Ok(match quality {
+        Quality::Render => Table::Exact(load(index, sample_rate)?),
+        Quality::Live => Table::Compact(load_compact(index, sample_rate)?),
+    })
 }
 
 /// A table's file, `frame` samples a frame, as the samples the original
@@ -150,7 +184,8 @@ pub fn decode(format: Format, frame: usize, bytes: &[u8]) -> Result<(Vec<f32>, f
 #[derive(Debug)]
 pub struct TableSet {
     sample_rate: f64,
-    oscillators: [Option<(u16, Arc<Wavetable>)>; 2],
+    quality: Quality,
+    oscillators: [Option<(u16, Arc<Table>)>; 2],
     analog: Arc<AnalogTables>,
 }
 
@@ -160,9 +195,16 @@ impl TableSet {
         self.sample_rate
     }
 
+    /// The quality it was built for: [`Quality::Render`] holds the exact
+    /// form, [`Quality::Live`] the compact.
+    #[must_use]
+    pub fn quality(&self) -> Quality {
+        self.quality
+    }
+
     /// Oscillator `osc`'s table, if it is the one `wanted` names.
     #[must_use]
-    pub fn oscillator(&self, osc: usize, wanted: f32) -> Option<&Wavetable> {
+    pub fn oscillator(&self, osc: usize, wanted: f32) -> Option<&Table> {
         self.oscillators[osc]
             .as_ref()
             .filter(|(index, _)| f32::from(*index) == wanted)
@@ -176,6 +218,15 @@ impl TableSet {
             self.oscillators[0].as_ref().map(|(i, _)| *i),
             self.oscillators[1].as_ref().map(|(i, _)| *i),
         ]
+    }
+
+    /// Whether it holds `indices` at `sample_rate` in the form `quality`
+    /// plays: what a synth that has it needs no new set for.
+    #[must_use]
+    pub fn holds(&self, indices: [u16; 2], sample_rate: f64, quality: Quality) -> bool {
+        self.indices() == indices.map(Some)
+            && (self.sample_rate - sample_rate).abs() <= f64::EPSILON
+            && self.quality == quality
     }
 
     #[must_use]
@@ -198,11 +249,18 @@ impl TableSet {
     }
 }
 
+/// Which table, at which rate, in which form.
+type Key = (usize, u64, bool);
+
+fn key(index: usize, rate: f64, quality: Quality) -> Key {
+    (index, rate.to_bits(), quality == Quality::Render)
+}
+
 /// Built tables, shared while anything holds them, and the analog shapes
 /// per rate, kept.
 #[derive(Default)]
 struct Cache {
-    tables: HashMap<(usize, u64), Weak<Wavetable>>,
+    tables: HashMap<Key, Weak<Table>>,
     analog: HashMap<u64, Arc<AnalogTables>>,
 }
 
@@ -217,16 +275,16 @@ fn lock() -> std::sync::MutexGuard<'static, Cache> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Table `index` at `rate`, shared if anything holds it, built if not.
-/// Built with the cache unlocked, so that two threads building different
-/// tables do not wait on each other; two building the same one keep the
-/// first.
-fn shared_table(index: usize, rate: f64) -> Option<Arc<Wavetable>> {
-    let key = (index, rate.to_bits());
+/// Table `index` at `rate` in `quality`'s form, shared if anything holds
+/// it, built if not. Built with the cache unlocked, so that two threads
+/// building different tables do not wait on each other; two building the
+/// same one keep the first.
+fn shared_table(index: usize, rate: f64, quality: Quality) -> Option<Arc<Table>> {
+    let key = key(index, rate, quality);
     if let Some(table) = lock().tables.get(&key).and_then(Weak::upgrade) {
         return Some(table);
     }
-    let built = Arc::new(load(index, rate).ok()?);
+    let built = Arc::new(build(index, rate, quality).ok()?);
     let mut cache = lock();
     if let Some(table) = cache.tables.get(&key).and_then(Weak::upgrade) {
         return Some(table);
@@ -236,21 +294,24 @@ fn shared_table(index: usize, rate: f64) -> Option<Arc<Wavetable>> {
     Some(built)
 }
 
-/// The tables for wavetables `indices` at `sample_rate`, built or shared.
-/// A table this build lacks is left out, and its oscillator is silent.
-/// UI thread: slow the first time a table or rate is asked for.
+/// The tables for wavetables `indices` at `sample_rate`, in the form
+/// `quality` plays, built or shared. A table this build lacks is left
+/// out, and its oscillator is silent. UI thread: slow the first time a
+/// table, rate or form is asked for.
 #[must_use]
-pub fn tables_for(indices: [u16; 2], sample_rate: f64) -> Arc<TableSet> {
+pub fn tables_for(indices: [u16; 2], sample_rate: f64, quality: Quality) -> Arc<TableSet> {
     let analog = Arc::clone(
         lock()
             .analog
             .entry(sample_rate.to_bits())
             .or_insert_with(|| Arc::new(AnalogTables::new(sample_rate))),
     );
-    let oscillators =
-        indices.map(|index| shared_table(usize::from(index), sample_rate).map(|t| (index, t)));
+    let oscillators = indices.map(|index| {
+        shared_table(usize::from(index), sample_rate, quality).map(|t| (index, t))
+    });
     Arc::new(TableSet {
         sample_rate,
+        quality,
         oscillators,
         analog,
     })

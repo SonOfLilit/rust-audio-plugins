@@ -6,7 +6,10 @@
 //! denormals-are-zero bits first, so a run with and without it says
 //! whether denormals are what the time goes on.
 //!
-//! Run: `cargo run -p bloop-plugin-wavetable --example bench_voices --release -- [--preset N] [--block B] [--seconds S] [--ftz] [--set uid=value]...`
+//! Run: `cargo run -p bloop-plugin-wavetable --example bench_voices --release -- [--preset N] [--block B] [--seconds S] [--ftz] [--exact] [--set uid=value]...`
+//!
+//! The tables are the compact form a live engine plays; `--exact` plays the
+//! exact form a render does instead (`bank::Quality`).
 
 #![expect(clippy::print_stdout, reason = "a bench says what it measured")]
 #![expect(clippy::expect_used, reason = "a bench with a bad argument has no one to tell but its user")]
@@ -54,7 +57,14 @@ fn main() {
             plugin.set_param(index, value.parse().expect("a number"));
         }
     }
-    plugin.set_tables(Some(bank::tables_for(plugin.table_indices(), RATE)));
+    let quality = if args.iter().any(|a| a == "--exact") {
+        bank::Quality::Render
+    } else {
+        bank::Quality::Live
+    };
+    let tables = bank::tables_for(plugin.table_indices(), RATE, quality);
+    println!("tables: {quality:?}, {:.1} MB", tables.bytes() as f64 / 1e6);
+    plugin.set_tables(Some(tables));
     println!("preset {preset}: {}", presets::name(preset));
 
     let block: usize = args

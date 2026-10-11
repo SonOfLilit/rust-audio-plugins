@@ -236,6 +236,333 @@ impl Wavetable {
     }
 }
 
+// ——— the compact form ———
+
+/// How many samples a compact copy keeps for each cycle of its highest
+/// harmonic, at the least, where the frame is long enough. Linear
+/// interpolation puts an image of harmonic `h` of a copy `n` samples long
+/// about `(h / n)²` under it: at 64 samples a cycle, 72 dB under the top
+/// harmonic, which keeps a high note's aliasing under -76 dB of the
+/// signal (`tests/it/compact.rs`). 32 left it at -65 dB, 16 at -50.
+pub const SAMPLES_PER_TOP_HARMONIC: usize = 64;
+
+/// The fewest samples a compact copy keeps, however few harmonics it has:
+/// the top notes' copies hold one to four harmonics, and one this long
+/// keeps their images as far down as the next copy's.
+pub const SHORTEST_COPY: usize = 256;
+
+/// One band-limited copy of a [`CompactFrame`]: where its samples sit,
+/// how many there are (the wrap sample after them not counted), and what
+/// one step of a sample is worth.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Level {
+    at: u32,
+    len: u32,
+    scale: f32,
+}
+
+/// A frame as the compact form keeps it: one band-limited copy an octave,
+/// each half as long as the one before once it has few enough harmonics,
+/// down to [`SHORTEST_COPY`], as 16-bit samples scaled to the copy's own
+/// peak.
+///
+/// Copy `j` holds the harmonics up to `size / 2^(j + 1)`, and serves the
+/// notes whose top harmonic stays under Nyquist. The exact form's copies,
+/// one every six notes and each the whole frame long, are what it trades
+/// for a sixth of the memory (2048-sample frames: 29 kB a frame, where
+/// the exact form takes 172 kB). The price is the top octave of harmonics
+/// for some notes: a note keeps what lies under somewhere between a
+/// quarter and a half of the sample rate, where the exact form keeps
+/// what lies under `1/√2` of a half or more.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CompactFrame {
+    data: Vec<i16>,
+    levels: Vec<Level>,
+}
+
+/// A compact copy, ready to read: [`CompactFrame`]'s samples for one
+/// octave, its wrap sample included, and the scale they are stored at.
+#[derive(Clone, Copy, Debug)]
+pub struct CompactCopy<'a> {
+    data: &'a [i16],
+    scale: f32,
+}
+
+/// What an oscillator reads a sample out of: one band-limited copy, its
+/// wrap sample included.
+pub trait CopyRead: Copy {
+    /// `getLinear` at `phase`, 0 to 1.
+    fn linear(self, phase: f32) -> f32;
+}
+
+impl CopyRead for &[f32] {
+    #[inline]
+    fn linear(self, phase: f32) -> f32 {
+        linear_in(self, phase)
+    }
+}
+
+impl CopyRead for CompactCopy<'_> {
+    #[inline]
+    fn linear(self, phase: f32) -> f32 {
+        let size = self.data.len() as i32 - 1;
+        let scaled = phase * size as f32;
+        let pos = (scaled as i32).min(size - 1) as usize;
+        let frac = scaled - pos as f32;
+        let (a, b) = (f32::from(self.data[pos]), f32::from(self.data[pos + 1]));
+        ((a * (1.0 - frac)) + (b * frac)) * self.scale
+    }
+}
+
+impl CompactFrame {
+    /// `frame` band-limited an octave at a time, from its spectrum
+    /// (`spectrum`, the unscaled transform of it) through `ffts`: one
+    /// transform of each power-of-two size up to the frame's, by order.
+    fn build(frame: &[f32], spectrum: &[Complex], ffts: &[Fft]) -> Self {
+        let size = frame.len();
+        let mut out = Self::default();
+        let mut harmonics = size / 2;
+        while harmonics >= 1 {
+            let len =
+                (harmonics * SAMPLES_PER_TOP_HARMONIC).clamp(SHORTEST_COPY.min(size), size);
+            if harmonics == size / 2 {
+                out.push(frame);
+            } else {
+                let mut bins = vec![Complex::default(); len];
+                let gain = len as f32 / size as f32;
+                let scaled = |c: Complex| Complex {
+                    re: c.re * gain,
+                    im: c.im * gain,
+                };
+                bins[0] = scaled(spectrum[0]);
+                for k in 1..=harmonics.min(len / 2 - 1) {
+                    bins[k] = scaled(spectrum[k]);
+                    bins[len - k] = scaled(spectrum[size - k]);
+                }
+                let mut time = vec![Complex::default(); len];
+                ffts[len.trailing_zeros() as usize].perform(&bins, &mut time, true);
+                let samples: Vec<f32> = time.iter().map(|c| c.re).collect();
+                out.push(&samples);
+            }
+            harmonics /= 2;
+        }
+        out
+    }
+
+    fn push(&mut self, samples: &[f32]) {
+        let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        let scale = if peak > 0.0 { peak / 32767.0 } else { 0.0 };
+        let quantised = |s: f32| {
+            if scale > 0.0 {
+                (s / scale).round().clamp(-32767.0, 32767.0) as i16
+            } else {
+                0
+            }
+        };
+        let at = self.data.len();
+        self.data.extend(samples.iter().map(|&s| quantised(s)));
+        self.data.push(quantised(samples[0]));
+        self.levels.push(Level {
+            at: at as u32,
+            len: samples.len() as u32,
+            scale,
+        });
+    }
+
+    /// How many octave copies it holds.
+    #[must_use]
+    pub fn copies(&self) -> usize {
+        self.levels.len()
+    }
+
+    /// How many samples copy `level` holds, its wrap sample not counted.
+    #[must_use]
+    pub fn copy_len(&self, level: usize) -> usize {
+        self.levels[level.min(self.levels.len() - 1)].len as usize
+    }
+
+    /// Copy `level`, its wrap sample included.
+    #[inline]
+    #[must_use]
+    pub fn copy(&self, level: usize) -> CompactCopy<'_> {
+        let l = self.levels[level.min(self.levels.len() - 1)];
+        CompactCopy {
+            data: &self.data[l.at as usize..=(l.at + l.len) as usize],
+            scale: l.scale,
+        }
+    }
+
+    /// How many bytes it takes.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        self.data.len() * core::mem::size_of::<i16>()
+            + self.levels.len() * core::mem::size_of::<Level>()
+    }
+}
+
+/// A wavetable in the compact form: every frame a [`CompactFrame`], and
+/// for each octave copy the highest note it serves at the rate it was
+/// built for.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CompactWavetable {
+    frames: Vec<CompactFrame>,
+    /// `tops[j]`: the highest note whose top harmonic in copy `j` stays at
+    /// or under Nyquist.
+    tops: Vec<f32>,
+}
+
+impl CompactWavetable {
+    /// `samples` cut into frames of `table_size` (a power of two), each
+    /// band-limited an octave at a time for `playback_rate`. Slow: UI
+    /// thread.
+    #[must_use]
+    pub fn load(playback_rate: f64, samples: &[f32], table_size: usize) -> Self {
+        let order = table_size.trailing_zeros();
+        let ffts: Vec<Fft> = (0..=order).map(Fft::new).collect();
+        let full = &ffts[order as usize];
+        let mut time = vec![Complex::default(); table_size];
+        let mut spectrum = vec![Complex::default(); table_size];
+        let frames = samples
+            .chunks_exact(table_size)
+            .map(|frame| {
+                for (t, &re) in time.iter_mut().zip(frame) {
+                    *t = Complex { re, im: 0.0 };
+                }
+                full.perform(&time, &mut spectrum, false);
+                CompactFrame::build(frame, &spectrum, &ffts)
+            })
+            .collect();
+        let nyquist = playback_rate / 2.0;
+        let mut tops = Vec::new();
+        let mut harmonics = table_size / 2;
+        while harmonics >= 1 {
+            let freq = nyquist / harmonics as f64;
+            tops.push((69.0 + 12.0 * libm::log2(freq / 440.0)) as f32);
+            harmonics /= 2;
+        }
+        Self { frames, tops }
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.frames.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn frame(&self, index: usize) -> &CompactFrame {
+        &self.frames[index]
+    }
+
+    /// The octave copy `note` reads: the fullest whose harmonics all stay
+    /// at or under Nyquist at that note.
+    #[inline]
+    #[must_use]
+    pub fn level_for_note(&self, note: f32) -> usize {
+        self.tops
+            .iter()
+            .position(|&top| note <= top)
+            .unwrap_or(self.tops.len().saturating_sub(1))
+    }
+
+    /// How many bytes it takes.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        self.frames.iter().map(CompactFrame::bytes).sum::<usize>()
+            + self.tops.len() * core::mem::size_of::<f32>()
+    }
+}
+
+/// A wavetable in one of its two forms: as the original builds it, which
+/// a render plays ([`bloop_plugin_api::Quality::Render`]), or compact, for
+/// live play.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Table {
+    Exact(Wavetable),
+    Compact(CompactWavetable),
+}
+
+impl Table {
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Exact(t) => t.len(),
+            Self::Compact(t) => t.len(),
+        }
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The exact form, if it is in it.
+    #[must_use]
+    pub fn exact(&self) -> Option<&Wavetable> {
+        match self {
+            Self::Exact(t) => Some(t),
+            Self::Compact(_) => None,
+        }
+    }
+
+    /// The compact form, if it is in it.
+    #[must_use]
+    pub fn compact(&self) -> Option<&CompactWavetable> {
+        match self {
+            Self::Exact(_) => None,
+            Self::Compact(t) => Some(t),
+        }
+    }
+
+    /// How many bytes its samples take.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        match self {
+            Self::Exact(t) => t.bytes(),
+            Self::Compact(t) => t.bytes(),
+        }
+    }
+}
+
+/// What an oscillator reads a table through, whichever form it is in.
+pub trait Frames {
+    type Copy<'a>: CopyRead
+    where
+        Self: 'a;
+    fn frame_count(&self) -> usize;
+    /// The copy of frame `frame` that `note` reads.
+    fn copy_for_note(&self, frame: usize, note: f32) -> Self::Copy<'_>;
+}
+
+impl Frames for Wavetable {
+    type Copy<'a> = &'a [f32];
+    #[inline]
+    fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+    #[inline]
+    fn copy_for_note(&self, frame: usize, note: f32) -> &[f32] {
+        self.frames[frame].copy_for_note(note)
+    }
+}
+
+impl Frames for CompactWavetable {
+    type Copy<'a> = CompactCopy<'a>;
+    #[inline]
+    fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+    #[inline]
+    fn copy_for_note(&self, frame: usize, note: f32) -> CompactCopy<'_> {
+        self.frames[frame].copy(self.level_for_note(note))
+    }
+}
+
 // ——— the analog waveforms ———
 
 /// `gin::sine`.

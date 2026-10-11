@@ -187,7 +187,7 @@ fn set(plugin: &mut WavetablePlugin, uid: &str, value: f32) {
 
 /// The tables the plugin's oscillators are set to, built, and handed over.
 fn hand_tables(plugin: &mut WavetablePlugin, rate: f64) {
-    let tables = bank::tables_for(plugin.table_indices(), rate);
+    let tables = bank::tables_for(plugin.table_indices(), rate, bank::Quality::Render);
     plugin.set_tables(Some(tables));
 }
 
@@ -771,7 +771,8 @@ mod cpp {
         for (osc, index) in indices.into_iter().enumerate() {
             let table = tables
                 .oscillator(osc, f32::from(index))
-                .expect("the set holds the oscillator's table");
+                .and_then(bloop_plugin_wavetable::dsp::tables::Table::exact)
+                .expect("the set holds the oscillator's table, exact");
             send_table(input, osc, table);
         }
     }

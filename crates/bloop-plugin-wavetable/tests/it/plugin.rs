@@ -139,7 +139,7 @@ fn set(plugin: &mut WavetablePlugin, uid: &str, value: f32) {
 }
 
 fn with_tables(mut plugin: WavetablePlugin) -> WavetablePlugin {
-    let tables = bank::tables_for(plugin.table_indices(), plugin.sample_rate());
+    let tables = bank::tables_for(plugin.table_indices(), plugin.sample_rate(), bank::Quality::Render);
     plugin.set_tables(Some(tables));
     plugin
 }
@@ -392,7 +392,7 @@ fn an_oscillator_plays_only_the_table_its_knob_names() {
     plugin.set_param(params::id::WT1, other as f32);
     let stale = peak(&render(&mut plugin, &[on(0, 60)], 4800));
     render(&mut plugin, &[off(0, 60)], 48000);
-    let tables = bank::tables_for(plugin.table_indices(), RATE);
+    let tables = bank::tables_for(plugin.table_indices(), RATE, bank::Quality::Render);
     let held = plugin.set_tables(Some(tables));
     let after = peak(&render(&mut plugin, &[on(0, 60)], 4800));
     check(
@@ -430,7 +430,7 @@ fn a_sub_sine_plays_in_tune_at_every_rate() {
     }
     let mut plugin = with_tables(WavetablePlugin::at(48000.0));
     plugin.reset(44100.0, 512);
-    let tables = bank::tables_for(plugin.table_indices(), 44100.0);
+    let tables = bank::tables_for(plugin.table_indices(), 44100.0, bank::Quality::Render);
     plugin.set_tables(Some(tables));
     set(&mut plugin, "osc1enable", 0.0);
     set(&mut plugin, "subenable", 1.0);
@@ -568,7 +568,7 @@ fn presets_load_through_the_preset_knob() {
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn the_audio_thread_never_allocates() {
     let mut plugin = with_tables(WavetablePlugin::at(RATE));
-    let spare = bank::tables_for(plugin.table_indices(), RATE);
+    let spare = bank::tables_for(plugin.table_indices(), RATE, bank::Quality::Render);
     for uid in [
         "chEnable",
         "dsEnable",

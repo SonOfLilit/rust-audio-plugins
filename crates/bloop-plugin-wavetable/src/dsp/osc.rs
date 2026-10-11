@@ -2,7 +2,7 @@
 //! (`gin_wtoscillators.h`), `StereoOscillator` (`gin_oscillators.h`) and
 //! the `DCBlocker` a wavetable oscillator runs (`gin_dcblocker.h`).
 
-use super::tables::{linear_in, AnalogTables, NoiseSource, Wave, Wavetable};
+use super::tables::{AnalogTables, CopyRead, Frames, NoiseSource, Table, Wave};
 use bloop_plugin_socalabs::shared::{jlimit, math};
 
 /// `std::numeric_limits<float>::epsilon()` below 1.
@@ -145,28 +145,25 @@ impl WtOscillator {
         self.last_table_index = -1;
     }
 
-    fn frame_for(table: &Wavetable, position: f32) -> i32 {
-        (table.len() as i32 - 1).min((table.len() as f32 * position) as i32)
+    fn frame_for<T: Frames>(table: &T, position: f32) -> i32 {
+        let len = table.frame_count();
+        (len as i32 - 1).min((len as f32 * position) as i32)
     }
 
     /// `processAdding (note, params, buffer)`: added into `left`/`right`,
     /// then the DC blocked from the whole buffer.
     pub fn process_adding(
         &mut self,
-        table: Option<&Wavetable>,
+        table: Option<&Table>,
         note: f32,
         params: &WtParams,
         left: &mut [f32],
         right: &mut [f32],
     ) {
-        if let Some(table) = table.filter(|t| !t.is_empty()) {
-            if self.table_index != self.last_table_index && self.last_table_index >= 0 {
-                self.run(table, note, params, left, right, Mode::Crossfade);
-            } else if params.bend == 0.0 && params.formant == 0.0 {
-                self.run(table, note, params, left, right, Mode::Simple);
-            } else {
-                self.run(table, note, params, left, right, Mode::Complex);
-            }
+        match table.filter(|t| !t.is_empty()) {
+            Some(Table::Exact(table)) => self.dispatch(table, note, params, left, right),
+            Some(Table::Compact(table)) => self.dispatch(table, note, params, left, right),
+            None => {}
         }
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             *l -= self.blocker_l.process(*l);
@@ -174,16 +171,33 @@ impl WtOscillator {
         }
     }
 
-    fn run(
+    fn dispatch<T: Frames>(
         &mut self,
-        table: &Wavetable,
+        table: &T,
+        note: f32,
+        params: &WtParams,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
+        if self.table_index != self.last_table_index && self.last_table_index >= 0 {
+            self.run(table, note, params, left, right, Mode::Crossfade);
+        } else if params.bend == 0.0 && params.formant == 0.0 {
+            self.run(table, note, params, left, right, Mode::Simple);
+        } else {
+            self.run(table, note, params, left, right, Mode::Complex);
+        }
+    }
+
+    fn run<T: Frames>(
+        &mut self,
+        table: &T,
         note: f32,
         params: &WtParams,
         left: &mut [f32],
         right: &mut [f32],
         mode: Mode,
     ) {
-        let len = table.len() as i32;
+        let len = table.frame_count() as i32;
         if self.table_index == -1 || self.table_index >= len {
             self.table_index = Self::frame_for(table, params.position);
         }
@@ -196,9 +210,9 @@ impl WtOscillator {
         let speed = formant_speed(params.formant);
         // The copy a note reads is the same all block: looked up once a
         // frame, not once a sample.
-        let mut frame1 = table.frame(self.table_index as usize).copy_for_note(note);
+        let mut frame1 = table.copy_for_note(self.table_index as usize, note);
         let mut frame2 = if mode == Mode::Crossfade {
-            table.frame(self.last_table_index as usize).copy_for_note(note)
+            table.copy_for_note(self.last_table_index as usize, note)
         } else {
             frame1
         };
@@ -236,7 +250,7 @@ impl WtOscillator {
                 self.phase -= 1.0;
                 self.last_table_index = self.table_index;
                 self.table_index = Self::frame_for(table, params.position);
-                frame1 = table.frame(self.table_index as usize).copy_for_note(note);
+                frame1 = table.copy_for_note(self.table_index as usize, note);
                 if mode == Mode::Crossfade {
                     frame2 = frame1;
                 }
@@ -246,10 +260,10 @@ impl WtOscillator {
 
     /// One sample at `phase`, a crossfade weighed by `weight`.
     #[inline]
-    fn sample(
+    fn sample<C: CopyRead>(
         mode: Mode,
-        frame1: &[f32],
-        frame2: &[f32],
+        frame1: C,
+        frame2: C,
         params: &WtParams,
         speed: f32,
         phase: f32,
@@ -257,14 +271,14 @@ impl WtOscillator {
     ) -> f32 {
         let phase = ALMOST_ONE.min(phase);
         match mode {
-            Mode::Simple => linear_in(frame1, phase),
+            Mode::Simple => frame1.linear(phase),
             Mode::Complex => {
-                linear_in(frame1, phase_distortion(phase, params.bend, params.formant, speed))
+                frame1.linear(phase_distortion(phase, params.bend, params.formant, speed))
             }
             Mode::Crossfade => {
                 let p = phase_distortion(phase, params.bend, params.formant, speed);
-                let s1 = linear_in(frame1, p);
-                let s2 = linear_in(frame2, p);
+                let s1 = frame1.linear(p);
+                let s2 = frame2.linear(p);
                 s1 * weight + s2 * (1.0 - weight)
             }
         }
@@ -339,7 +353,7 @@ impl VoicedWtOscillator {
 
     pub fn process_adding(
         &mut self,
-        table: Option<&Wavetable>,
+        table: Option<&Table>,
         note: f32,
         params: &VoicedParams,
         left: &mut [f32],
