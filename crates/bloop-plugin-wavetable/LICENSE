@@ -159,9 +159,15 @@ wavetables/Neu KatalYst: their author's readme, shipped with Wavetable:
 Vital, Surge, Phase Plant, Dune, Pigments, Sektor, Union, etc - no credit
 necessary, but always welcome."
 
-wavetables/Presets: two tables Flamedragonz recorded ("Recorded on 16.05.2020
-in Edison") inside the preset that plays them, one of Wavetable's factory
-presets, distributed under Wavetable's licence above.
+wavetables/Analog, Distorted, FM, Growl and Hyper: BVKER's free wavetables,
+as SocaLabs distributes them with Wavetable.
 
-The factory presets in src/presets_data.rs come from Wavetable's repository,
-under its licence above.
+wavetables/Presets: the tables some of Wavetable's factory presets carry
+inside themselves, by those presets' authors, as SocaLabs distributes them.
+
+The factory presets in src/presets_data.rs, by DoubleTap, Flamedragonz,
+HavenSteps, IV, MadMcMan and murti, come from Wavetable's repository, as
+SocaLabs distributes them, under its licence above.
+
+Tables stored as .wtd hold the same samples as Wavetable's own .wt2048
+files, each frame as its difference from the one before (see src/bank.rs).

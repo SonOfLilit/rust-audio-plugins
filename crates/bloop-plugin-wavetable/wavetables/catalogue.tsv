@@ -25,12 +25,12 @@ Adventure Kid	AKWP birds	Adventure Kid/AKWP birds.wt2048	flac	2048	web
 Adventure Kid	AKWP bitreduced	Adventure Kid/AKWP bitreduced.wt2048	flac	2048	web
 Adventure Kid	AKWP bw_blended	Adventure Kid/AKWP bw_blended.wt2048	flac	2048	web
 Adventure Kid	AKWP bw_perfectwaves	Adventure Kid/AKWP bw_perfectwaves.wt2048	flac	2048	web
-Adventure Kid	AKWP bw_saw	Adventure Kid/AKWP bw_saw.wt2048	flac	2048	web
+Adventure Kid	AKWP bw_saw	Adventure Kid/AKWP bw_saw.wtd	flac-delta	2048	web
 Adventure Kid	AKWP bw_sawbright	Adventure Kid/AKWP bw_sawbright.wt2048	flac	2048	web
 Adventure Kid	AKWP bw_sawgap	Adventure Kid/AKWP bw_sawgap.wt2048	flac	2048	web
 Adventure Kid	AKWP bw_sawrounded	Adventure Kid/AKWP bw_sawrounded.wt2048	flac	2048	web
 Adventure Kid	AKWP bw_sin	Adventure Kid/AKWP bw_sin.wt2048	flac	2048	web
-Adventure Kid	AKWP bw_squ	Adventure Kid/AKWP bw_squ.wt2048	flac	2048	web
+Adventure Kid	AKWP bw_squ	Adventure Kid/AKWP bw_squ.wtd	flac-delta	2048	web
 Adventure Kid	AKWP bw_squrounded	Adventure Kid/AKWP bw_squrounded.wt2048	flac	2048	web
 Adventure Kid	AKWP bw_tri	Adventure Kid/AKWP bw_tri.wt2048	flac	2048	web
 Adventure Kid	AKWP c604	Adventure Kid/AKWP c604.wt2048	flac	2048	web
@@ -55,7 +55,7 @@ Adventure Kid	AKWP overtone	Adventure Kid/AKWP overtone.wt2048	flac	2048	web
 Adventure Kid	AKWP piano	Adventure Kid/AKWP piano.wt2048	flac	2048	web
 Adventure Kid	AKWP pluckalgo	Adventure Kid/AKWP pluckalgo.wt2048	flac	2048	web
 Adventure Kid	AKWP raw	Adventure Kid/AKWP raw.wt2048	flac	2048	web
-Adventure Kid	AKWP sinharm	Adventure Kid/AKWP sinharm.wt2048	flac	2048	web
+Adventure Kid	AKWP sinharm	Adventure Kid/AKWP sinharm.wtd	flac-delta	2048	web
 Adventure Kid	AKWP snippets	Adventure Kid/AKWP snippets.wt2048	flac	2048	web
 Adventure Kid	AKWP stereo	Adventure Kid/AKWP stereo.wt2048	flac	2048	web
 Adventure Kid	AKWP stringbox	Adventure Kid/AKWP stringbox.wt2048	flac	2048	web
@@ -64,55 +64,164 @@ Adventure Kid	AKWP theremin	Adventure Kid/AKWP theremin.wt2048	flac	2048	web
 Adventure Kid	AKWP vgame	Adventure Kid/AKWP vgame.wt2048	flac	2048	web
 Adventure Kid	AKWP vgamebasic	Adventure Kid/AKWP vgamebasic.wt2048	flac	2048	web
 Adventure Kid	AKWP violin	Adventure Kid/AKWP violin.wt2048	flac	2048	web
-Neu KatalYst	NK - ACTIVE	Neu KatalYst/NK - ACTIVE.wt2048	flac	2048	native
-Neu KatalYst	NK - AGE	Neu KatalYst/NK - AGE.wt2048	flac	2048	native
-Neu KatalYst	NK - ALIGN	Neu KatalYst/NK - ALIGN.wt2048	flac	2048	native
-Neu KatalYst	NK - ALKALINE	Neu KatalYst/NK - ALKALINE.wt2048	flac	2048	native
-Neu KatalYst	NK - CHEMICAL	Neu KatalYst/NK - CHEMICAL.wt2048	flac	2048	web
-Neu KatalYst	NK - COKE	Neu KatalYst/NK - COKE.wt2048	flac	2048	native
-Neu KatalYst	NK - COLOR	Neu KatalYst/NK - COLOR.wt2048	flac	2048	native
-Neu KatalYst	NK - COMMERCIAL	Neu KatalYst/NK - COMMERCIAL.wt2048	flac	2048	native
-Neu KatalYst	NK - COMPOSE	Neu KatalYst/NK - COMPOSE.wt2048	flac	2048	native
-Neu KatalYst	NK - CONVENT	Neu KatalYst/NK - CONVENT.wt2048	flac	2048	native
-Neu KatalYst	NK - CRUCIAL	Neu KatalYst/NK - CRUCIAL.wt2048	flac	2048	native
-Neu KatalYst	NK - DISPENSE	Neu KatalYst/NK - DISPENSE.wt2048	flac	2048	native
-Neu KatalYst	NK - EFFECT	Neu KatalYst/NK - EFFECT.wt2048	flac	2048	native
-Neu KatalYst	NK - EFFICIENT	Neu KatalYst/NK - EFFICIENT.wt2048	flac	2048	native
-Neu KatalYst	NK - FINISH	Neu KatalYst/NK - FINISH.wt2048	flac	2048	native
-Neu KatalYst	NK - FRESH	Neu KatalYst/NK - FRESH.wt2048	flac	2048	native
-Neu KatalYst	NK - HELP	Neu KatalYst/NK - HELP.wt2048	flac	2048	native
-Neu KatalYst	NK - INDIFFERENT	Neu KatalYst/NK - INDIFFERENT.wt2048	flac	2048	native
-Neu KatalYst	NK - INERT	Neu KatalYst/NK - INERT.wt2048	flac	2048	web
-Neu KatalYst	NK - LATENT	Neu KatalYst/NK - LATENT.wt2048	flac	2048	native
-Neu KatalYst	NK - MODIFY	Neu KatalYst/NK - MODIFY.wt2048	flac	2048	native
-Neu KatalYst	NK - MONOLITH	Neu KatalYst/NK - MONOLITH.wt2048	flac	2048	native
-Neu KatalYst	NK - MORAL	Neu KatalYst/NK - MORAL.wt2048	flac	2048	web
-Neu KatalYst	NK - NEUTRAL	Neu KatalYst/NK - NEUTRAL.wt2048	flac	2048	native
-Neu KatalYst	NK - NOBLE	Neu KatalYst/NK - NOBLE.wt2048	flac	2048	native
-Neu KatalYst	NK - NUCLEUS	Neu KatalYst/NK - NUCLEUS.wt2048	flac	2048	native
-Neu KatalYst	NK - OBJECT	Neu KatalYst/NK - OBJECT.wt2048	flac	2048	native
-Neu KatalYst	NK - OXIDIZE	Neu KatalYst/NK - OXIDIZE.wt2048	flac	2048	native
-Neu KatalYst	NK - PERSONAL	Neu KatalYst/NK - PERSONAL.wt2048	flac	2048	native
-Neu KatalYst	NK - POLYMER	Neu KatalYst/NK - POLYMER.wt2048	flac	2048	native
-Neu KatalYst	NK - POROUS	Neu KatalYst/NK - POROUS.wt2048	flac	2048	native
-Neu KatalYst	NK - POTENT	Neu KatalYst/NK - POTENT.wt2048	flac	2048	native
-Neu KatalYst	NK - POWDER	Neu KatalYst/NK - POWDER.wt2048	flac	2048	native
-Neu KatalYst	NK - PREFER	Neu KatalYst/NK - PREFER.wt2048	flac	2048	native
-Neu KatalYst	NK - PRIME	Neu KatalYst/NK - PRIME.wt2048	flac	2048	native
-Neu KatalYst	NK - PROMISE	Neu KatalYst/NK - PROMISE.wt2048	flac	2048	native
-Neu KatalYst	NK - REACT	Neu KatalYst/NK - REACT.wt2048	flac	2048	native
-Neu KatalYst	NK - REDUCE	Neu KatalYst/NK - REDUCE.wt2048	flac	2048	native
-Neu KatalYst	NK - RESIDUE	Neu KatalYst/NK - RESIDUE.wt2048	flac	2048	native
-Neu KatalYst	NK - SELECT	Neu KatalYst/NK - SELECT.wt2048	flac	2048	native
-Neu KatalYst	NK - SOLID	Neu KatalYst/NK - SOLID.wt2048	flac	2048	native
-Neu KatalYst	NK - SOLUBLE	Neu KatalYst/NK - SOLUBLE.wt2048	flac	2048	native
-Neu KatalYst	NK - SUBJECT	Neu KatalYst/NK - SUBJECT.wt2048	flac	2048	native
-Neu KatalYst	NK - SUIT	Neu KatalYst/NK - SUIT.wt2048	flac	2048	native
-Neu KatalYst	NK - SUPPORT	Neu KatalYst/NK - SUPPORT.wt2048	flac	2048	native
-Neu KatalYst	NK - SYNTHETIC	Neu KatalYst/NK - SYNTHETIC.wt2048	flac	2048	web
-Neu KatalYst	NK - TERTIARY	Neu KatalYst/NK - TERTIARY.wt2048	flac	2048	native
-Neu KatalYst	NK - USE	Neu KatalYst/NK - USE.wt2048	flac	2048	native
-Neu KatalYst	NK - VIEW	Neu KatalYst/NK - VIEW.wt2048	flac	2048	web
-Neu KatalYst	NK - WIT	Neu KatalYst/NK - WIT.wt2048	flac	2048	web
+Analog	Analog Classic	Analog/Analog Classic.wt2048	flac	2048	web
+Analog	Analog PWM Custom 01	Analog/Analog PWM Custom 01.wtd	flac-delta	2048	native
+Analog	Analog PWM Custom 02	Analog/Analog PWM Custom 02.wt2048	flac	2048	native
+Analog	Analog PWM Custom 03	Analog/Analog PWM Custom 03.wt2048	flac	2048	native
+Analog	Analog PWM Custom 04	Analog/Analog PWM Custom 04.wtd	flac-delta	2048	web
+Analog	Analog PWM Custom 05	Analog/Analog PWM Custom 05.wt2048	flac	2048	native
+Analog	Analog PWM Custom 06	Analog/Analog PWM Custom 06.wt2048	flac	2048	web
+Analog	Analog PWM Custom 07	Analog/Analog PWM Custom 07.wt2048	flac	2048	native
+Analog	Analog PWM Custom 08	Analog/Analog PWM Custom 08.wt2048	flac	2048	native
+Analog	Analog PWM Custom 09	Analog/Analog PWM Custom 09.wtd	flac-delta	2048	native
+Analog	Analog PWM Custom 10	Analog/Analog PWM Custom 10.wt2048	flac	2048	native
+Analog	Analog PWM Custom 11	Analog/Analog PWM Custom 11.wt2048	flac	2048	native
+Analog	Analog PWM Custom 12	Analog/Analog PWM Custom 12.wtd	flac-delta	2048	native
+Analog	Analog PWM Custom 13	Analog/Analog PWM Custom 13.wtd	flac-delta	2048	native
+Analog	Analog PWM Custom 14	Analog/Analog PWM Custom 14.wt2048	flac	2048	native
+Analog	Analog PWM Custom 15	Analog/Analog PWM Custom 15.wt2048	flac	2048	native
+Analog	Analog PWM Custom 16	Analog/Analog PWM Custom 16.wt2048	flac	2048	native
+Analog	Analog PWM Custom 17	Analog/Analog PWM Custom 17.wtd	flac-delta	2048	native
+Analog	Analog PWM Custom 18	Analog/Analog PWM Custom 18.wtd	flac-delta	2048	native
+Analog	Analog PWM Custom 19	Analog/Analog PWM Custom 19.wt2048	flac	2048	native
+Analog	Analog PWM Custom 20	Analog/Analog PWM Custom 20.wt2048	flac	2048	native
+Analog	Analog PWM Saw 01	Analog/Analog PWM Saw 01.wt2048	flac	2048	web
+Analog	Analog PWM Saw 02	Analog/Analog PWM Saw 02.wt2048	flac	2048	web
+Analog	Analog PWM Saw 03	Analog/Analog PWM Saw 03.wtd	flac-delta	2048	web
+Analog	Analog PWM Saw 04	Analog/Analog PWM Saw 04.wt2048	flac	2048	web
+Analog	Analog PWM Saw 05	Analog/Analog PWM Saw 05.wt2048	flac	2048	web
+Analog	Analog PWM Saw 06	Analog/Analog PWM Saw 06.wt2048	flac	2048	native
+Analog	Analog PWM Saw 07	Analog/Analog PWM Saw 07.wtd	flac-delta	2048	native
+Analog	Analog PWM Square 01	Analog/Analog PWM Square 01.wt2048	flac	2048	native
+Analog	Analog PWM Square 02	Analog/Analog PWM Square 02.wtd	flac-delta	2048	native
+Analog	Analog PWM Square 03	Analog/Analog PWM Square 03.wtd	flac-delta	2048	web
+Analog	Analog PWM Square 04	Analog/Analog PWM Square 04.wtd	flac-delta	2048	native
+Analog	Analog PWM Square 05	Analog/Analog PWM Square 05.wt2048	flac	2048	native
+Analog	Analog PWM Square 06	Analog/Analog PWM Square 06.wt2048	flac	2048	native
+Analog	Analog PWM Sub 01	Analog/Analog PWM Sub 01.wt2048	flac	2048	native
+Analog	Analog PWM Sub 02	Analog/Analog PWM Sub 02.wt2048	flac	2048	native
+Analog	Analog PWM Sub 03	Analog/Analog PWM Sub 03.wt2048	flac	2048	web
+Analog	Analog PWM Sub 04	Analog/Analog PWM Sub 04.wt2048	flac	2048	web
+Analog	Analog PWM Sub 05	Analog/Analog PWM Sub 05.wt2048	flac	2048	native
+Analog	Analog PWM Sub 06	Analog/Analog PWM Sub 06.wt2048	flac	2048	native
+Analog	Analog PWM Sub 07	Analog/Analog PWM Sub 07.wt2048	flac	2048	native
+Analog	Analog PWM Sub 08	Analog/Analog PWM Sub 08.wtd	flac-delta	2048	native
+Distorted	Dist - Asym	Distorted/Dist - Asym.wtd	flac-delta	2048	native
+Distorted	Dist - Diode 1	Distorted/Dist - Diode 1.wtd	flac-delta	2048	native
+Distorted	Dist - Diode 2	Distorted/Dist - Diode 2.wtd	flac-delta	2048	native
+Distorted	Dist - Downsample	Distorted/Dist - Downsample.wtd	flac-delta	2048	native
+Distorted	Dist - Filter Drive	Distorted/Dist - Filter Drive.wtd	flac-delta	2048	web
+Distorted	Dist - Hard Clipping	Distorted/Dist - Hard Clipping.wt2048	flac	2048	web
+Distorted	Dist - Hard Clipping Extra	Distorted/Dist - Hard Clipping Extra.wt2048	flac	2048	web
+Distorted	Dist - Lin.Fold	Distorted/Dist - Lin.Fold.wt2048	flac	2048	web
+Distorted	Dist - Rectify	Distorted/Dist - Rectify.wtd	flac-delta	2048	native
+Distorted	Dist - Sin.Fold	Distorted/Dist - Sin.Fold.wt2048	flac	2048	web
+Distorted	Dist - Sine Shaper	Distorted/Dist - Sine Shaper.wtd	flac-delta	2048	web
+Distorted	Dist - Soft Clipping	Distorted/Dist - Soft Clipping.wtd	flac-delta	2048	native
+Distorted	Dist - Stomp Box	Distorted/Dist - Stomp Box.wt2048	flac	2048	web
+Distorted	Dist - Tape	Distorted/Dist - Tape.wt2048	flac	2048	native
+Distorted	Dist - Tube	Distorted/Dist - Tube.wtd	flac-delta	2048	native
+Distorted	Dist - Zero Square	Distorted/Dist - Zero Square.wtd	flac-delta	2048	web
+FM	FM 01	FM/FM 01.wtd	flac-delta	2048	native
+FM	FM 02	FM/FM 02.wtd	flac-delta	2048	web
+FM	FM 03	FM/FM 03.wt2048	flac	2048	web
+FM	FM 04	FM/FM 04.wt2048	flac	2048	native
+FM	FM 05	FM/FM 05.wtd	flac-delta	2048	native
+FM	FM 06	FM/FM 06.wtd	flac-delta	2048	web
+FM	FM 07	FM/FM 07.wtd	flac-delta	2048	native
+FM	FM 08	FM/FM 08.wtd	flac-delta	2048	native
+FM	FM 09	FM/FM 09.wt2048	flac	2048	native
+FM	FM 10	FM/FM 10.wtd	flac-delta	2048	web
+FM	FM 11	FM/FM 11.wtd	flac-delta	2048	web
+FM	FM 12	FM/FM 12.wtd	flac-delta	2048	web
+FM	FM 13	FM/FM 13.wtd	flac-delta	2048	web
+FM	FM 14	FM/FM 14.wtd	flac-delta	2048	web
+FM	FM 15	FM/FM 15.wtd	flac-delta	2048	native
+FM	FM 16	FM/FM 16.wtd	flac-delta	2048	native
+FM	FM 17	FM/FM 17.wt2048	flac	2048	native
+Growl	Growl 01	Growl/Growl 01.wt2048	flac	2048	native
+Growl	Growl 02	Growl/Growl 02.wt2048	flac	2048	native
+Growl	Growl 03	Growl/Growl 03.wtd	flac-delta	2048	native
+Growl	Growl 04	Growl/Growl 04.wtd	flac-delta	2048	native
+Growl	Growl 05	Growl/Growl 05.wtd	flac-delta	2048	native
+Growl	Growl 06	Growl/Growl 06.wtd	flac-delta	2048	native
+Growl	Growl 07	Growl/Growl 07.wtd	flac-delta	2048	native
+Growl	Growl 08	Growl/Growl 08.wtd	flac-delta	2048	native
+Growl	Growl 09	Growl/Growl 09.wtd	flac-delta	2048	native
+Growl	Growl 10	Growl/Growl 10.wtd	flac-delta	2048	native
+Growl	Growl 11	Growl/Growl 11.wt2048	flac	2048	native
+Growl	Growl 12	Growl/Growl 12.wt2048	flac	2048	native
+Growl	Growl 13	Growl/Growl 13.wt2048	flac	2048	native
+Growl	Growl 14	Growl/Growl 14.wtd	flac-delta	2048	native
+Growl	Growl 15	Growl/Growl 15.wtd	flac-delta	2048	native
+Growl	Growl 16	Growl/Growl 16.wtd	flac-delta	2048	native
+Growl	Growl 17	Growl/Growl 17.wt2048	flac	2048	native
+Growl	Growl 18	Growl/Growl 18.wtd	flac-delta	2048	native
+Hyper	Hyper 01	Hyper/Hyper 01.wt2048	flac	2048	web
+Hyper	Hyper 02	Hyper/Hyper 02.wtd	flac-delta	2048	native
+Hyper	Hyper 03	Hyper/Hyper 03.wt2048	flac	2048	native
+Hyper	Hyper 04	Hyper/Hyper 04.wtd	flac-delta	2048	native
+Hyper	Hyper 05	Hyper/Hyper 05.wtd	flac-delta	2048	native
+Hyper	Hyper 06	Hyper/Hyper 06.wtd	flac-delta	2048	native
+Hyper	Hyper 07	Hyper/Hyper 07.wtd	flac-delta	2048	native
+Neu KatalYst	NK - ACTIVE	Neu KatalYst/NK - ACTIVE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - AGE	Neu KatalYst/NK - AGE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - ALIGN	Neu KatalYst/NK - ALIGN.wtd	flac-delta	2048	native
+Neu KatalYst	NK - ALKALINE	Neu KatalYst/NK - ALKALINE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - CHEMICAL	Neu KatalYst/NK - CHEMICAL.wtd	flac-delta	2048	web
+Neu KatalYst	NK - COKE	Neu KatalYst/NK - COKE.wtd	flac-delta	2048	web
+Neu KatalYst	NK - COLOR	Neu KatalYst/NK - COLOR.wtd	flac-delta	2048	native
+Neu KatalYst	NK - COMMERCIAL	Neu KatalYst/NK - COMMERCIAL.wtd	flac-delta	2048	native
+Neu KatalYst	NK - COMPOSE	Neu KatalYst/NK - COMPOSE.wtd	flac-delta	2048	web
+Neu KatalYst	NK - CONVENT	Neu KatalYst/NK - CONVENT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - CRUCIAL	Neu KatalYst/NK - CRUCIAL.wtd	flac-delta	2048	native
+Neu KatalYst	NK - DISPENSE	Neu KatalYst/NK - DISPENSE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - EFFECT	Neu KatalYst/NK - EFFECT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - EFFICIENT	Neu KatalYst/NK - EFFICIENT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - FINISH	Neu KatalYst/NK - FINISH.wtd	flac-delta	2048	native
+Neu KatalYst	NK - FRESH	Neu KatalYst/NK - FRESH.wtd	flac-delta	2048	native
+Neu KatalYst	NK - HELP	Neu KatalYst/NK - HELP.wtd	flac-delta	2048	native
+Neu KatalYst	NK - INDIFFERENT	Neu KatalYst/NK - INDIFFERENT.wtd	flac-delta	2048	web
+Neu KatalYst	NK - INERT	Neu KatalYst/NK - INERT.wtd	flac-delta	2048	web
+Neu KatalYst	NK - LATENT	Neu KatalYst/NK - LATENT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - MODIFY	Neu KatalYst/NK - MODIFY.wtd	flac-delta	2048	web
+Neu KatalYst	NK - MONOLITH	Neu KatalYst/NK - MONOLITH.wtd	flac-delta	2048	native
+Neu KatalYst	NK - MORAL	Neu KatalYst/NK - MORAL.wtd	flac-delta	2048	web
+Neu KatalYst	NK - NEUTRAL	Neu KatalYst/NK - NEUTRAL.wtd	flac-delta	2048	native
+Neu KatalYst	NK - NOBLE	Neu KatalYst/NK - NOBLE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - NUCLEUS	Neu KatalYst/NK - NUCLEUS.wtd	flac-delta	2048	native
+Neu KatalYst	NK - OBJECT	Neu KatalYst/NK - OBJECT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - OXIDIZE	Neu KatalYst/NK - OXIDIZE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - PERSONAL	Neu KatalYst/NK - PERSONAL.wtd	flac-delta	2048	native
+Neu KatalYst	NK - POLYMER	Neu KatalYst/NK - POLYMER.wtd	flac-delta	2048	native
+Neu KatalYst	NK - POROUS	Neu KatalYst/NK - POROUS.wtd	flac-delta	2048	native
+Neu KatalYst	NK - POTENT	Neu KatalYst/NK - POTENT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - POWDER	Neu KatalYst/NK - POWDER.wtd	flac-delta	2048	native
+Neu KatalYst	NK - PREFER	Neu KatalYst/NK - PREFER.wtd	flac-delta	2048	native
+Neu KatalYst	NK - PRIME	Neu KatalYst/NK - PRIME.wtd	flac-delta	2048	native
+Neu KatalYst	NK - PROMISE	Neu KatalYst/NK - PROMISE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - REACT	Neu KatalYst/NK - REACT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - REDUCE	Neu KatalYst/NK - REDUCE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - RESIDUE	Neu KatalYst/NK - RESIDUE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SELECT	Neu KatalYst/NK - SELECT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SOLID	Neu KatalYst/NK - SOLID.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SOLUBLE	Neu KatalYst/NK - SOLUBLE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SUBJECT	Neu KatalYst/NK - SUBJECT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SUIT	Neu KatalYst/NK - SUIT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SUPPORT	Neu KatalYst/NK - SUPPORT.wtd	flac-delta	2048	native
+Neu KatalYst	NK - SYNTHETIC	Neu KatalYst/NK - SYNTHETIC.wtd	flac-delta	2048	web
+Neu KatalYst	NK - TERTIARY	Neu KatalYst/NK - TERTIARY.wtd	flac-delta	2048	native
+Neu KatalYst	NK - USE	Neu KatalYst/NK - USE.wtd	flac-delta	2048	native
+Neu KatalYst	NK - VIEW	Neu KatalYst/NK - VIEW.wtd	flac-delta	2048	web
+Neu KatalYst	NK - WIT	Neu KatalYst/NK - WIT.wtd	flac-delta	2048	web
 Presets	Untitled project - 2020-May-16_7	Presets/Untitled project - 2020-May-16_7.wav	wav	256	web
 Presets	Untitled project - 2020-May-16_6	Presets/Untitled project - 2020-May-16_6.wav	wav	256	web
+Presets	L-TheBasicTwist	Presets/L-TheBasicTwist.wav	wav	2048	web
+Presets	L_BF	Presets/L_BF.wav	wav	2048	web
+Presets	L_string 2	Presets/L_string 2.wtd	flac-delta	2048	web
+Presets	L_string 	Presets/L_string.wtd	flac-delta	2048	web
+Presets	L_vowels	Presets/L_vowels.wav	wav	2048	web
+Presets	09-Roughmath II	Presets/09-Roughmath II.wtd	flac-delta	2048	web
+Presets	14-Flenders II	Presets/14-Flenders II.wav	wav	2048	web
+Presets	15-Flenders III	Presets/15-Flenders III.wav	wav	2048	web
+Presets	20-Magyr	Presets/20-Magyr.wav	wav	2048	web

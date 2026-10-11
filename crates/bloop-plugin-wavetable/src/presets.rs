@@ -1,5 +1,5 @@
-//! Wavetable's factory presets, as far as bloop may ship them
-//! (`tools/import.py` says which, and why), and loading one the way
+//! Wavetable's factory presets, every one SocaLabs ships
+//! (`tools/import.py` brings them in), and loading one the way
 //! `gin::Program::loadProcessor` does: every parameter to its default,
 //! then the preset's own, its wavetables and its modulation.
 
@@ -23,6 +23,28 @@ pub struct Preset {
     /// Source id, destination id and depth, in the order the original sums
     /// them.
     pub mods: &'static [(&'static str, &'static str, f32)],
+}
+
+impl Preset {
+    /// Whether the web build carries every table it plays: the tables of
+    /// the oscillators it switches on. One it lacks plays silent there.
+    #[must_use]
+    pub fn on_web(&self) -> bool {
+        let enabled = |uid: &str, default: f32| {
+            self.params
+                .iter()
+                .find(|(id, _)| *id == uid)
+                .map_or(default, |(_, value)| *value)
+                != 0.0
+        };
+        let on = [enabled("osc1enable", 1.0), enabled("osc2enable", 0.0)];
+        self.tables.iter().zip(on).all(|(&table, on)| {
+            !on || table == u16::MAX
+                || crate::bank::catalogue()
+                    .get(usize::from(table))
+                    .is_some_and(|entry| entry.on_web)
+        })
+    }
 }
 
 /// How many presets the preset knob reaches: the factory ones, then Init.

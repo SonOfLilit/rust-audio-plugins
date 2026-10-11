@@ -9,10 +9,10 @@ license = "BSD-3-Clause AND MIT AND CC0-1.0"
 # the revision vendor/wavetable pins — and of the Gin DSP it is built from,
 # shared with bloop-plugin-socalabs, which ports Gin at the revision
 # Wavetable's own Gin submodule pins. Its distortion's three amp modes are
-# Airwindows' DeRez2, FireAmp and GrindAmp (MIT). The bundled wavetables are
-# Adventure Kid's (CC0) and Neu KatalYst's (free to use in any synth); the
-# factory presets are those whose wavetables bloop may ship. LICENSE has
-# every text and tools/import.py says what is left out and why.
+# Airwindows' DeRez2, FireAmp and GrindAmp (MIT). The bundled wavetables and
+# factory presets are all of those SocaLabs distributes with Wavetable:
+# Adventure Kid's (CC0), BVKER's, Neu KatalYst's and the preset authors'.
+# LICENSE has every text; tools/import.py says how they are packed.
 #
 # No JUCE code is ported; what the original takes from JUCE is written from
 # its documented behaviour, and the gold tests link the real JUCE to hold it
@@ -41,6 +41,7 @@ libm = "0.2"
 bloop-core = { workspace = true }
 expect-test = { workspace = true }
 wasm-bindgen-test = { workspace = true }
+flacenc = { version = "0.5.1", default-features = false }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

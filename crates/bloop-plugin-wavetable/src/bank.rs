@@ -16,8 +16,15 @@ use std::sync::{Arc, Mutex, Weak};
 /// How a bundled table's audio is stored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
-    /// 16-bit FLAC, 2048-sample frames (Wavetable's `.wt2048`).
+    /// 16-bit FLAC, 2048-sample frames: Wavetable's `.wt2048`, as it ships.
     Flac,
+    /// The same 16-bit samples with each frame stored as its difference
+    /// from the frame before (the first as itself), in a 24-bit FLAC
+    /// (`.wtd`). A table that morphs a little from frame to frame packs a
+    /// good deal smaller this way; [`decode`] sums the frames back up.
+    /// `tools/import.py` keeps this form only for a table it makes
+    /// smaller, and only once it decodes to the original bit for bit.
+    FlacDelta,
     /// A WAV a preset carried inside itself.
     Wav,
 }
@@ -31,6 +38,8 @@ pub struct Entry {
     pub format: Format,
     /// Samples a frame.
     pub frame: usize,
+    /// Whether the web build carries its audio (every other build does).
+    pub on_web: bool,
     /// Where its file sits in the blob; `None` where this build does not
     /// carry it (the web build carries a subset).
     audio: Option<(usize, usize)>,
@@ -87,21 +96,49 @@ pub enum LoadError {
 pub fn load(index: usize, sample_rate: f64) -> Result<Wavetable, LoadError> {
     let entry = CATALOGUE.get(index).ok_or(LoadError::NoSuchTable)?;
     let bytes = entry.bytes().ok_or(LoadError::NotCarried)?;
-    let extension = match entry.format {
-        Format::Flac => "flac",
+    let (samples, file_rate) = decode(entry.format, entry.frame, bytes)?;
+    // A WAV reads only whole frames; a FLAC reads all, and the frames
+    // come out the same.
+    Ok(Wavetable::load(sample_rate, &samples, file_rate, entry.frame))
+}
+
+/// A table's file, `frame` samples a frame, as the samples the original
+/// reads from it, and their rate.
+///
+/// # Errors
+/// When it does not decode, or a [`Format::FlacDelta`] holds a part frame
+/// or sums to a sample past 16 bits.
+pub fn decode(format: Format, frame: usize, bytes: &[u8]) -> Result<(Vec<f32>, f64), LoadError> {
+    let extension = match format {
+        Format::Flac | Format::FlacDelta => "flac",
         Format::Wav => "wav",
     };
     let decoded = bloop_sampler_engine::decode(bytes.to_vec(), Some(extension))
         .map_err(|e| LoadError::Decode(e.to_string()))?;
+    let rate = f64::from(decoded.sample_rate());
     let samples = decoded.channel(0);
-    // A WAV reads only whole frames; a FLAC reads all, and the frames
-    // come out the same.
-    Ok(Wavetable::load(
-        sample_rate,
-        samples,
-        f64::from(decoded.sample_rate()),
-        entry.frame,
-    ))
+    if format != Format::FlacDelta {
+        return Ok((samples.to_vec(), rate));
+    }
+    if frame == 0 || samples.len() % frame != 0 {
+        return Err(LoadError::Decode(format!(
+            "{} samples are not whole frames of {frame}",
+            samples.len()
+        )));
+    }
+    let mut out = Vec::with_capacity(samples.len());
+    let mut sums = vec![0i32; frame];
+    for deltas in samples.chunks_exact(frame) {
+        for (sum, delta) in sums.iter_mut().zip(deltas) {
+            // A 24-bit sample: a whole number of 2^-23.
+            *sum += (f64::from(*delta) * 8_388_608.0).round() as i32;
+            if !(-32768..=32767).contains(sum) {
+                return Err(LoadError::Decode(format!("{sum} is past 16 bits")));
+            }
+            out.push(*sum as f32 / 32768.0);
+        }
+    }
+    Ok((out, rate))
 }
 
 /// What a synth reads its oscillators' tables and its sub's shapes from.
@@ -169,15 +206,29 @@ fn cache() -> &'static Mutex<Cache> {
     CACHE.get_or_init(Mutex::default)
 }
 
-fn shared_table(cache: &mut Cache, index: usize, rate: f64) -> Option<Arc<Wavetable>> {
+fn lock() -> std::sync::MutexGuard<'static, Cache> {
+    cache()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Table `index` at `rate`, shared if anything holds it, built if not.
+/// Built with the cache unlocked, so that two threads building different
+/// tables do not wait on each other; two building the same one keep the
+/// first.
+fn shared_table(index: usize, rate: f64) -> Option<Arc<Wavetable>> {
     let key = (index, rate.to_bits());
+    if let Some(table) = lock().tables.get(&key).and_then(Weak::upgrade) {
+        return Some(table);
+    }
+    let built = Arc::new(load(index, rate).ok()?);
+    let mut cache = lock();
     if let Some(table) = cache.tables.get(&key).and_then(Weak::upgrade) {
         return Some(table);
     }
-    let table = Arc::new(load(index, rate).ok()?);
-    cache.tables.insert(key, Arc::downgrade(&table));
+    cache.tables.insert(key, Arc::downgrade(&built));
     cache.tables.retain(|_, t| t.strong_count() > 0);
-    Some(table)
+    Some(built)
 }
 
 /// The tables for wavetables `indices` at `sample_rate`, built or shared.
@@ -185,18 +236,14 @@ fn shared_table(cache: &mut Cache, index: usize, rate: f64) -> Option<Arc<Waveta
 /// UI thread: slow the first time a table or rate is asked for.
 #[must_use]
 pub fn tables_for(indices: [u16; 2], sample_rate: f64) -> Arc<TableSet> {
-    let mut cache = cache()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let analog = Arc::clone(
-        cache
+        lock()
             .analog
             .entry(sample_rate.to_bits())
             .or_insert_with(|| Arc::new(AnalogTables::new(sample_rate))),
     );
-    let oscillators = indices.map(|index| {
-        shared_table(&mut cache, usize::from(index), sample_rate).map(|t| (index, t))
-    });
+    let oscillators = indices
+        .map(|index| shared_table(usize::from(index), sample_rate).map(|t| (index, t)));
     Arc::new(TableSet {
         sample_rate,
         oscillators,

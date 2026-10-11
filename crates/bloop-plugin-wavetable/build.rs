@@ -31,10 +31,12 @@ fn main() {
         let (bank, name, file, format, frame, carried) = (f[0], f[1], f[2], f[3], f[4], f[5]);
         let format = match format {
             "flac" => "Format::Flac",
+            "flac-delta" => "Format::FlacDelta",
             "wav" => "Format::Wav",
             other => panic!("unknown wavetable format {other}"),
         };
-        let audio = if web && carried != "web" {
+        let on_web = carried == "web";
+        let audio = if web && !on_web {
             "None".to_string()
         } else {
             let bytes = std::fs::read(root.join(file)).expect("read a bundled wavetable");
@@ -44,7 +46,7 @@ fn main() {
         };
         let _ = writeln!(
             index,
-            "    Entry {{ bank: {bank:?}, name: {name:?}, format: {format}, frame: {frame}, audio: {audio} }},"
+            "    Entry {{ bank: {bank:?}, name: {name:?}, format: {format}, frame: {frame}, on_web: {on_web}, audio: {audio} }},"
         );
         names.push(format!("{name:?}"));
     }
