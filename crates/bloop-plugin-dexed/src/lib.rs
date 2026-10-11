@@ -29,7 +29,9 @@ pub use patch::{
     init_voice, Bank, BankError, BankInfo, BANKS, BANK_SIZE, NUM_BANKS, NUM_LIBRARY_VOICES,
     PACKED_VOICE_SIZE, VOICE_SIZE,
 };
-pub use sysex::{checksum, read_sysex, voice_name, Remark, SysexError, Voices};
+pub use sysex::{
+    checksum, read_sysex, single_voice_sysex, voice_name, Remark, SysexError, Voices,
+};
 pub use user::{add_voice, user_voice, PRESET_LAST, PRESET_USER, USER_VOICES};
 
 /// The Dexed revision whose `Source/msfa` engine this crate is a port of.

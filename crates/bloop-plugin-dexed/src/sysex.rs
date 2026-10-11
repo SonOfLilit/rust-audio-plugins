@@ -249,6 +249,21 @@ fn dump(body: &[u8], message: usize, terminated: bool, out: &mut Voices) {
     }
 }
 
+/// `voice` as a single voice dump, `F0 43 00 00 01 1B`, its checksum and
+/// `F7`: a `.syx` file of one voice, which [`read_sysex`] reads back as
+/// the same voice. The operator switches are no part of a dump: every
+/// voice read from a file has all six on.
+#[must_use]
+pub fn single_voice_sysex(voice: &[u8; VOICE_SIZE]) -> Vec<u8> {
+    let data = &voice[..VCED_BYTES];
+    let (format, count) = FORMAT_VOICE;
+    let mut out = vec![0xf0, YAMAHA, 0x00, format, count[0], count[1]];
+    out.extend(data.iter().map(|&b| b & 0x7f));
+    out.push(checksum(data));
+    out.push(0xf7);
+    out
+}
+
 /// The packed voices `data` holds, whole ones only, unpacked.
 fn bank_voices(data: &[u8], voices: &mut Vec<[u8; VOICE_SIZE]>) {
     for packed in data.chunks_exact(PACKED_VOICE_SIZE) {
@@ -265,6 +280,40 @@ mod tests {
     use expect_test::{expect, Expect};
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::*;
+
+    /// A voice written as a one-voice dump reads back as the same voice,
+    /// with nothing said, for every voice bloop ships.
+    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+    fn a_voice_comes_back_from_its_own_dump() {
+        let mut differ = Vec::new();
+        let mut voices = 0;
+        for bank in 0..crate::patch::NUM_BANKS {
+            for at in 0..BANK_SIZE {
+                let voice = Bank::builtin(bank).voice(at);
+                let dump = single_voice_sysex(&voice);
+                voices += 1;
+                match read_sysex(&dump) {
+                    Ok(read) if read.voices == [voice] && read.remarks.is_empty() => {}
+                    other => differ.push(format!("{bank}/{at}: {other:?}")),
+                }
+            }
+        }
+        let first = single_voice_sysex(&Bank::builtin(0).voice(0));
+        let mut switched = Bank::builtin(0).voice(0);
+        switched[VOICE_SIZE - 1] = 0x15;
+        let back =
+            read_sysex(&single_voice_sysex(&switched)).map(|read| read.voices[0][VOICE_SIZE - 1]);
+        expect![[r#"
+            384 voices, 163 bytes a dump, starting [F0, 43, 00, 00, 01, 1B], ending [2B, F7]; differing: []
+            operators 2, 4, 6 switched off come back as Ok(3F)"#]].assert_eq(&format!(
+            "{voices} voices, {} bytes a dump, starting {:02X?}, ending {:02X?}; differing: {differ:?}\n\
+             operators 2, 4, 6 switched off come back as {back:02X?}",
+            first.len(),
+            &first[..6],
+            &first[first.len() - 2..],
+        ));
+    }
 
     /// The voices of `bytes` by name, and every remark, or the error.
     fn check(bytes: &[u8], expect: Expect) {
