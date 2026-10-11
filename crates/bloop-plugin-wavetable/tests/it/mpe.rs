@@ -304,9 +304,26 @@ fn notes_without_ids_and_chokes() {
     );
 }
 
+/// Every member taken, one by a Pattern's note (no id) of the pitch a
+/// live strike then plays on the master: the live strike's release comes
+/// off the master, and the Pattern's note keeps sounding until its own.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_release_by_id_never_takes_a_pattern_notes_channel() {
+    let mut lines = vec!["mpe on".to_string(), "on 60".to_string()];
+    for n in 1..=14 {
+        lines.push(format!("on {} #{n}", 70 + n));
+    }
+    lines.push("on 60 #20".to_string());
+    lines.push("off 60 #20".to_string());
+    lines.push("off 60".to_string());
+    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+    check(&lines, expect![[""]]);
+}
+
 /// The softest strike goes out at velocity 1, not 0 (a note-on at 0 is a
-/// note-off); a release naming an id no member holds comes off the member
-/// holding its pitch with none, or else the master.
+/// note-off); a release naming an id no member holds comes off the
+/// master, and the member holding its pitch under another id keeps it.
 #[test]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn a_whisper_still_strikes_and_a_stranger_comes_off_the_master() {

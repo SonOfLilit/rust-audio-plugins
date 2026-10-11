@@ -165,13 +165,11 @@ impl Channels {
     }
 
     /// The channel a note stopping is on, let go of: the member holding
-    /// its id, or, for a note with none, the first holding its pitch with
-    /// none; the master when no member holds it.
+    /// its id and pitch; for a note with no id, the first member holding
+    /// its pitch; the master when no member holds it (a note that went
+    /// there when every member was taken).
     fn free(&mut self, id: NoteId, note: u8) -> u8 {
-        let held = |m: &Member| {
-            m.holding
-                .is_some_and(|(held, n)| n == note && (held == id || held.is_none()))
-        };
+        let held = |m: &Member| id.is_none() && m.holding.is_some_and(|(_, n)| n == note);
         let exact = self
             .members
             .iter()
