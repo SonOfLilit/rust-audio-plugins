@@ -4,4 +4,5 @@
 mod decode;
 mod encode;
 mod gold;
+mod mp3;
 mod render;

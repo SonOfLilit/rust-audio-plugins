@@ -19,6 +19,9 @@ license = "MIT"
 # see `a_shaped_envelope_is_identical_on_every_platform`.
 libm = "0.2"
 symphonia = { workspace = true }
+# EXPORT's and SHARE's MP3s: a pure-Rust Layer III encoder (Apache-2.0,
+# no C, no FFI), so it links statically on every target (`mp3`).
+rusty_mp3 = "=1.0.0"
 
 [dev-dependencies]
 expect-test = { workspace = true }

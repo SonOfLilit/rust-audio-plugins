@@ -24,6 +24,7 @@ mod buffer;
 mod decode;
 pub mod edit;
 mod juce;
+mod mp3;
 mod onsets;
 mod params;
 mod record;
@@ -33,6 +34,7 @@ pub mod wave;
 pub use buffer::{SampleBuffer, SharedSample};
 pub use decode::{decode, ImportError, SampleDecoder, IMPORTABLE_EXTENSIONS};
 pub use edit::{reverse, trim};
+pub use mp3::{encode_mp3, Mp3Encoding, MP3_KBPS, RUSTY_MP3_VERSION};
 pub use onsets::detect_onsets;
 pub use params::{
     ranges, AmpEnvelope, ParamRange, SamplerParams, STEADY_LOWPASS_OF_NYQUIST, WAVETABLE_CUTOFF_HZ,
