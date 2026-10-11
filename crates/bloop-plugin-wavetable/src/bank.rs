@@ -86,6 +86,168 @@ pub fn index_of(name: &str) -> Option<usize> {
     CATALOGUE.iter().position(|e| e.name == name)
 }
 
+// ——— the user's own tables ———
+
+/// How many tables of the user's one run of the app can hold: a preset
+/// that carries one, or a WAV imported as one, adds it once.
+pub const USER_TABLES: usize = 1024;
+
+/// A table that came from outside bloop: a WAV a preset carried inside
+/// itself, or one imported (Wavetable's "+").
+#[derive(Debug)]
+pub struct UserTable {
+    /// What the user knows it by: its file's name, or the name the
+    /// preset gave it.
+    pub name: String,
+    /// What it is saved and found again by, whatever it is called and
+    /// wherever it sits: a hash of its samples and frame size.
+    pub key: String,
+    samples: Vec<f32>,
+    rate: f64,
+    frame: usize,
+}
+
+impl UserTable {
+    /// How many frames it holds.
+    #[must_use]
+    pub fn frames(&self) -> usize {
+        self.samples.len() / self.frame.max(1)
+    }
+}
+
+fn user_tables() -> &'static [std::sync::OnceLock<UserTable>; USER_TABLES] {
+    static TABLES: [std::sync::OnceLock<UserTable>; USER_TABLES] =
+        [const { std::sync::OnceLock::new() }; USER_TABLES];
+    &TABLES
+}
+
+/// Table `index`, when it is one of the user's: those come after the
+/// catalogue.
+#[must_use]
+pub fn user_table(index: usize) -> Option<&'static UserTable> {
+    user_tables()
+        .get(index.checked_sub(CATALOGUE.len())?)?
+        .get()
+}
+
+/// FNV-1a over a table's frame size and samples: what a user table is
+/// kept by.
+fn table_key(samples: &[f32], frame: usize) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let bytes = (frame as u64)
+        .to_le_bytes()
+        .into_iter()
+        .chain(samples.iter().flat_map(|s| s.to_bits().to_le_bytes()));
+    for b in bytes {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("user:{h:016x}")
+}
+
+/// A WAV's frame size as a Serum-style `clm ` chunk names it
+/// (`<!>2048 …`): `gin::getWavetableSize`. `None` for a WAV that names
+/// none.
+#[must_use]
+pub fn wavetable_size(wav: &[u8]) -> Option<usize> {
+    let at = wav.windows(4).position(|w| w == b"clm ")?;
+    let text = wav.get(at + 8..)?;
+    let digits = text.strip_prefix(b"<!>")?;
+    let n: String = digits
+        .iter()
+        .take(16)
+        .take_while(|b| b.is_ascii_digit())
+        .map(|&b| char::from(b))
+        .collect();
+    n.parse().ok().filter(|&n: &usize| n > 0)
+}
+
+/// A WAV as a table of the user's, `frame` samples a frame (or what its
+/// `clm ` chunk says, when `frame` is `None`), kept for the rest of the
+/// run: its number, the one it already had if the same table was kept
+/// before. What Wavetable's `loadWaveTable (…, "wav", size)` reads: whole
+/// frames only, the first channel.
+///
+/// # Errors
+/// It does not decode, says no frame size, its frame size is not a power
+/// of two, it holds less than a frame, or there is no room for another.
+pub fn keep_wav(name: &str, bytes: &[u8], frame: Option<usize>) -> Result<u16, LoadError> {
+    let frame = frame
+        .filter(|&f| f > 0)
+        .or_else(|| wavetable_size(bytes))
+        .ok_or_else(|| LoadError::Decode("it names no frame size".to_string()))?;
+    if !frame.is_power_of_two() {
+        return Err(LoadError::Decode(format!(
+            "its frames are {frame} samples, not a power of two"
+        )));
+    }
+    let (mut samples, rate) = decode(Format::Wav, frame, bytes)?;
+    samples.truncate(samples.len() / frame * frame);
+    if samples.is_empty() {
+        return Err(LoadError::Decode("it holds less than a frame".to_string()));
+    }
+    let mut table = UserTable {
+        name: name.to_string(),
+        key: table_key(&samples, frame),
+        samples,
+        rate,
+        frame,
+    };
+    let number =
+        |at: usize| u16::try_from(CATALOGUE.len() + at).map_err(|_| LoadError::NoSuchTable);
+    for (at, slot) in user_tables().iter().enumerate() {
+        if slot.get().is_none() {
+            match slot.set(table) {
+                Ok(()) => return number(at),
+                // Another thread kept one here first: this slot is
+                // theirs, and ours goes on looking.
+                Err(ours) => table = ours,
+            }
+        }
+        if slot.get().is_some_and(|held| held.key == table.key) {
+            return number(at);
+        }
+    }
+    Err(LoadError::Decode(
+        "there is no room for another table".to_string(),
+    ))
+}
+
+/// Table `index`'s name: the catalogue's, or the user's for one of theirs.
+#[must_use]
+pub fn name_of(index: usize) -> Option<&'static str> {
+    CATALOGUE
+        .get(index)
+        .map(|e| e.name)
+        .or_else(|| user_table(index).map(|t| t.name.as_str()))
+}
+
+/// What table `index` is saved by: a catalogue table's name, which no
+/// reordering of the catalogue changes, or a user table's key. `None`
+/// for a number that is no table.
+#[must_use]
+pub fn key_of(index: usize) -> Option<&'static str> {
+    CATALOGUE
+        .get(index)
+        .map(|e| e.name)
+        .or_else(|| user_table(index).map(|t| t.key.as_str()))
+}
+
+/// The table saved as `key` ([`key_of`]), where it sits in this build and
+/// this run: a catalogue table by name, a user table kept this run by
+/// its key.
+#[must_use]
+pub fn index_of_key(key: &str) -> Option<u16> {
+    let at = index_of(key).or_else(|| {
+        user_tables()
+            .iter()
+            .map_while(std::sync::OnceLock::get)
+            .position(|t| t.key == key)
+            .map(|k| CATALOGUE.len() + k)
+    })?;
+    u16::try_from(at).ok()
+}
+
 /// Why a table could not be built.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoadError {
@@ -97,10 +259,12 @@ pub enum LoadError {
     Decode(String),
 }
 
-
 /// Table `index`'s samples, as the original reads them from its file:
 /// the samples, their rate and how many make a frame.
 fn source(index: usize) -> Result<(Vec<f32>, f64, usize), LoadError> {
+    if let Some(user) = user_table(index) {
+        return Ok((user.samples.clone(), user.rate, user.frame));
+    }
     let entry = CATALOGUE.get(index).ok_or(LoadError::NoSuchTable)?;
     let bytes = entry.bytes().ok_or(LoadError::NotCarried)?;
     let (samples, file_rate) = decode(entry.format, entry.frame, bytes)?;
@@ -306,9 +470,8 @@ pub fn tables_for(indices: [u16; 2], sample_rate: f64, quality: Quality) -> Arc<
             .entry(sample_rate.to_bits())
             .or_insert_with(|| Arc::new(AnalogTables::new(sample_rate))),
     );
-    let oscillators = indices.map(|index| {
-        shared_table(usize::from(index), sample_rate, quality).map(|t| (index, t))
-    });
+    let oscillators = indices
+        .map(|index| shared_table(usize::from(index), sample_rate, quality).map(|t| (index, t)));
     Arc::new(TableSet {
         sample_rate,
         quality,

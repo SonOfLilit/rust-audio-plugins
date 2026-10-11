@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<state name="Thirty Routes" author="bloop" tags="Pad Test">
+  <state wt1="NK - INERT" wt2="AKWP bw_squ" wt1Data="0." wt2Data="0.">
+    <MODMATRIX>
+      <MODITEM srcId="lfo1" depth="0.3" dstId="osc1pos"/>
+      <MODITEM srcId="lfo2" depth="0.2" dstId="osc1pos" function="sineIn"/>
+      <MODITEM srcId="env1" depth="0.4" dstId="osc1pos" function="exponentialOut"/>
+      <MODITEM srcId="vel" depth="-0.25" dstId="osc1pos" function="invQuadraticIn" biPolarMapping="1"/>
+      <MODITEM srcId="lfo1" depth="0.15" dstId="osc2pos" function="sineInOut" biPolarMapping="0"/>
+      <MODITEM srcId="env2" depth="0.5" dstId="osc2pos" function="exponentialInOut"/>
+      <MODITEM srcId="mlfo3" depth="0.1" dstId="osc2pos" function="invSineOut"/>
+      <MODITEM srcId="env1" depth="0.3" dstId="fltfreq" function="quadraticOut"/>
+      <MODITEM srcId="env3" depth="-0.2" dstId="fltfreq" function="invExponentialIn" biPolarMapping="1"/>
+      <MODITEM srcId="lfo3" depth="0.12" dstId="fltfreq" function="quadraticInOut"/>
+      <MODITEM srcId="note" depth="0.2" dstId="fltfreq" function="invLinear"/>
+      <MODITEM srcId="vel" depth="0.35" dstId="fltres" function="exponentialIn"/>
+      <MODITEM srcId="lfo2" depth="0.25" dstId="fltres" function="sineOut" biPolarMapping="0"/>
+      <MODITEM srcId="env2" depth="0.1" dstId="osc1formant" function="invQuadraticOut"/>
+      <MODITEM srcId="lfo1" depth="-0.3" dstId="osc1bend" function="invSineIn"/>
+      <MODITEM srcId="env3" depth="0.2" dstId="osc2formant" function="invQuadraticInOut"/>
+      <MODITEM srcId="lfo3" depth="0.2" dstId="osc2bend" function="invSineInOut" biPolarMapping="1"/>
+      <MODITEM srcId="mstep" depth="0.15" dstId="osc1level" function="invExponentialOut"/>
+      <MODITEM srcId="step" depth="0.15" dstId="osc2level" function="invExponentialInOut"/>
+      <MODITEM srcId="env1" depth="0.2" dstId="osc1pan" function="linear" biPolarMapping="1"/>
+      <MODITEM srcId="lfo2" depth="0.4" dstId="osc2pan"/>
+      <MODITEM srcId="vel" depth="0.3" dstId="sublevel" function="quadraticIn"/>
+      <MODITEM srcId="env2" depth="0.2" dstId="noiselevel" function="sineIn"/>
+      <MODITEM srcId="lfo1" depth="0.1" dstId="osc1finetune" function="nonsense"/>
+      <MODITEM srcId="env3" depth="0.3" dstId="chMix" function="exponentialOut"/>
+      <MODITEM srcId="lfo3" depth="0.2" dstId="osc1detune" enabled="0"/>
+      <MODITEM srcId="env1" depth="0.25" dstId="osc2detune" function="sineInOut"/>
+      <MODITEM srcId="lfo1" depth="0.1" dstId="osc1pos" function="quadraticIn"/>
+      <MODITEM srcId="mlfo1" depth="0.2" dstId="fltamount" function="invLinear" biPolarMapping="1"/>
+      <MODITEM srcId="env2" depth="-0.15" dstId="level" function="quadraticOut" enabled="1"/>
+    </MODMATRIX>
+  </state>
+  <param uid="osc1pos" val="30.0"/>
+  <param uid="osc2enable" val="1.0"/>
+  <param uid="osc2pos" val="60.0"/>
+  <param uid="osc2tune" val="7.0"/>
+  <param uid="subenable" val="1.0"/>
+  <param uid="noiseenable" val="1.0"/>
+  <param uid="noiselevel" val="-30.0"/>
+  <param uid="fltfreq" val="70.0"/>
+  <param uid="fltres" val="20.0"/>
+  <param uid="env1enable" val="1.0"/>
+  <param uid="env1attack" val="0.3"/>
+  <param uid="env1decay" val="0.8"/>
+  <param uid="env2enable" val="1.0"/>
+  <param uid="env2attack" val="0.05"/>
+  <param uid="env3enable" val="1.0"/>
+  <param uid="env3decay" val="1.5"/>
+  <param uid="lfo1enable" val="1.0"/>
+  <param uid="lfo1rate" val="3.0"/>
+  <param uid="lfo2enable" val="1.0"/>
+  <param uid="lfo2rate" val="5.5"/>
+  <param uid="lfo2wave" val="3.0"/>
+  <param uid="lfo3enable" val="1.0"/>
+  <param uid="lfo3rate" val="0.7"/>
+  <param uid="slfoenable" val="1.0"/>
+  <param uid="slfostep2" val="0.6"/>
+  <param uid="slfostep5" val="-0.4"/>
+  <param uid="chEnable" val="1.0"/>
+  <param uid="uiMOD" val="1.0"/>
+  <param uid="notaparameter" val="1.0"/>
+</state>

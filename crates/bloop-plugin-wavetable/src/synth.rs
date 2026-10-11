@@ -17,8 +17,8 @@ use crate::dsp::grindamp::GrindAmp;
 use crate::dsp::lfo::{Lfo, LfoParams, Shape, StepLfo};
 use crate::dsp::random::JuceRandom;
 use crate::dsp::tables::NoiseSource;
-use crate::modmatrix::{src, Matrix, DESTINATION_OF};
-use crate::params::{id, Values, MOD_SLOTS, PARAMS};
+use crate::modmatrix::{src, Matrix, RouteSlot, DESTINATION_OF};
+use crate::params::{id, route, Values, PARAMS, ROUTES, ROUTE_PARAMS};
 use crate::voice::{Context, GlideInfo, KeyState, MpeValue, Note, Voice, MAX_BLOCK};
 use bloop_plugin_socalabs::shared::{GlibcRand, Modulation, PlateReverb, DURATIONS};
 
@@ -288,7 +288,7 @@ impl Synth {
     /// A parameter set, as the host sets it.
     pub fn set_param(&mut self, index: usize, value: f32) {
         self.values.set(index, value);
-        if (id::MOD1_SRC..id::MOD1_SRC + MOD_SLOTS * 3).contains(&index) {
+        if (id::MOD1_SRC..id::MOD1_SRC + ROUTES * ROUTE_PARAMS).contains(&index) {
             self.routes_dirty = true;
         }
     }
@@ -314,13 +314,16 @@ impl Synth {
 
     fn rebuild_routes(&mut self) {
         let values = &self.values;
-        self.matrix.set_routes((0..MOD_SLOTS).map(|slot| {
-            let at = id::MOD1_SRC + slot * 3;
-            (
-                values.user(at) as usize,
-                values.user(at + 1) as usize,
-                values.user(at + 2),
-            )
+        self.matrix.set_routes((0..ROUTES).map(|slot| {
+            let at = id::MOD1_SRC + slot * ROUTE_PARAMS;
+            RouteSlot {
+                source: values.user(at + route::SOURCE) as usize,
+                destination: values.user(at + route::DESTINATION) as usize,
+                depth: values.user(at + route::DEPTH),
+                enabled: values.user(at + route::ENABLED) >= 0.5,
+                curve: values.user(at + route::CURVE) as usize,
+                mapping: values.user(at + route::MAPPING) as usize,
+            }
         }));
         self.routes_dirty = false;
     }

@@ -13,6 +13,9 @@
 //                                load begins
 //   mod <src> <uid> <bits>       route modulation source <src> (in the
 //                                order setupModMatrix adds them) to <uid>
+//   presetxml <bytes>            followed by <bytes> of a preset file: its
+//                                parameters over the defaults, and its
+//                                MODMATRIX through ModMatrix::stateUpdated
 //   loaded                       what stateUpdated leaves after a program
 //                                load: the next block starts afresh
 //   table <osc> <frames> <copies> <size> <notesPerTable>
@@ -242,6 +245,30 @@ int main()
             if (p == nullptr || p->getModIndex() < 0)
                 fail ("no mod destination " + uid);
             processor->modMatrix.setModDepth (gin::ModSrcId (src), gin::ModDstId (p->getModIndex()), depth);
+        }
+        else if (command == "presetxml")
+        {
+            // A preset file, as gin::Program::loadFromFile reads it and
+            // loadProcessor puts it in place: every parameter to its
+            // default, then the file's, and its state — the matrix —
+            // through the matrix's own stateUpdated.
+            auto bytes = parse<size_t> (words, "byte count");
+            std::string text (bytes, '\0');
+            if (! std::cin.read (text.data(), std::streamsize (bytes)))
+                fail ("short read of a preset");
+            std::cin.ignore (1);
+            auto root = juce::parseXML (juce::String (text));
+            if (root == nullptr)
+                fail ("the preset is not XML");
+            for (auto p : processor->getPluginParameters())
+                p->setUserValue (p->getUserDefaultValue());
+            for (auto e = root->getChildByName ("param"); e != nullptr; e = e->getNextElementWithTagName ("param"))
+                if (auto p = processor->getParameter (e->getStringAttribute ("uid")))
+                    p->setUserValue (float (e->getDoubleAttribute ("val")));
+            juce::ValueTree state ("state");
+            if (auto s = root->getChildByName ("state"))
+                state = juce::ValueTree::fromXml (*s);
+            processor->modMatrix.stateUpdated (state);
         }
         else if (command == "loaded")
         {

@@ -3,13 +3,14 @@
 //! worked out from its knob and whatever modulates it
 //! (`gin_plugin/plugin/gin_modmatrix.{h,cpp}`).
 //!
-//! A route is a slot: a source, a destination and a depth. The original
+//! A route is a slot of parameters (`params::route`): a source, a
+//! destination, a depth, whether it is on, its curve (`ModFunction`) and
+//! its mapping (`biPolarMapping`, or as the source swings). The original
 //! keeps one list of sources per destination, in the order they were
 //! added — the order of a preset's `MODITEM`s — and sums them in that
-//! order; so does this, from the slots in slot order. Every route here is
-//! enabled, linear, and maps as its source does (`sameAsSource`), which is
-//! all a factory preset asks for: none sets a curve, a mapping or
-//! `enabled="0"`.
+//! order; so does this, from the slots in slot order. A route switched
+//! off keeps its slot and runs nothing, as the original keeps it and
+//! skips it.
 
 use crate::params::{Kind, PARAM_COUNT, SPECS};
 use bloop_plugin_socalabs::shared::{jlimit, ValueSmoother};
@@ -188,34 +189,124 @@ pub fn source_named(id: &str) -> Option<usize> {
     SOURCES.iter().position(|s| s.id == id)
 }
 
-/// How many routes reach one destination at most. A factory preset's
-/// most is 4; a ninth slot on the same destination is ignored.
-pub const MAX_PER_DESTINATION: usize = 8;
+/// The destination that is the parameter with id `uid`, by its place
+/// among the destinations.
+#[must_use]
+pub fn destination_named(uid: &str) -> Option<usize> {
+    let at = crate::params::index_of(uid)?;
+    usize::try_from(DESTINATION_OF[at]).ok()
+}
 
-/// A route the matrix runs: which source, how deep.
+/// How many routes reach one destination at most. Gin has no cap; a
+/// factory preset's most is 4, and a (source, destination) pair is one
+/// route, so 32 is more than any preset can usefully put on one. A route
+/// past it is left out, and said to be (`presets::UserPreset::left_out`).
+pub const MAX_PER_DESTINATION: usize = 32;
+
+/// A route's curve, `ModFunction`: its index in [`crate::params::CURVES`].
+pub type Curve = u8;
+
+/// A route the matrix runs: which source, how deep, through which curve,
+/// and whether it lands both ways (`biPolarMapping`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Route {
     pub source: u8,
     pub depth: f32,
+    pub curve: Curve,
+    pub bipolar: bool,
 }
 
-/// `ModMatrix::shape` for a linear route mapped as its source maps: a
-/// bipolar source is moved to 0..1 and back, through the original's
-/// arithmetic, which is not quite the identity.
+/// One route as its parameters say it: source and destination numbered
+/// from 1 with 0 for none, as the knobs hold them; `mapping` is an index
+/// into [`crate::params::MAPPINGS`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RouteSlot {
+    pub source: usize,
+    pub destination: usize,
+    pub depth: f32,
+    pub enabled: bool,
+    pub curve: usize,
+    pub mapping: usize,
+}
+
+/// `juce::jmap (v, a, b, c, d)`: `c + ((d - c) * (v - a)) / (b - a)`.
 #[inline]
-fn shape(value: f32, bipolar: bool) -> f32 {
-    if bipolar {
-        let unipolar = (1.0 * (value - -1.0)) / (1.0 - -1.0);
-        -1.0 + (2.0 * (unipolar - 0.0)) / (1.0 - 0.0)
-    } else {
-        value
-    }
+fn jmap(v: f32, a: f32, b: f32, c: f32, d: f32) -> f32 {
+    c + ((d - c) * (v - a)) / (b - a)
 }
 
-/// The routes, by destination, and the mono sources' values.
+/// `ModMatrix::shape (v, function, biPolarSrc, biPolarDst)`: a bipolar
+/// source moved to 0..1, shaped by the curve, and moved to -1..1 for a
+/// route that lands both ways — through the original's arithmetic, which
+/// is not quite the identity for a linear one.
+#[inline]
+#[must_use]
+pub fn shape(value: f32, curve: Curve, bipolar_source: bool, bipolar_destination: bool) -> f32 {
+    use bloop_plugin_socalabs::shared::math::{cosf, pow, sinf};
+    use core::f32::consts::PI;
+    let mut v = value;
+    if bipolar_source {
+        v = jmap(v, -1.0, 1.0, 0.0, 1.0);
+    }
+    // 10 to 19 are 0 to 9 with the input turned over.
+    if curve >= 10 {
+        v = 1.0 - v;
+    }
+    v = match curve % 10 {
+        1 => v * v,
+        2 => {
+            if v < 0.5 {
+                2.0 * v * v
+            } else {
+                (-2.0 * v * v) + (4.0 * v) - 1.0
+            }
+        }
+        3 => -(v * (v - 2.0)),
+        4 => sinf((v - 1.0) * (PI / 2.0)) + 1.0,
+        5 => 0.5 * (1.0 - cosf(v * PI)),
+        6 => sinf(v * PI / 2.0),
+        // `std::pow (2, float)` is the double one.
+        7 => {
+            if v == 0.0 {
+                v
+            } else {
+                pow(2.0, f64::from(10.0 * (v - 1.0))) as f32
+            }
+        }
+        8 => {
+            if v == 0.0 || v == 1.0 {
+                v
+            } else if v < 0.5 {
+                (0.5 * pow(2.0, f64::from((20.0 * v) - 10.0))) as f32
+            } else {
+                (-0.5 * pow(2.0, f64::from((-20.0 * v) + 10.0)) + 1.0) as f32
+            }
+        }
+        9 => {
+            if v == 1.0 {
+                v
+            } else {
+                (1.0 - pow(2.0, f64::from(-10.0 * v))) as f32
+            }
+        }
+        _ => v,
+    };
+    if bipolar_destination {
+        v = jmap(v, 0.0, 1.0, -1.0, 1.0);
+    }
+    v
+}
+
+/// The routes, by destination, and the mono sources' values. The routes
+/// lie end to end, each destination's together in the order they were
+/// made, which is the order the original sums them in: [`ROUTES`] of
+/// them at most, [`MAX_PER_DESTINATION`] a destination.
+///
+/// [`ROUTES`]: crate::params::ROUTES
 #[derive(Clone, Debug)]
 pub struct Matrix {
-    routes: [[Route; MAX_PER_DESTINATION]; DESTINATION_COUNT],
+    routes: [Route; crate::params::ROUTES],
+    starts: [u16; DESTINATION_COUNT],
     counts: [u8; DESTINATION_COUNT],
     mono: [f32; SOURCE_COUNT],
     smoothers: [ValueSmoother; DESTINATION_COUNT],
@@ -224,7 +315,8 @@ pub struct Matrix {
 impl Default for Matrix {
     fn default() -> Self {
         Self {
-            routes: [[Route::default(); MAX_PER_DESTINATION]; DESTINATION_COUNT],
+            routes: [Route::default(); crate::params::ROUTES],
+            starts: [0; DESTINATION_COUNT],
             counts: [0; DESTINATION_COUNT],
             mono: [0.0; SOURCE_COUNT],
             smoothers: core::array::from_fn(|_| ValueSmoother::default()),
@@ -310,34 +402,61 @@ impl Matrix {
         }
     }
 
-    /// The routes, from the slots `(source, destination, depth)`, each
-    /// numbered from 1 with 0 for none.
-    pub fn set_routes(&mut self, slots: impl Iterator<Item = (usize, usize, f32)>) {
+    /// The routes, from the route slots in order. A slot with no source or
+    /// destination, or switched off, runs nothing; past
+    /// [`MAX_PER_DESTINATION`] on one destination, a slot is left out.
+    /// Allocation-free.
+    pub fn set_routes(&mut self, slots: impl Iterator<Item = RouteSlot> + Clone) {
+        let runs = |slot: &RouteSlot| -> Option<(usize, usize)> {
+            let source = slot.source.checked_sub(1)?;
+            let destination = slot.destination.checked_sub(1)?;
+            (slot.enabled && source < SOURCE_COUNT && destination < DESTINATION_COUNT)
+                .then_some((source, destination))
+        };
+        // How many land on each destination, then where each one's run
+        // starts, then the runs filled in slot order.
         self.counts = [0; DESTINATION_COUNT];
-        for (source, destination, depth) in slots {
-            let (Some(source), Some(destination)) =
-                (source.checked_sub(1), destination.checked_sub(1))
-            else {
+        for slot in slots.clone() {
+            if let Some((_, destination)) = runs(&slot) {
+                let count = &mut self.counts[destination];
+                if usize::from(*count) < MAX_PER_DESTINATION {
+                    *count += 1;
+                }
+            }
+        }
+        let mut at = 0u16;
+        for (start, count) in self.starts.iter_mut().zip(&self.counts) {
+            *start = at;
+            at += u16::from(*count);
+        }
+        let mut filled = [0u8; DESTINATION_COUNT];
+        for slot in slots {
+            let Some((source, destination)) = runs(&slot) else {
                 continue;
             };
-            if source >= SOURCE_COUNT || destination >= DESTINATION_COUNT {
+            let n = filled[destination];
+            if n >= self.counts[destination] {
                 continue;
             }
-            let count = usize::from(self.counts[destination]);
-            if count < MAX_PER_DESTINATION {
-                self.routes[destination][count] = Route {
-                    source: source as u8,
-                    depth,
-                };
-                self.counts[destination] += 1;
-            }
+            filled[destination] = n + 1;
+            self.routes[usize::from(self.starts[destination]) + usize::from(n)] = Route {
+                source: source as u8,
+                depth: slot.depth,
+                curve: slot.curve.min(19) as Curve,
+                bipolar: match slot.mapping {
+                    1 => false,
+                    2 => true,
+                    _ => SOURCES[source].bipolar,
+                },
+            };
         }
     }
 
     /// The routes reaching `destination`, in order.
     #[must_use]
     pub fn routes(&self, destination: usize) -> &[Route] {
-        &self.routes[destination][..usize::from(self.counts[destination])]
+        let start = usize::from(self.starts[destination]);
+        &self.routes[start..start + usize::from(self.counts[destination])]
     }
 
     pub fn set_mono(&mut self, source: usize, value: f32) {
@@ -379,7 +498,7 @@ impl Matrix {
             } else {
                 self.mono[source]
             };
-            base += shape(value, info.bipolar) * route.depth;
+            base += shape(value, route.curve, info.bipolar, route.bipolar) * route.depth;
         }
         jlimit(0.0, 1.0, base)
     }

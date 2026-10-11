@@ -576,9 +576,82 @@ const GRIND: [Spec; 4] = [
     ext("grindmix", "Grind Mix", UNIT, 1.0, Unit::Number),
 ];
 
-/// How many modulation slots bloop gives the matrix: room for the most a
-/// factory preset uses (21), with a few to spare.
-pub const MOD_SLOTS: usize = 24;
+/// How many routes the modulation matrix holds. Gin keeps a list a
+/// destination with no cap; a (source, destination) pair is one route,
+/// and a factory preset uses at most 21, so a preset past this many is
+/// not one anybody plays (it loads, and says which routes it left out:
+/// `presets::UserPreset::left_out`).
+pub const ROUTES: usize = 256;
+
+/// How many parameters a route takes: its source, destination, depth,
+/// whether it is on, its curve and its mapping ([`route`]).
+pub const ROUTE_PARAMS: usize = 6;
+
+/// Offsets within a route's parameters, from its source.
+pub mod route {
+    pub const SOURCE: usize = 0;
+    pub const DESTINATION: usize = 1;
+    pub const DEPTH: usize = 2;
+    pub const ENABLED: usize = 3;
+    pub const CURVE: usize = 4;
+    pub const MAPPING: usize = 5;
+}
+
+/// A route's curve: Gin's `ModFunction`, by the names its editor shows,
+/// in its order. A preset names them by [`CURVE_IDS`].
+pub const CURVES: [&str; 20] = [
+    "Linear",
+    "Quadratic In",
+    "Quadratic In Out",
+    "Quadratic Out",
+    "Sine In",
+    "Sine In Out",
+    "Sine Out",
+    "Exponential In",
+    "Exponential In Out",
+    "Exponential Out",
+    "Inv Linear",
+    "Inv Quadratic In",
+    "Inv Quadratic In Out",
+    "Inv Quadratic Out",
+    "Inv Sine In",
+    "Inv Sine In Out",
+    "Inv Sine Out",
+    "Inv Exponential In",
+    "Inv Exponential In Out",
+    "Inv Exponential Out",
+];
+
+/// [`CURVES`] as a preset's `function` attribute spells them
+/// (`gin_modmatrix.cpp`'s `funcToStr`).
+pub const CURVE_IDS: [&str; 20] = [
+    "linear",
+    "quadraticIn",
+    "quadraticInOut",
+    "quadraticOut",
+    "sineIn",
+    "sineInOut",
+    "sineOut",
+    "exponentialIn",
+    "exponentialInOut",
+    "exponentialOut",
+    "invLinear",
+    "invQuadraticIn",
+    "invQuadraticInOut",
+    "invQuadraticOut",
+    "invSineIn",
+    "invSineInOut",
+    "invSineOut",
+    "invExponentialIn",
+    "invExponentialInOut",
+    "invExponentialOut",
+];
+
+/// How a route maps its source onto its destination: as the source
+/// swings (a preset that does not say, and Wavetable's own default,
+/// `sameAsSource`), or one way or both whatever the source does (a
+/// preset's `biPolarMapping`).
+pub const MAPPINGS: [&str; 3] = ["Same as Source", "Unipolar", "Bipolar"];
 
 /// bloop's own parameters, after the original's.
 const fn host(uid: &'static str, name: &'static str, end: f32, unit: Unit) -> Spec {
@@ -661,12 +734,12 @@ const TABLES: [Spec; 2] = [
     },
 ];
 
-/// The highest source and destination numbers a slot can hold; 0 is
+/// The highest source and destination numbers a route can hold; 0 is
 /// none. Which is which is `crate::modmatrix`'s to say.
 pub const SOURCE_KNOB_TOP: f32 = 255.0;
 pub const DESTINATION_KNOB_TOP: f32 = 255.0;
 
-macro_rules! slots {
+macro_rules! routes {
     ($($n:literal)*) => {
         [$(
             host(concat!("mod", $n, "src"), concat!("Mod ", $n, " Source"), SOURCE_KNOB_TOP, Unit::Count),
@@ -675,15 +748,38 @@ macro_rules! slots {
                 range: Range::new(-1.0, 1.0, 0.0, 1.0),
                 ..host(concat!("mod", $n, "depth"), concat!("Mod ", $n, " Depth"), 0.0, Unit::Number)
             },
+            Spec {
+                default: 1.0,
+                ..host(concat!("mod", $n, "enabled"), concat!("Mod ", $n, " Enabled"), 1.0, Unit::Switch)
+            },
+            host(concat!("mod", $n, "curve"), concat!("Mod ", $n, " Curve"), 19.0, Unit::Choice(&CURVES)),
+            host(concat!("mod", $n, "mapping"), concat!("Mod ", $n, " Mapping"), 2.0, Unit::Choice(&MAPPINGS)),
         )*]
     };
 }
 
-const SLOTS: [Spec; MOD_SLOTS * 3] =
-    slots!(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24);
+#[expect(
+    clippy::large_const_arrays,
+    reason = "read only while compiling, to build SPECS"
+)]
+const ROUTE_SPECS: [Spec; ROUTES * ROUTE_PARAMS] = routes!(
+    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
+    21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
+    41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60
+    61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80
+    81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100
+    101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120
+    121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140
+    141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160
+    161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180
+    181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200
+    201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220
+    221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240
+    241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 256
+);
 
 /// How many parameters there are.
-pub const PARAM_COUNT: usize = ORIGINAL.len() + TABLES.len() + SLOTS.len();
+pub const PARAM_COUNT: usize = ORIGINAL.len() + TABLES.len() + ROUTE_SPECS.len();
 
 /// Every parameter, by bloop index, for what is worked out while
 /// compiling: the ids, the matrix's destinations.
@@ -691,7 +787,7 @@ pub const PARAM_COUNT: usize = ORIGINAL.len() + TABLES.len() + SLOTS.len();
     clippy::large_const_arrays,
     reason = "read only while compiling; what runs reads PARAMS"
 )]
-pub(crate) const SPECS: [Spec; PARAM_COUNT] = concat_all!(ORIGINAL, TABLES, SLOTS);
+pub(crate) const SPECS: [Spec; PARAM_COUNT] = concat_all!(ORIGINAL, TABLES, ROUTE_SPECS);
 
 /// Every parameter, by bloop index.
 pub static PARAMS: [Spec; PARAM_COUNT] = SPECS;
@@ -949,13 +1045,39 @@ pub struct Values {
     normalised: [f32; PARAM_COUNT],
 }
 
-impl Default for Values {
-    fn default() -> Self {
-        let values = SPECS.map(|p| p.default);
-        Self {
-            values,
-            normalised: core::array::from_fn(|i| normalise(i, values[i])),
+/// Every parameter's default.
+static DEFAULTS: [f32; PARAM_COUNT] = {
+    let mut all = [0.0; PARAM_COUNT];
+    let mut i = 0;
+    while i < PARAM_COUNT {
+        all[i] = SPECS[i].default;
+        i += 1;
+    }
+    all
+};
+
+/// Every parameter at its default, worked out once: what a preset load
+/// copies over the values, so the audio thread neither builds it nor
+/// holds a copy of every parameter's spec on its stack.
+fn defaults() -> &'static Values {
+    static AT_DEFAULTS: std::sync::OnceLock<Values> = std::sync::OnceLock::new();
+    AT_DEFAULTS.get_or_init(|| {
+        let mut normalised = [0.0; PARAM_COUNT];
+        for (i, n) in normalised.iter_mut().enumerate() {
+            *n = normalise(i, DEFAULTS[i]);
         }
+        Values {
+            values: DEFAULTS,
+            normalised,
+        }
+    })
+}
+
+impl Default for Values {
+    /// Every parameter at its default. The first call, which a Wavetable
+    /// makes as it is built on the UI thread, works them out.
+    fn default() -> Self {
+        defaults().clone()
     }
 }
 
@@ -985,7 +1107,7 @@ impl Values {
 
     /// Every parameter back to its default.
     pub fn reset(&mut self) {
-        *self = Self::default();
+        self.clone_from(defaults());
     }
 
     /// `getUserValue`.

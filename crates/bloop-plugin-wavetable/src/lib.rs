@@ -24,6 +24,7 @@ pub mod bank;
 pub mod dsp;
 pub mod modmatrix;
 pub mod params;
+pub mod preset_file;
 pub mod presets;
 mod presets_data;
 mod range;
@@ -66,8 +67,12 @@ pub fn tables_after(current: [u16; 2], param: usize, value: f32) -> [u16; 2] {
         id::WT1 => [table(value), current[1]],
         id::WT2 => [current[0], table(value)],
         PARAM_PRESET => {
-            let preset = presets::PRESETS.get(value.round().max(0.0) as usize);
-            let tables = preset.map_or([u16::MAX; 2], |p| p.tables);
+            let index = value.round().max(0.0) as usize;
+            let tables = match (presets::PRESETS.get(index), presets::user(index)) {
+                (Some(p), _) => p.tables,
+                (None, Some(p)) => p.tables.map(|t| t.unwrap_or(u16::MAX)),
+                (None, None) => [u16::MAX; 2],
+            };
             [0, 1].map(|i| {
                 if tables[i] == u16::MAX {
                     presets::INIT_TABLES[i]
@@ -168,11 +173,24 @@ impl WavetablePlugin {
     }
 
     /// Preset `index` over everything, as `gin::Program::loadProcessor`
-    /// does: every parameter to its default, then the preset's.
+    /// does: every parameter to its default, then the preset's — a
+    /// factory one, Init, or one of the user's ([`presets::user`]).
     /// Allocation-free.
     pub fn load_preset(&mut self, index: usize) {
         let values = &mut self.synth.values;
         values.reset();
+        let route = |values: &mut params::Values, slot: usize, route: &modmatrix::RouteSlot| {
+            let at = id::MOD1_SRC + slot * params::ROUTE_PARAMS;
+            values.set(at + params::route::SOURCE, route.source as f32);
+            values.set(at + params::route::DESTINATION, route.destination as f32);
+            values.set(at + params::route::DEPTH, route.depth);
+            values.set(
+                at + params::route::ENABLED,
+                f32::from(u8::from(route.enabled)),
+            );
+            values.set(at + params::route::CURVE, route.curve as f32);
+            values.set(at + params::route::MAPPING, route.mapping as f32);
+        };
         if let Some(preset) = presets::PRESETS.get(index) {
             for &(uid, value) in preset.params {
                 if let Some(at) = params::index_of(uid) {
@@ -185,20 +203,36 @@ impl WavetablePlugin {
                 }
             }
             for (slot, &(source, destination, depth)) in
-                preset.mods.iter().enumerate().take(params::MOD_SLOTS)
+                preset.mods.iter().enumerate().take(params::ROUTES)
             {
-                let source = modmatrix::source_named(source).map_or(0, |s| s + 1);
-                let destination = params::index_of(destination)
-                    .map(|p| modmatrix::DESTINATION_OF[p])
-                    .filter(|&d| d >= 0)
-                    .map_or(0, |d| d as usize + 1);
-                let at = id::MOD1_SRC + slot * 3;
-                values.set(at, source as f32);
-                values.set(at + 1, destination as f32);
-                values.set(at + 2, depth);
+                let slot_route = modmatrix::RouteSlot {
+                    source: modmatrix::source_named(source).map_or(0, |s| s + 1),
+                    destination: modmatrix::destination_named(destination).map_or(0, |d| d + 1),
+                    depth,
+                    enabled: true,
+                    curve: 0,
+                    mapping: 0,
+                };
+                route(values, slot, &slot_route);
+            }
+        } else if let Some(preset) = presets::user(index) {
+            for &(at, value) in &preset.params {
+                values.set(at, value);
+            }
+            for (i, table) in preset.tables.into_iter().enumerate() {
+                if let Some(table) = table {
+                    values.set(id::WT1 + i, f32::from(table));
+                }
+            }
+            for (slot, r) in preset.routes.iter().enumerate().take(params::ROUTES) {
+                route(values, slot, r);
             }
         }
-        self.preset = index.min(presets::PRESETS.len());
+        self.preset = if presets::user(index).is_some() {
+            index
+        } else {
+            index.min(presets::PRESETS.len())
+        };
         self.synth.preset_loaded();
     }
 

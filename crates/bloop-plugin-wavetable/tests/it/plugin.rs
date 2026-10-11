@@ -139,7 +139,11 @@ fn set(plugin: &mut WavetablePlugin, uid: &str, value: f32) {
 }
 
 fn with_tables(mut plugin: WavetablePlugin) -> WavetablePlugin {
-    let tables = bank::tables_for(plugin.table_indices(), plugin.sample_rate(), bank::Quality::Render);
+    let tables = bank::tables_for(
+        plugin.table_indices(),
+        plugin.sample_rate(),
+        bank::Quality::Render,
+    );
     plugin.set_tables(Some(tables));
     plugin
 }
@@ -217,7 +221,7 @@ fn what_it_says_about_itself() {
     check(
         &text,
         &expect![[r#"
-            Wavetable by SocaLabs, Instrument, 0 in, 2 out, 304 parameters
+            Wavetable by SocaLabs, Instrument, 0 in, 2 out, 1768 parameters
               6 osc1pos      OSC1 Pos         0 to 100, default 0
               5 osc1level    OSC1 Level       -100 to 0, default 0
               2 osc1unison   OSC1 Unison      1 to 8, default 1
@@ -233,7 +237,7 @@ fn what_it_says_about_itself() {
             231 mod1src      Mod 1 Source     0 to 255, default 0
             232 mod1dst      Mod 1 Destination 0 to 255, default 0
             233 mod1depth    Mod 1 Depth      -1 to 1, default 0
-            303 preset       Preset           0 to 217, default 217 (217 factory presets, then Init)
+            1767 preset       Preset           0 to 217, default 217 (217 factory presets, then Init)
             past the end: ""
         "#]],
     );
@@ -534,8 +538,8 @@ fn presets_load_through_the_preset_knob() {
         .expect("a shipped preset");
     plugin.set_param(PARAM_PRESET, siren as f32);
     let show = |plugin: &WavetablePlugin, text: &mut String| {
-        let mods = (0..params::MOD_SLOTS)
-            .map(|s| plugin.get_param(params::id::MOD1_SRC + s * 3))
+        let mods = (0..params::ROUTES)
+            .map(|s| plugin.get_param(params::id::MOD1_SRC + s * params::ROUTE_PARAMS))
             .filter(|&src| src > 0.0)
             .count();
         let _ = writeln!(

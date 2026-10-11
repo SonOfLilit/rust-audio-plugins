@@ -36,6 +36,7 @@ bloop-plugin-api = { workspace = true }
 bloop-plugin-socalabs = { workspace = true }
 bloop-sampler-engine = { workspace = true }
 libm = "0.2"
+roxmltree = "0.21.1"
 
 [dev-dependencies]
 bloop-core = { workspace = true }

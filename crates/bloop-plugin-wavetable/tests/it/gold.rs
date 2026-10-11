@@ -43,6 +43,9 @@ enum Step {
     Mod(&'static str, &'static str, f32),
     /// Factory preset `index`, wavetables and all.
     Preset(usize),
+    /// A preset file, read as the user's own are (`preset_file`) — the
+    /// original reads it as `gin::Program` does (`presetxml`).
+    PresetFile(&'static str),
     /// The two oscillators' tables, by catalogue name.
     Tables(&'static str, &'static str),
     Tempo(f64),
@@ -99,6 +102,11 @@ impl Program {
             .position(|p| p.name == name)
             .unwrap_or_else(|| panic!("no preset {name}"));
         self.steps.push(Step::Preset(index));
+        self
+    }
+
+    fn preset_file(mut self, xml: &'static str) -> Self {
+        self.steps.push(Step::PresetFile(xml));
         self
     }
 
@@ -253,13 +261,20 @@ fn run_rust(program: &Program) -> Vec<(&'static str, Signal)> {
         match *step {
             Step::Set(uid, value) => set(&mut plugin, uid, value),
             Step::Mod(src, uid, depth) => {
-                let at = params::id::MOD1_SRC + slots * 3;
+                let at = params::id::MOD1_SRC + slots * params::ROUTE_PARAMS;
                 plugin.set_param(at, source_slot(src));
                 plugin.set_param(at + 1, destination_slot(uid));
                 plugin.set_param(at + 2, depth);
                 slots += 1;
             }
             Step::Preset(index) => {
+                plugin.set_param(PARAM_PRESET, index as f32);
+                hand_tables(&mut plugin, rate);
+                slots = 0;
+            }
+            Step::PresetFile(xml) => {
+                let (index, _) = bloop_plugin_wavetable::preset_file::import(xml.as_bytes())
+                    .unwrap_or_else(|e| panic!("the preset reads: {e}"));
                 plugin.set_param(PARAM_PRESET, index as f32);
                 hand_tables(&mut plugin, rate);
                 slots = 0;
@@ -803,10 +818,20 @@ mod cpp {
                     for &(uid, value) in preset.params {
                         let _ = writeln!(input, "set {uid} {}", bits(value));
                     }
-                    for &(src, uid, depth) in preset.mods.iter().take(params::MOD_SLOTS) {
+                    for &(src, uid, depth) in preset.mods.iter().take(params::ROUTES) {
                         let src = source_slot(src) as usize - 1;
                         let _ = writeln!(input, "mod {src} {uid} {}", bits(depth));
                     }
+                    send_tables(&mut input, &mut plugin, rate);
+                    let _ = writeln!(input, "loaded");
+                }
+                Step::PresetFile(xml) => {
+                    let (index, _) = bloop_plugin_wavetable::preset_file::import(xml.as_bytes())
+                        .unwrap_or_else(|e| panic!("the preset reads: {e}"));
+                    plugin.set_param(PARAM_PRESET, index as f32);
+                    let _ = writeln!(input, "presetxml {}", xml.len());
+                    input.extend_from_slice(xml.as_bytes());
+                    input.push(b'\n');
                     send_tables(&mut input, &mut plugin, rate);
                     let _ = writeln!(input, "loaded");
                 }
@@ -2460,4 +2485,184 @@ fn factory_presets_by_murti_second_half() {
 
     "#]],
     );
+}
+
+// ---------------------------------------------------------------------------
+// Preset files
+// ---------------------------------------------------------------------------
+
+/// Three factory presets, read from the files SocaLabs ships them as,
+/// the way a user's own are (`preset_file`): one plain, one with 21
+/// routes, and one that carries its table inside itself. Each plays as
+/// the built-in preset does, bit for bit, and — under `gold` — as the
+/// original plays the file.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn factory_presets_read_from_their_files() {
+    let mut out = String::new();
+    for (name, xml) in [
+        ("DT Bwaing", include_str!("../fixtures/DT Bwaing.xml")),
+        ("Angel Voice", include_str!("../fixtures/Angel Voice.xml")),
+        (
+            "IV's Organ Advanced",
+            include_str!("../fixtures/IV Organ Advanced.xml"),
+        ),
+    ] {
+        let read = bloop_plugin_wavetable::preset_file::read(xml.as_bytes())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let notes = |p: Program| p.note(60, 100, 0.5, 0.25).on(0, 67, 80).play("again", 0.25);
+        let built_in = run_rust(&notes(Program::new().preset(name)));
+        let from_file = notes(Program::new().preset_file(xml));
+        let played = run_rust(&from_file);
+        #[cfg(feature = "gold")]
+        compare(&from_file, &played, &cpp::run(&from_file));
+        let _ = writeln!(
+            out,
+            "{name}: {} parameters, {} routes, tables {:?}, left out {:?}, ignored {:?}; as the built-in preset: {}",
+            read.params.len(),
+            read.routes.len(),
+            read.tables.map(|t| t.and_then(|t| bank::name_of(usize::from(t)))),
+            read.left_out,
+            read.ignored,
+            played == built_in
+        );
+        assert_eq!(played, built_in, "{name} from its file");
+    }
+    expect![[r#"
+        DT Bwaing: 55 parameters, 5 routes, tables [Some("FM 07"), Some("FM 05")], left out [], ignored []; as the built-in preset: true
+        Angel Voice: 58 parameters, 21 routes, tables [Some("Analog PWM Square 01"), Some("NK - CONVENT")], left out [], ignored []; as the built-in preset: true
+        IV's Organ Advanced: 73 parameters, 0 routes, tables [Some("15-Flenders III"), Some("15-Flenders III")], left out [], ignored []; as the built-in preset: true
+    "#]].assert_eq(&out);
+}
+
+/// A preset of bloop's making, past what a factory preset asks of the
+/// matrix: thirty routes, every curve, both mappings said and unsaid, a
+/// route switched off, the same source on one destination twice, a
+/// curve bloop does not know (linear, as the original takes it), and a
+/// parameter there is not. Under `gold` the original reads the file
+/// itself.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+#[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
+fn a_preset_with_thirty_routes_and_curves() {
+    let xml = include_str!("../fixtures/Thirty Routes.xml");
+    let read =
+        bloop_plugin_wavetable::preset_file::read(xml.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
+    let curves: std::collections::BTreeSet<usize> = read.routes.iter().map(|r| r.curve).collect();
+    let header = format!(
+        "{} routes ({} on), {} curves, mappings {:?}; left out {:?}; ignored {:?}\n",
+        read.routes.len(),
+        read.routes.iter().filter(|r| r.enabled).count(),
+        curves.len(),
+        read.routes.iter().map(|r| r.mapping).collect::<Vec<_>>(),
+        read.left_out,
+        read.ignored,
+    );
+    let program = Program::new()
+        .preset_file(xml)
+        .on(0, 48, 100)
+        .on(0, 60, 70)
+        .play("held", 1.5)
+        .off(0, 48)
+        .off(0, 60)
+        .play("released", 0.5);
+    let rust = run_rust(&program);
+    #[cfg(feature = "gold")]
+    compare(&program, &rust, &cpp::run(&program));
+    assert_summary(
+        &expect![[r#"
+        30 routes (29 on), 20 curves, mappings [0, 0, 0, 2, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0]; left out []; ignored ["the parameter notaparameter, which bloop does not have"]
+        held: L peak -6.3 rms -16.9 | R peak -4.7 rms -16.4 #9a72afe9c14059f8
+        released: L peak -11.3 rms -32.2 | R peak -13.7 rms -35.9 #ebdc89997726410e
+    "#]],
+        &(header + &summary(&rust)),
+    );
+}
+
+/// More routes than the matrix holds, and more on one destination than
+/// it runs: the preset loads, the rest play, and what was left out is
+/// said, each in words.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_preset_past_the_matrix_s_room() {
+    let mut items = String::new();
+    // 40 on OSC1 Pos, then 230 spread over the LFO rates and the rest.
+    for i in 0..40 {
+        let _ = writeln!(
+            items,
+            r#"<MODITEM srcId="cc{i}" depth="0.01" dstId="osc1pos"/>"#
+        );
+    }
+    let destinations = [
+        "lfo1rate",
+        "lfo2rate",
+        "lfo3rate",
+        "osc2pos",
+        "fltfreq",
+        "fltres",
+        "osc1formant",
+        "osc2formant",
+    ];
+    for i in 0..230 {
+        let _ = writeln!(
+            items,
+            r#"<MODITEM srcId="cc{}" depth="0.01" dstId="{}"/>"#,
+            i % 100,
+            destinations[i % destinations.len()]
+        );
+    }
+    let xml = format!(
+        r#"<state name="Crowded"><state wt1="AKWP bw_saw"><MODMATRIX>{items}</MODMATRIX></state></state>"#
+    );
+    let read =
+        bloop_plugin_wavetable::preset_file::read(xml.as_bytes()).unwrap_or_else(|e| panic!("{e}"));
+    let first_and_last = |v: &[String]| {
+        format!(
+            "{}: {:?} … {:?}",
+            v.len(),
+            v.first().map(String::as_str).unwrap_or_default(),
+            v.last().map(String::as_str).unwrap_or_default()
+        )
+    };
+    expect![[r#"
+        256 routes kept; left out 14: "cc32 to osc1pos: past 32 routes on one destination" … "cc29 to fltres: past the matrix's 256 routes"
+    "#]].assert_eq(&format!(
+        "{} routes kept; left out {}\n",
+        read.routes.len(),
+        first_and_last(&read.left_out)
+    ));
+}
+
+/// What is not a preset is said to be, in words.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn files_that_are_not_presets() {
+    let mut out = String::new();
+    for (what, bytes) in [
+        ("binary", &[0xFFu8, 0xFE, 0x00][..]),
+        ("not XML", b"hello".as_slice()),
+        ("another root", b"<preset name=\"x\"/>".as_slice()),
+        (
+            "a table no bank has",
+            br#"<state name="x"><state wt1="No Such Table"/></state>"#.as_slice(),
+        ),
+        (
+            "a route to nowhere",
+            br#"<state name="x"><state><MODMATRIX><MODITEM srcId="lfo9" dstId="osc1pos" depth="1"/><MODITEM srcId="lfo1" dstId="nowhere" depth="1"/></MODMATRIX></state></state>"#.as_slice(),
+        ),
+    ] {
+        let said = match bloop_plugin_wavetable::preset_file::read(bytes) {
+            Ok(p) => format!("reads, ignoring {:?}", p.ignored),
+            Err(e) => format!("refused: {e}"),
+        };
+        let _ = writeln!(out, "{what}: {said}");
+    }
+    expect![[r#"
+        binary: refused: it is not text
+        not XML: refused: it is not XML: unknown token at 1:1
+        another root: refused: it is not a Wavetable preset: its root is not <state>
+        a table no bank has: reads, ignoring ["the table No Such Table for OSC 1, which bloop does not have"]
+        a route to nowhere: reads, ignoring ["the route lfo9 to osc1pos: bloop has no source lfo9", "the route lfo1 to nowhere: bloop has no destination nowhere"]
+    "#]].assert_eq(&out);
 }
