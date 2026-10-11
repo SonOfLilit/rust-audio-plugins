@@ -5,6 +5,7 @@
 #[cfg(test)]
 extern crate alloc;
 
+pub mod feel;
 pub mod midi;
 
 use bloop_core::Note;

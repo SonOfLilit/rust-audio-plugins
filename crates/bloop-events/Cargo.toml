@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 bloop-core = { workspace = true }
+# The pad curve (`feel`): the same number on every target.
+libm = "0.2"
 
 [dev-dependencies]
 expect-test = { workspace = true }
