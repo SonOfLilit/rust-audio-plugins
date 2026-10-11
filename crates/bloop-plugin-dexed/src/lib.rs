@@ -2201,6 +2201,7 @@ mod watch_tests {
                 voices: [junk; WATCH_VOICES],
                 globals: [-1.0; bloop_plugin_api::WATCH_GLOBALS],
                 knobs: [[-1.0; bloop_plugin_api::WATCH_KNOBS]; WATCH_VOICES],
+                params: [7; bloop_plugin_api::WATCH_KNOBS],
             };
             synth.watch(&mut watch);
             assert!(

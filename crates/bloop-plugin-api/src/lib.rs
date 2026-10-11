@@ -248,6 +248,10 @@ pub struct Watch {
     /// hears them, modulation and all, in the parameters' own units. All 0
     /// for a plug-in that does not say ([`Plugin::watch_params`]).
     pub knobs: [[f32; WATCH_KNOBS]; WATCH_VOICES],
+    /// Which parameters `knobs` follows, by index, [`NO_PARAM`] for none:
+    /// a screen reading them for a page it has just turned to can tell
+    /// they are still the last page's.
+    pub params: [u16; WATCH_KNOBS],
 }
 
 impl Watch {

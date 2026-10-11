@@ -1000,7 +1000,7 @@ fn the_matrix_runs_32_a_parameter_and_256_in_all() {
 
 /// What a knob's ring reads while a route moves it
 /// (`Plugin::watch_params`): each sounding voice's OSC1 Pos swinging
-/// with its own LFO 1 (G4 struck 60 ms after C4, so a quarter of a cycle
+/// with its own LFO 1 (G4 struck 60 ms after C4, so 0.12 of a cycle
 /// behind), its cutoff — a skewed knob, in hertz — raised by its
 /// velocity, an unmodulated knob where it is set, a knob whose route is
 /// switched off where it is set, an empty knob nothing. A voice that has
