@@ -21,6 +21,7 @@
 //! the oscillators, the sub and the noise are silent.
 
 pub mod bank;
+pub mod draw;
 pub mod dsp;
 pub mod modmatrix;
 pub mod params;
@@ -30,6 +31,7 @@ mod presets_data;
 mod range;
 mod synth;
 mod voice;
+pub mod watch;
 
 pub use bank::TableSet;
 pub use synth::{Event, DELAY_ROOM, VOICE_SLOTS};
@@ -327,6 +329,10 @@ impl Plugin for WavetablePlugin {
 
     fn settle(&mut self) {
         self.synth.settle();
+    }
+
+    fn watch(&self, out: &mut bloop_plugin_api::Watch) {
+        self.synth.watch(out);
     }
 }
 

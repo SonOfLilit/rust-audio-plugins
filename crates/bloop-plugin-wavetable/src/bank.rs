@@ -80,6 +80,22 @@ pub fn names() -> &'static [&'static str] {
     &NAMES
 }
 
+/// The catalogue's banks, in its order: each one's name and the number
+/// of its first table. A bank's tables run to the next bank's first.
+#[must_use]
+pub fn banks() -> &'static [(&'static str, usize)] {
+    static BANKS: std::sync::OnceLock<Vec<(&'static str, usize)>> = std::sync::OnceLock::new();
+    BANKS.get_or_init(|| {
+        let mut banks: Vec<(&'static str, usize)> = Vec::new();
+        for (at, entry) in CATALOGUE.iter().enumerate() {
+            if banks.last().is_none_or(|(name, _)| *name != entry.bank) {
+                banks.push((entry.bank, at));
+            }
+        }
+        banks
+    })
+}
+
 /// The catalogue entry called `name`.
 #[must_use]
 pub fn index_of(name: &str) -> Option<usize> {
@@ -456,6 +472,33 @@ fn shared_table(index: usize, rate: f64, quality: Quality) -> Option<Arc<Table>>
     cache.tables.insert(key, Arc::downgrade(&built));
     cache.tables.retain(|_, t| t.strong_count() > 0);
     Some(built)
+}
+
+/// The tables for wavetables `indices` at `sample_rate`, in the form
+/// `quality` plays, if something holds them already — a synth playing
+/// them — and never built: what a screen draws a Sound's tables from
+/// without paying for them. An oscillator whose table nobody holds has
+/// none in it; `None` when neither has.
+#[must_use]
+pub fn tables_held(indices: [u16; 2], sample_rate: f64, quality: Quality) -> Option<Arc<TableSet>> {
+    let cache = lock();
+    let oscillators = indices.map(|index| {
+        cache
+            .tables
+            .get(&key(usize::from(index), sample_rate, quality))
+            .and_then(Weak::upgrade)
+            .map(|t| (index, t))
+    });
+    if oscillators.iter().all(Option::is_none) {
+        return None;
+    }
+    let analog = Arc::clone(cache.analog.get(&sample_rate.to_bits())?);
+    Some(Arc::new(TableSet {
+        sample_rate,
+        quality,
+        oscillators,
+        analog,
+    }))
 }
 
 /// The tables for wavetables `indices` at `sample_rate`, in the form

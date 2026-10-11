@@ -797,3 +797,112 @@ fn every_preset_starts_where_its_knobs_are() {
         "#]],
     );
 }
+
+/// One line a voice of `watch` that sounds: its slot, note-on count, key,
+/// pitch, its five envelopes' stage and level, its LFOs' and step LFO's
+/// phases and its oscillators' positions; then the mono LFOs' and step
+/// LFO's phases.
+fn watched(watch: &bloop_plugin_api::Watch) -> String {
+    use bloop_plugin_wavetable::watch::{self as lanes, Envelope};
+    let mut out = String::new();
+    let env = |v: &bloop_plugin_api::VoiceWatch, lane: usize| {
+        let e = Envelope::of(v, lane);
+        format!("{:?} {:.2}", e.stage, e.level)
+    };
+    for (slot, v) in watch.active() {
+        let _ = writeln!(
+            out,
+            "  slot {slot} #{} {} {}: amp {}, filter {}, env {} / {} / {}; lfo {:.2} {:.2} {:.2}, step {:.2}; pos {:.2} {:.2}",
+            v.note_on,
+            if v.key_down { "down" } else { "up" },
+            v.pitch,
+            env(v, lanes::AMP),
+            env(v, lanes::FILTER),
+            env(v, lanes::ENV[0]),
+            env(v, lanes::ENV[1]),
+            env(v, lanes::ENV[2]),
+            v.lanes[lanes::LFO[0]],
+            v.lanes[lanes::LFO[1]],
+            v.lanes[lanes::LFO[2]],
+            v.lanes[lanes::STEP],
+            v.lanes[lanes::POS[0]],
+            v.lanes[lanes::POS[1]],
+        );
+    }
+    let _ = write!(
+        out,
+        "  mono lfo {:.2} {:.2} {:.2}, step {:.2}; knobs all 0: {}",
+        watch.globals[lanes::MONO_LFO[0]],
+        watch.globals[lanes::MONO_LFO[1]],
+        watch.globals[lanes::MONO_LFO[2]],
+        watch.globals[lanes::MONO_STEP],
+        watch.knobs.iter().flatten().all(|k| *k == 0.0),
+    );
+    out
+}
+
+/// What a screen reads of a playing Wavetable (`Plugin::watch`): each
+/// sounding voice in the slot it plays from, its amp envelope through
+/// attack, sustain and release, its LFO 1 going round at its 2 Hz beside
+/// the mono LFO 1, OSC 1's position where Pos has it; a second note in
+/// the next slot; and nothing once both have rung out. Watching allocates
+/// nothing.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn the_watch_follows_the_voices() {
+    let mut plugin = WavetablePlugin::at(RATE);
+    for (uid, value) in [
+        ("attack", 0.1),
+        ("decay", 0.1),
+        ("sustain", 50.0),
+        ("release", 0.2),
+        ("lfo1enable", 1.0),
+        ("lfo1rate", 2.0),
+        ("env1enable", 1.0),
+        ("slfoenable", 1.0),
+        ("osc1pos", 30.0),
+    ] {
+        set(&mut plugin, uid, value);
+    }
+    let ms = |ms: f64| (ms / 1000.0 * RATE) as usize;
+    let mut out = String::new();
+    let look = |plugin: &WavetablePlugin, what: &str, out: &mut String| {
+        let mut watch = bloop_plugin_api::Watch::default();
+        let allocated = allocations_during(|| plugin.watch(&mut watch));
+        let _ = writeln!(out, "{what} (allocated {allocated}):\n{}", watched(&watch));
+    };
+    look(&plugin, "before any note", &mut out);
+    render(&mut plugin, &[on(0, 60)], ms(50.0));
+    look(&plugin, "50 ms into C4", &mut out);
+    render(&mut plugin, &[], ms(250.0));
+    look(&plugin, "300 ms: sustained", &mut out);
+    render(&mut plugin, &[on(0, 64)], ms(100.0));
+    look(&plugin, "E4 struck beside it, 100 ms on", &mut out);
+    render(&mut plugin, &[off(0, 60)], ms(100.0));
+    look(&plugin, "C4 let go, 100 ms on", &mut out);
+    render(&mut plugin, &[off(0, 64)], ms(2000.0));
+    look(&plugin, "both let go, two seconds on", &mut out);
+    check(
+        &out,
+        &expect![[r#"
+        before any note (allocated 0):
+          mono lfo 0.00 0.00 0.00, step 0.00; knobs all 0: true
+        50 ms into C4 (allocated 0):
+          slot 0 #1 down 60: amp Attack 0.62, filter Attack 0.50, env Attack 0.50 / Idle 0.00 / Idle 0.00; lfo 0.10 0.00 0.00, step 0.01; pos 0.30 0.50
+          mono lfo 0.09 0.00 0.00, step 0.01; knobs all 0: true
+        300 ms: sustained (allocated 0):
+          slot 0 #1 down 60: amp Sustain 0.50, filter Sustain 0.80, env Sustain 0.80 / Idle 0.00 / Idle 0.00; lfo 0.60 0.00 0.00, step 0.07; pos 0.30 0.50
+          mono lfo 0.59 0.00 0.00, step 0.07; knobs all 0: true
+        E4 struck beside it, 100 ms on (allocated 0):
+          slot 0 #1 down 60: amp Sustain 0.50, filter Sustain 0.80, env Sustain 0.80 / Idle 0.00 / Idle 0.00; lfo 0.80 0.00 0.00, step 0.10; pos 0.30 0.50
+          slot 1 #2 down 64: amp Attack 1.00, filter Attack 1.00, env Attack 1.00 / Idle 0.00 / Idle 0.00; lfo 0.20 0.00 0.00, step 0.02; pos 0.30 0.50
+          mono lfo 0.79 0.00 0.00, step 0.10; knobs all 0: true
+        C4 let go, 100 ms on (allocated 0):
+          slot 0 #1 up 60: amp Release 0.03, filter Idle 0.00, env Idle 0.00 / Idle 0.00 / Idle 0.00; lfo 1.00 0.00 0.00, step 0.12; pos 0.30 0.50
+          slot 1 #2 down 64: amp Sustain 0.50, filter Sustain 0.80, env Sustain 0.80 / Idle 0.00 / Idle 0.00; lfo 0.40 0.00 0.00, step 0.05; pos 0.30 0.50
+          mono lfo 0.99 0.00 0.00, step 0.12; knobs all 0: true
+        both let go, two seconds on (allocated 0):
+          mono lfo 0.99 0.00 0.00, step 0.62; knobs all 0: true
+    "#]],
+    );
+}

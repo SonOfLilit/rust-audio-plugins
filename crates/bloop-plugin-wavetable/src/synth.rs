@@ -285,6 +285,35 @@ impl Synth {
         self.tables.as_ref()
     }
 
+    /// What every voice is doing, for a screen ([`crate::watch`]): the
+    /// first [`WATCH_VOICES`](bloop_plugin_api::WATCH_VOICES) voice slots,
+    /// each where it stays for as long as it sounds (the synth fills the
+    /// lowest free slot, so the first eight notes held are there), and
+    /// the mono LFOs and step LFO as globals. Allocation-free.
+    pub fn watch(&self, out: &mut bloop_plugin_api::Watch) {
+        for (slot, seen) in out.voices.iter_mut().enumerate() {
+            *seen = match self.voices.get(slot) {
+                Some(voice) if voice.is_active() => voice.watch(&self.values),
+                _ => bloop_plugin_api::VoiceWatch::default(),
+            };
+        }
+        out.globals = Default::default();
+        for (i, (lfo, global)) in self
+            .mono_lfos
+            .iter()
+            .zip(crate::watch::MONO_LFO)
+            .enumerate()
+        {
+            if self.values.is_on(id::LFO[i] + id::lfo::ENABLE) {
+                out.globals[global] = lfo.phase();
+            }
+        }
+        if self.values.is_on(id::SLFO_ENABLE) {
+            out.globals[crate::watch::MONO_STEP] = self.mono_step.phase();
+        }
+        out.knobs = Default::default();
+    }
+
     /// A parameter set, as the host sets it.
     pub fn set_param(&mut self, index: usize, value: f32) {
         self.values.set(index, value);

@@ -5,14 +5,16 @@
 
 use crate::dsp::env::{Adsr, AnalogAdsr, AnalogState};
 use crate::dsp::lfo::{Lfo, LfoParams, Shape, StepLfo};
-use crate::dsp::osc::{StereoOscillator, StereoParams, VoicedParams, VoicedWtOscillator, MAX_UNISON};
+use crate::dsp::osc::{
+    StereoOscillator, StereoParams, VoicedParams, VoicedWtOscillator, MAX_UNISON,
+};
 use crate::dsp::random::JuceRandom;
 use crate::dsp::tables::{AnalogTables, NoiseSource, Table, Wave};
 use crate::modmatrix::{src, Matrix, VoiceMod, DESTINATION_OF};
 use crate::params::{id, Values, FILTER_MAX_NOTE};
 use bloop_plugin_socalabs::shared::{
-    approximately_equal, jlimit, math, midi_note_in_hertz, EasedValueSmoother, Filter,
-    FilterType, Slope, DURATIONS,
+    approximately_equal, jlimit, math, midi_note_in_hertz, EasedValueSmoother, Filter, FilterType,
+    Slope, DURATIONS,
 };
 
 /// The longest stretch a voice renders at once: Wavetable's 32-sample
@@ -220,6 +222,63 @@ impl Voice {
     #[must_use]
     pub fn current_note(&self) -> f32 {
         self.note_smoother.current() * 127.0
+    }
+
+    /// What the voice is doing, as its screen reads it
+    /// ([`crate::watch`]): an envelope or LFO switched off in `values` is
+    /// idle, at 0, whatever it was left at. Allocation-free.
+    #[must_use]
+    pub fn watch(&self, values: &Values) -> bloop_plugin_api::VoiceWatch {
+        use crate::dsp::env::AdsrState;
+        use crate::watch::{self, Envelope, Stage};
+        let mut seen = bloop_plugin_api::VoiceWatch {
+            active: true,
+            note_on: self.note_on_time.wrapping_add(1),
+            key_down: self.note.key == KeyState::Down,
+            pitch: self.note.initial_note,
+            ..bloop_plugin_api::VoiceWatch::default()
+        };
+        let linear = |adsr: &Adsr| Envelope {
+            stage: match adsr.state() {
+                AdsrState::Idle | AdsrState::Finished => Stage::Idle,
+                AdsrState::Attack => Stage::Attack,
+                AdsrState::Decay => Stage::Decay,
+                AdsrState::Sustain => Stage::Sustain,
+                AdsrState::Release => Stage::Release,
+            },
+            level: adsr.output(),
+        };
+        Envelope {
+            stage: match self.adsr.state() {
+                AnalogState::Idle => Stage::Idle,
+                AnalogState::Attack => Stage::Attack,
+                AnalogState::Decay => Stage::Decay,
+                AnalogState::Sustain => Stage::Sustain,
+                AnalogState::Release => Stage::Release,
+            },
+            level: self.adsr.output(),
+        }
+        .write(&mut seen, watch::AMP);
+        let unless_off =
+            |on: bool, envelope: Envelope| if on { envelope } else { Envelope::default() };
+        unless_off(values.is_on(id::FLT_ENABLE), linear(&self.filter_adsr))
+            .write(&mut seen, watch::FILTER);
+        for (i, (adsr, lane)) in self.mod_adsrs.iter().zip(watch::ENV).enumerate() {
+            unless_off(values.is_on(id::ENV[i] + id::env::ENABLE), linear(adsr))
+                .write(&mut seen, lane);
+        }
+        for (i, (lfo, lane)) in self.lfos.iter().zip(watch::LFO).enumerate() {
+            if values.is_on(id::LFO[i] + id::lfo::ENABLE) {
+                seen.lanes[lane] = lfo.phase();
+            }
+        }
+        if values.is_on(id::SLFO_ENABLE) {
+            seen.lanes[watch::STEP] = self.step_lfo.phase();
+        }
+        for (params, lane) in self.osc_params.iter().zip(watch::POS) {
+            seen.lanes[lane] = params.position;
+        }
+        seen
     }
 
     /// `clearCurrentNote`.
@@ -628,7 +687,9 @@ impl Voice {
             if !ctx.values.is_on(id::OSC[i] + id::osc::ENABLE) {
                 continue;
             }
-            let filtered = ctx.values.is_on(if i == 0 { id::FLT_WT1 } else { id::FLT_WT2 });
+            let filtered = ctx
+                .values
+                .is_on(if i == 0 { id::FLT_WT1 } else { id::FLT_WT2 });
             let (l, r) = if filtered {
                 (&mut *pre_l, &mut *pre_r)
             } else {

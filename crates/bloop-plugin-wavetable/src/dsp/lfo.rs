@@ -224,6 +224,13 @@ impl Lfo {
         self.update()
     }
 
+    /// Where it is in its cycle, 0 to 1, its Phase knob in it: what a
+    /// screen puts its dot at. A random shape's long cycle counts as one.
+    #[must_use]
+    pub fn phase(&self) -> f32 {
+        self.cur_phase / self.max_phase()
+    }
+
     /// `getOutput`.
     #[must_use]
     pub fn output(&self) -> f32 {
@@ -385,5 +392,11 @@ impl StepLfo {
     #[must_use]
     pub fn output(&self) -> f32 {
         jlimit(-1.0, 1.0, self.output)
+    }
+
+    /// Where it is in its cycle of steps, 0 to 1.
+    #[must_use]
+    pub fn phase(&self) -> f32 {
+        self.phase
     }
 }
