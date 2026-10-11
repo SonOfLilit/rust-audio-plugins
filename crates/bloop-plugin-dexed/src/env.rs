@@ -6,7 +6,7 @@
 //! hardware (the C++ `ACCURATE_ENVELOPE` mode).
 
 use crate::tables::Tables;
-use bloop_plugin_api::EnvStage;
+use crate::watch::EnvStage;
 
 const LEVEL_LUT: [i32; 20] = [
     0, 5, 9, 13, 17, 20, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 42, 43, 45, 46,

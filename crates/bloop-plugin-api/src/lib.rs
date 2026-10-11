@@ -175,72 +175,37 @@ pub trait Plugin: Send {
     fn watch(&self, out: &mut Watch) {
         *out = Watch::default();
     }
+
+    /// Parameters `params` — by index, [`NO_PARAM`] for an empty knob — as
+    /// each voice hears them now, into `out`, voice for voice as
+    /// [`Plugin::watch`] numbers them: what a knob's ring draws while a
+    /// modulation route moves it. Called on the audio thread after
+    /// `watch`, so it must be allocation-free and cheap.
+    ///
+    /// The default says nothing and leaves `out` as it is: the engine
+    /// clears it first.
+    fn watch_params(
+        &self,
+        _params: &[u16; WATCH_KNOBS],
+        _out: &mut [[f32; WATCH_KNOBS]; WATCH_VOICES],
+    ) {
+    }
 }
+
+/// A knob [`Plugin::watch_params`] is asked about that has no parameter.
+pub const NO_PARAM: u16 = u16::MAX;
 
 /// How many voices a [`Watch`] can show: room for the most any plug-in
 /// here has (a plug-in that fills one asserts its voices fit).
 pub const WATCH_VOICES: usize = 8;
-/// How many operators a voice has in a [`Watch`].
-pub const WATCH_OPS: usize = 6;
-
-/// Where one operator's envelope is, as a four-rate, four-level envelope
-/// walks it: rate 1 toward level 1, rate 2 toward level 2, rate 3 toward
-/// level 3, held at level 3 while the key is down, then rate 4 toward
-/// level 4 once it is let go — from wherever it had got to.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum EnvStage {
-    /// Key down, moving toward level 1 at rate 1: the attack.
-    #[default]
-    Rate1,
-    /// Key down, moving toward level 2 at rate 2.
-    Rate2,
-    /// Key down, moving toward level 3 at rate 3.
-    Rate3,
-    /// Key down, at level 3, and staying there until the key comes up.
-    Sustain,
-    /// Key up, moving toward level 4 at rate 4: the release.
-    Rate4,
-    /// At level 4, where it stays: silence when level 4 is 0, a note that
-    /// rings on for ever when it is not.
-    End,
-}
-
-/// One operator of a sounding voice.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct OpWatch {
-    pub stage: EnvStage,
-    /// Where the envelope is, in the patch's own level units — the scale
-    /// its levels are written in — so a dot drawn at it sits on the
-    /// envelope the patch draws. Exactly the patch's
-    /// level while the envelope holds one (`Sustain`, `End`, and a level
-    /// the envelope is waiting at); between levels, the level the engine's
-    /// own envelope is at, read back to that scale.
-    ///
-    /// The envelope is the one the voice took at its note-on: an edit made
-    /// while it sounds is heard from the next note, and so is drawn there.
-    /// The operator's output level, velocity and keyboard scaling are not
-    /// in it — those are in `amp` — except that an envelope's attack
-    /// starts from a fixed loudness, and so from higher on its own scale
-    /// the quieter the operator is.
-    pub level: f32,
-    /// How loud the operator is: its envelope with every scaling applied
-    /// (output level, velocity, keyboard level scaling, amplitude
-    /// modulation), as a linear gain where 1.0 is an operator at full
-    /// output level and full envelope level struck at a velocity its
-    /// sensitivity leaves alone. A loud hit on a velocity-sensitive
-    /// operator can go past 1.0.
-    ///
-    /// The gain at the end of the last chunk the engine rendered. Exactly
-    /// 0.0 when, at that chunk's end, the engine would not render the
-    /// operator — switched off, at output level 0, or below the level it
-    /// skips — and for a voice struck too late in the block to have
-    /// rendered yet.
-    ///
-    /// This is the gain the operator's sine is multiplied by. In an
-    /// algorithm where it modulates another operator, that is its
-    /// modulation depth rather than anything heard directly.
-    pub amp: f32,
-}
+/// How many numbers a voice carries in a [`Watch`]: what each means is
+/// the plug-in's own to say, and its screen's to read.
+pub const WATCH_LANES: usize = 18;
+/// How many numbers the whole instrument carries beside its voices.
+pub const WATCH_GLOBALS: usize = 16;
+/// How many knobs a page has, and so how many parameters a [`Watch`]
+/// follows through the voices ([`Plugin::watch_params`]).
+pub const WATCH_KNOBS: usize = 8;
 
 /// One voice of the instrument.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -261,9 +226,11 @@ pub struct VoiceWatch {
     /// The key it sounds, as a MIDI note number: the key struck, moved by
     /// the patch's own transpose; pitch bend and modulation are not in it.
     pub pitch: u8,
-    /// Its operators, in the order the patch's own pages number them: index
-    /// 0 is operator 1.
-    pub ops: [OpWatch; WATCH_OPS],
+    /// What the voice is doing, in the plug-in's own numbering: the FM
+    /// synth's operator levels and gains, a subtractive synth's envelope
+    /// stages and LFO phases. The API says nothing about what a lane
+    /// means, so it names no plug-in; a lane a plug-in does not use is 0.
+    pub lanes: [f32; WATCH_LANES],
 }
 
 /// What an instrument's voices are doing, for a screen that draws them as
@@ -273,6 +240,14 @@ pub struct VoiceWatch {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Watch {
     pub voices: [VoiceWatch; WATCH_VOICES],
+    /// What the instrument is doing beside its voices, in its own
+    /// numbering: a mono LFO's phase. 0 where unused.
+    pub globals: [f32; WATCH_GLOBALS],
+    /// Per voice, the eight parameters the engine was asked to follow
+    /// (`AudioCommand::WatchParams`: the knob page showing) as each voice
+    /// hears them, modulation and all, in the parameters' own units. All 0
+    /// for a plug-in that does not say ([`Plugin::watch_params`]).
+    pub knobs: [[f32; WATCH_KNOBS]; WATCH_VOICES],
 }
 
 impl Watch {

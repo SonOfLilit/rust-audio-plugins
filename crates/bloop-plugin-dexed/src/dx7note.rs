@@ -12,7 +12,7 @@ use crate::env::Env;
 use crate::fm_core::{FmCore, FmOpParams, LEVEL_THRESH, N};
 use crate::pitchenv::PitchEnv;
 use crate::tables::Tables;
-use bloop_plugin_api::OpWatch;
+use crate::watch::OpWatch;
 
 const FEEDBACK_BITDEPTH: i32 = 8;
 

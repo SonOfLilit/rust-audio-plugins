@@ -18,6 +18,7 @@ mod pitchenv;
 mod sysex;
 mod tables;
 mod user;
+pub mod watch;
 
 /// The 32 algorithms' routing bytes, the ones the engine renders with —
 /// for a picture of an algorithm that cannot disagree with its sound.
@@ -39,8 +40,7 @@ pub const PORTED_FROM_MSFA_REV: &str = "f67d41d313b7dc85f6fb99e79e515cc9d208cfff
 
 use bloop_events::NoteEvent;
 use bloop_plugin_api::{
-    OpWatch, ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext, VoiceWatch, Watch,
-    WATCH_OPS, WATCH_VOICES,
+    ParamInfo, Plugin, PluginCategory, PluginInfo, ProcessContext, VoiceWatch, Watch, WATCH_VOICES,
 };
 use dx7note::{Controllers, Dx7Note};
 use fm_core::{FmCore, N};
@@ -680,22 +680,27 @@ impl Plugin for DexedPlugin {
         for (slot, seen) in out.voices.iter_mut().enumerate() {
             *seen = match self.voices.get(slot) {
                 Some(voice) if voice.keydown || voice.note.is_playing() => {
-                    let mut ops = [OpWatch::default(); WATCH_OPS];
-                    for (user, op) in ops.iter_mut().enumerate() {
-                        // The patch stores operator 6 first.
-                        *op = voice.note.watch_op(WATCH_OPS - 1 - user);
-                    }
-                    VoiceWatch {
+                    let mut seen = VoiceWatch {
                         active: true,
                         note_on: voice.serial,
                         key_down: voice.keydown,
                         pitch: voice.pitch,
-                        ops,
+                        ..VoiceWatch::default()
+                    };
+                    for op in 1..=6u8 {
+                        // The patch stores operator 6 first.
+                        voice
+                            .note
+                            .watch_op(usize::from(6 - op))
+                            .write(&mut seen, op);
                     }
+                    seen
                 }
                 _ => VoiceWatch::default(),
             };
         }
+        out.globals = Default::default();
+        out.knobs = Default::default();
     }
 }
 
@@ -947,7 +952,8 @@ mod tests {
         expect![[r#"
             319: Moog Brass -> FT2 Ana Brass
             337: PPG PadFX  -> FT3 Wave PadFX
-            355: DMX TOMS 1 -> DRM DRUM TOMS 1"#]].assert_eq(&text);
+            355: DMX TOMS 1 -> DRM DRUM TOMS 1"#]]
+        .assert_eq(&text);
     }
 
     #[test]
@@ -2067,8 +2073,8 @@ mod watch_tests {
     //! What the voices report to a screen while they play (`Plugin::watch`).
 
     use super::*;
+    use crate::watch::{EnvStage, OpWatch};
     use bloop_events::EventBuffer;
-    use bloop_plugin_api::EnvStage;
     use expect_test::{expect, Expect};
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::*;
@@ -2183,22 +2189,27 @@ mod watch_tests {
                 continue;
             }
             // Filled with junk first: `watch` must overwrite all of it.
-            let junk_op = OpWatch {
-                stage: EnvStage::Rate3,
-                level: -1.0,
-                amp: -1.0,
-            };
             let junk = VoiceWatch {
                 active: true,
                 note_on: 999,
                 key_down: true,
                 pitch: 1,
-                ops: [junk_op; WATCH_OPS],
+                lanes: [-1.0; bloop_plugin_api::WATCH_LANES],
             };
             let mut watch = Watch {
                 voices: [junk; WATCH_VOICES],
+                globals: [-1.0; bloop_plugin_api::WATCH_GLOBALS],
+                knobs: [[-1.0; bloop_plugin_api::WATCH_KNOBS]; WATCH_VOICES],
             };
             synth.watch(&mut watch);
+            assert!(
+                watch
+                    .globals
+                    .iter()
+                    .chain(watch.knobs.iter().flatten())
+                    .all(|v| *v == 0.0),
+                "the FM synth has no globals and follows no knobs"
+            );
             let ms = (block + 1) * BLOCK * 1000 / SR as usize;
             let mut voices = Vec::new();
             for (slot, voice) in watch.active() {
@@ -2206,7 +2217,7 @@ mod watch_tests {
                 let shown: Vec<String> = ops
                     .iter()
                     .map(|&op| {
-                        let o = voice.ops[op - 1];
+                        let o = OpWatch::of(voice, u8::try_from(op).unwrap_or(1));
                         // An exact nought, which the engine is not
                         // rendering, apart from one that rounds to it.
                         let amp = if o.amp == 0.0 {
