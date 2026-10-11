@@ -199,3 +199,32 @@ fn gain_ratio(
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+/// A loop with no crossfade wraps straight back to its start. At a speed
+/// that does not land on whole frames the wrap leaves the read position a
+/// fraction before the start, where the reference's crossfade gain divides
+/// by the zero-length crossfade: every sample after it would be NaN, which
+/// silences the whole mix behind it. Here it plays on, loop after loop.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn a_loop_without_a_crossfade_plays_on() {
+    let sample = ramp(4800);
+    let params = SamplerParams {
+        is_looping: true,
+        crossfade_samples: 0,
+        ..flat(0, 2999)
+    };
+    let out = render_once(&sample, &params, 62, 1.0, 12_000);
+    let broken = out.iter().filter(|v| !v.is_finite()).count();
+    let peaks: Vec<String> = out
+        .chunks(2000)
+        .map(|chunk| format!("{:.3}", chunk.iter().fold(0.0f32, |p, v| p.max(v.abs()))))
+        .collect();
+    expect![[r#"
+        not finite: 0
+        peak a 2000 frames: 1.094 0.444 1.077 0.581 1.071 0.719"#]]
+    .assert_eq(&format!(
+        "not finite: {broken}\npeak a 2000 frames: {}",
+        peaks.join(" ")
+    ));
+}

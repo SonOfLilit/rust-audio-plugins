@@ -880,7 +880,11 @@ impl SamplerVoice {
                 // Loop crossfade.
                 con.current_position -=
                     f64::from((self.sample_end - self.sample_start + 1) as f32 - self.crossfade);
-                con.is_crossfading_loop = true;
+                // Without a crossfade there is nothing to fade in. The
+                // reference fades anyway, over zero frames: its gain divides
+                // by the crossfade's length, and a wrap that lands a fraction
+                // before the start makes that NaN.
+                con.is_crossfading_loop = self.crossfade > 0.0;
 
                 let position = con.current_position as i32;
                 for ch in 0..num_channels {
