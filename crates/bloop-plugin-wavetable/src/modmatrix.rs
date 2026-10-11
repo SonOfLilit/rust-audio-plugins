@@ -483,8 +483,14 @@ impl Matrix {
         }
     }
 
-    /// The modulated, smoothed position (0 to 1) of destination `dst`
-    /// whose knob sits at `base`, with poly sources read from `voice`.
+    /// The modulated position (0 to 1) of destination `dst` whose knob
+    /// sits at `base`, with poly sources read from `voice` (and left out
+    /// with none): what the smoothers head for. Allocation-free.
+    #[must_use]
+    pub fn place(&self, dst: usize, base: f32, voice: Option<&[f32; SOURCE_COUNT]>) -> f32 {
+        self.sum(dst, base, voice)
+    }
+
     fn sum(&self, dst: usize, base: f32, voice: Option<&[f32; SOURCE_COUNT]>) -> f32 {
         let mut base = base;
         for route in self.routes(dst) {

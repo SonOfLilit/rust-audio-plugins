@@ -45,6 +45,38 @@ const PITCHMODSENSTAB: [u8; 8] = [0, 10, 20, 33, 55, 92, 153, 255];
 // 0, 66, 109, 255 scaled to Q24.
 const AMPMODSENSTAB: [u32; 4] = [0, 4342338, 7171437, 16777216];
 
+/// How far the LFO swings the pitch either way at its deepest, in
+/// semitones, with PMD at `pmd` (0–99) and the voice's pitch modulation
+/// sensitivity at `pms` (0–7): an octave at 99 and 7. As [`Dx7Note`]
+/// works it out, with the LFO's delay over.
+#[must_use]
+pub fn vibrato_semitones(pmd: u8, pms: u8) -> f32 {
+    let depth = (i32::from(pmd.min(99)) * 165) >> 6;
+    let sensitivity = i32::from(PITCHMODSENSTAB[usize::from(pms & 7)]);
+    // An octave is 1 << 24 of the log frequency; full depth and
+    // sensitivity reach 255 * 255 << 8 of it.
+    let reach = (i64::from(depth) * i64::from(sensitivity)) << 8;
+    (reach as f64 / f64::from(1 << 24) * 12.0) as f32
+}
+
+/// How much of an operator's level the LFO takes away at its deepest,
+/// 0 to 1, with AMD at `amd` (0–99) and the operator's amplitude
+/// modulation sensitivity at `ams` (0–3): its level in the envelope's
+/// own (log) units, as [`Dx7Note`] lowers it — all of it at 99 and 3.
+#[must_use]
+pub fn tremolo_share(amd: u8, ams: u8) -> f32 {
+    let depth = (i64::from(amd.min(99)) * 165) >> 6;
+    if depth == 0 || ams & 3 == 0 {
+        return 0.0;
+    }
+    // `amod_1` with the LFO at its deepest, through the operator's
+    // sensitivity, as the level it takes off.
+    let amd_mod = (depth << 24) >> 8;
+    let sensamp = (amd_mod as u64 * u64::from(AMPMODSENSTAB[usize::from(ams & 3)])) >> 24;
+    let pt = ((sensamp as f64 / 262_144.0) * 0.07 + 12.2).exp();
+    ((pt * 16.0) / f64::from(1u32 << 28)).min(1.0) as f32
+}
+
 /// Velocity delta in microsteps (velocity 0..127, sensitivity 0..7).
 fn scale_velocity(velocity: i32, sensitivity: i32) -> i32 {
     let clamped_vel = velocity.clamp(0, 127);

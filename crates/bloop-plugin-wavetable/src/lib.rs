@@ -334,6 +334,14 @@ impl Plugin for WavetablePlugin {
     fn watch(&self, out: &mut bloop_plugin_api::Watch) {
         self.synth.watch(out);
     }
+
+    fn watch_params(
+        &self,
+        params: &[u16; bloop_plugin_api::WATCH_KNOBS],
+        out: &mut [[f32; bloop_plugin_api::WATCH_KNOBS]; bloop_plugin_api::WATCH_VOICES],
+    ) {
+        self.synth.watch_params(params, out);
+    }
 }
 
 /// What parameter `index` is called and where it runs.

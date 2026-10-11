@@ -314,6 +314,38 @@ impl Synth {
         out.knobs = Default::default();
     }
 
+    /// Parameters `params` (by index, `NO_PARAM` for none) as each of the
+    /// first [`WATCH_VOICES`](bloop_plugin_api::WATCH_VOICES) voice slots
+    /// hears them now, modulation and all, in the units the host sets
+    /// them in: the slots [`Synth::watch`] shows. A slot not sounding,
+    /// and a knob with no parameter, are left as they are. What the
+    /// smoothers head for, not where they have got to. Allocation-free.
+    pub fn watch_params(
+        &self,
+        params: &[u16; bloop_plugin_api::WATCH_KNOBS],
+        out: &mut [[f32; bloop_plugin_api::WATCH_KNOBS]; bloop_plugin_api::WATCH_VOICES],
+    ) {
+        for (voice, row) in self.voices.iter().zip(out.iter_mut()) {
+            if !voice.is_active() {
+                continue;
+            }
+            for (&param, value) in params.iter().zip(row.iter_mut()) {
+                let param = usize::from(param);
+                let Some(spec) = PARAMS.get(param) else {
+                    continue;
+                };
+                let base = self.values.normalised(param);
+                let place = match usize::try_from(DESTINATION_OF[param]) {
+                    Ok(dst) => self
+                        .matrix
+                        .place(dst, base, Some(&voice.modulation.values)),
+                    Err(_) => base,
+                };
+                *value = spec.range.convert_from_0to1(place);
+            }
+        }
+    }
+
     /// A parameter set, as the host sets it.
     pub fn set_param(&mut self, index: usize, value: f32) {
         self.values.set(index, value);

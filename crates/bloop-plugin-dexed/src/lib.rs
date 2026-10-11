@@ -22,6 +22,7 @@ pub mod watch;
 
 /// The 32 algorithms' routing bytes, the ones the engine renders with —
 /// for a picture of an algorithm that cannot disagree with its sound.
+pub use dx7note::{tremolo_share, vibrato_semitones};
 pub use fm_core::ALGORITHMS;
 
 pub use patch::{

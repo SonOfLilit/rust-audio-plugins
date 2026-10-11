@@ -906,3 +906,192 @@ fn the_watch_follows_the_voices() {
     "#]],
     );
 }
+
+/// Route slot `slot`'s parameters: `source` (a preset's id) to `uid` at
+/// `depth`, on, linear, mapped as the source swings.
+fn route(plugin: &mut WavetablePlugin, slot: usize, source: &str, uid: &str, depth: f32) {
+    use bloop_plugin_wavetable::modmatrix::{destination_named, source_named};
+    let at = params::id::MOD1_SRC + slot * params::ROUTE_PARAMS;
+    let source = source_named(source).expect("a source") as f32 + 1.0;
+    let destination = destination_named(uid).expect("a destination") as f32 + 1.0;
+    plugin.set_param(at + params::route::SOURCE, source);
+    plugin.set_param(at + params::route::DESTINATION, destination);
+    plugin.set_param(at + params::route::DEPTH, depth);
+}
+
+/// The matrix runs at most 32 routes on one parameter, the first 32 in
+/// slot order, and 256 in all: 40 routes on OSC1 Pos and the rest of the
+/// slots on eight other parameters run 32 on Pos, in slot order, and the
+/// slots past the 32nd on it are not run. (A preset file past either says
+/// what it left out: `gold::a_preset_past_the_matrix_s_room`.)
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn the_matrix_runs_32_a_parameter_and_256_in_all() {
+    use bloop_plugin_wavetable::modmatrix::{destination_named, Matrix, RouteSlot, SOURCES};
+    let pos = destination_named("osc1pos").expect("a destination");
+    let others: Vec<usize> = [
+        "osc2pos",
+        "fltfreq",
+        "fltres",
+        "lfo1rate",
+        "lfo2rate",
+        "lfo3rate",
+        "osc1formant",
+        "osc2formant",
+    ]
+    .iter()
+    .map(|uid| destination_named(uid).expect("a destination"))
+    .collect();
+    let slots: Vec<RouteSlot> = (0..params::ROUTES)
+        .map(|slot| RouteSlot {
+            // The CCs, a different one a slot on each parameter.
+            source: 19 + slot % 100,
+            destination: if slot < 40 {
+                pos + 1
+            } else {
+                others[(slot - 40) % others.len()] + 1
+            },
+            depth: 0.01 * (slot % 7) as f32,
+            enabled: true,
+            curve: 0,
+            mapping: 0,
+        })
+        .collect();
+    let mut matrix = Matrix::default();
+    let allocated = allocations_during(|| matrix.set_routes(slots.iter().copied()));
+    let on_pos = matrix.routes(pos);
+    let names: Vec<&str> = on_pos
+        .iter()
+        .map(|r| SOURCES[usize::from(r.source)].id)
+        .collect();
+    let mut out = format!(
+        "on OSC1 Pos: {}, {:?} … {:?}\n",
+        on_pos.len(),
+        &names[..3],
+        &names[names.len() - 3..]
+    );
+    let mut total = on_pos.len();
+    for &d in &others {
+        let _ = writeln!(
+            out,
+            "on {}: {}",
+            params::PARAMS[bloop_plugin_wavetable::modmatrix::DESTINATIONS[d]].uid,
+            matrix.routes(d).len()
+        );
+        total += matrix.routes(d).len();
+    }
+    let _ = write!(
+        out,
+        "run in all: {total} of {}; allocated {allocated}",
+        params::ROUTES
+    );
+    check(&out, &expect![[r#"
+        on OSC1 Pos: 32, ["cc0", "cc1", "cc2"] … ["cc29", "cc30", "cc31"]
+        on osc2pos: 27
+        on fltfreq: 27
+        on fltres: 27
+        on lfo1rate: 27
+        on lfo2rate: 27
+        on lfo3rate: 27
+        on osc1formant: 27
+        on osc2formant: 27
+        run in all: 248 of 256; allocated 0"#]]);
+}
+
+/// What a knob's ring reads while a route moves it
+/// (`Plugin::watch_params`): each sounding voice's OSC1 Pos swinging
+/// with its own LFO 1 (G4 struck 60 ms after C4, so a quarter of a cycle
+/// behind), its cutoff — a skewed knob, in hertz — raised by its
+/// velocity, an unmodulated knob where it is set, a knob whose route is
+/// switched off where it is set, an empty knob nothing. A voice that has
+/// stopped is not written: the engine starts each block's watch afresh.
+/// Watching allocates nothing.
+#[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
+fn the_watched_knobs_move_with_their_routes() {
+    let mut plugin = WavetablePlugin::at(RATE);
+    for (uid, value) in [
+        ("lfo1enable", 1.0),
+        ("lfo1rate", 2.0),
+        ("osc1pos", 30.0),
+        ("osc2pos", 70.0),
+        ("fltfreq", 60.0),
+        ("sustain", 100.0),
+        ("osc1detune", 0.2),
+    ] {
+        set(&mut plugin, uid, value);
+    }
+    route(&mut plugin, 0, "lfo1", "osc1pos", 0.4);
+    route(&mut plugin, 1, "vel", "fltfreq", 0.3);
+    route(&mut plugin, 2, "lfo1", "osc1detune", 0.5);
+    plugin.set_param(
+        params::id::MOD1_SRC + 2 * params::ROUTE_PARAMS + params::route::ENABLED,
+        0.0,
+    );
+    let index =
+        |uid: &str| u16::try_from(params::index_of(uid).expect("a parameter")).unwrap_or(0);
+    let mut knobs = [bloop_plugin_api::NO_PARAM; 8];
+    knobs[0] = index("osc1pos");
+    knobs[1] = index("fltfreq");
+    knobs[2] = index("osc2pos");
+    knobs[3] = index("osc1detune");
+    let ms = |ms: f64| (ms / 1000.0 * RATE) as usize;
+    let mut out = String::new();
+    let mut watch = bloop_plugin_api::Watch::default();
+    let mut look = |plugin: &WavetablePlugin, what: &str, out: &mut String| {
+        let mut allocated = allocations_during(|| plugin.watch(&mut watch));
+        allocated += allocations_during(|| plugin.watch_params(&knobs, &mut watch.knobs));
+        let _ = writeln!(out, "{what} (allocated {allocated}):");
+        for (slot, row) in watch.knobs.iter().enumerate() {
+            if row.iter().all(|k| *k == 0.0) && !watch.voices[slot].active {
+                continue;
+            }
+            let _ = writeln!(
+                out,
+                "  slot {slot} {}: pos {:.2}, cutoff {:.2}, osc2 pos {:.2}, detune (route off) {:.2}, empty {:?}",
+                if watch.voices[slot].active {
+                    "sounding"
+                } else {
+                    "silent"
+                },
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                &row[4..],
+            );
+        }
+    };
+    look(&plugin, "before any note", &mut out);
+    render(&mut plugin, &[on(0, 60)], ms(60.0));
+    render(
+        &mut plugin,
+        &[NoteEvent::NoteOn {
+            time: 0,
+            channel: 0,
+            note: Note::new(67),
+            velocity: 0.2,
+        }],
+        ms(65.0),
+    );
+    look(&plugin, "125 ms into C4 (0.8), 65 ms into G4 (0.2)", &mut out);
+    render(&mut plugin, &[], ms(125.0));
+    look(&plugin, "250 ms", &mut out);
+    render(&mut plugin, &[], ms(125.0));
+    look(&plugin, "375 ms", &mut out);
+    render(&mut plugin, &[off(0, 60), off(0, 67)], ms(3000.0));
+    look(&plugin, "let go, three seconds on", &mut out);
+    check(&out, &expect![[r#"
+        before any note (allocated 0):
+        125 ms into C4 (0.8), 65 ms into G4 (0.2) (allocated 0):
+          slot 0 sounding: pos 70.00, cutoff 92.48, osc2 pos 70.00, detune (route off) 0.20, empty [0.0, 0.0, 0.0, 0.0]
+          slot 1 sounding: pos 59.16, cutoff 67.92, osc2 pos 70.00, detune (route off) 0.20, empty [0.0, 0.0, 0.0, 0.0]
+        250 ms (allocated 0):
+          slot 0 sounding: pos 30.01, cutoff 92.48, osc2 pos 70.00, detune (route off) 0.20, empty [0.0, 0.0, 0.0, 0.0]
+          slot 1 sounding: pos 57.39, cutoff 67.92, osc2 pos 70.00, detune (route off) 0.20, empty [0.0, 0.0, 0.0, 0.0]
+        375 ms (allocated 0):
+          slot 0 sounding: pos 0.00, cutoff 92.48, osc2 pos 70.00, detune (route off) 0.20, empty [0.0, 0.0, 0.0, 0.0]
+          slot 1 sounding: pos 0.85, cutoff 67.92, osc2 pos 70.00, detune (route off) 0.20, empty [0.0, 0.0, 0.0, 0.0]
+        let go, three seconds on (allocated 0):
+    "#]]);
+}
