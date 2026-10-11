@@ -99,7 +99,12 @@ pub fn load(index: usize, sample_rate: f64) -> Result<Wavetable, LoadError> {
     let (samples, file_rate) = decode(entry.format, entry.frame, bytes)?;
     // A WAV reads only whole frames; a FLAC reads all, and the frames
     // come out the same.
-    Ok(Wavetable::load(sample_rate, &samples, file_rate, entry.frame))
+    Ok(Wavetable::load(
+        sample_rate,
+        &samples,
+        file_rate,
+        entry.frame,
+    ))
 }
 
 /// A table's file, `frame` samples a frame, as the samples the original
@@ -242,8 +247,8 @@ pub fn tables_for(indices: [u16; 2], sample_rate: f64) -> Arc<TableSet> {
             .entry(sample_rate.to_bits())
             .or_insert_with(|| Arc::new(AnalogTables::new(sample_rate))),
     );
-    let oscillators = indices
-        .map(|index| shared_table(usize::from(index), sample_rate).map(|t| (index, t)));
+    let oscillators =
+        indices.map(|index| shared_table(usize::from(index), sample_rate).map(|t| (index, t)));
     Arc::new(TableSet {
         sample_rate,
         oscillators,

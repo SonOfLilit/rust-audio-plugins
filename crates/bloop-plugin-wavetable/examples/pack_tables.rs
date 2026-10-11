@@ -26,7 +26,9 @@ use std::path::Path;
 const BLOCK: usize = 4096;
 
 fn main() {
-    let out = std::env::args().nth(1).expect("the directory to write under");
+    let out = std::env::args()
+        .nth(1)
+        .expect("the directory to write under");
     let out = Path::new(&out);
     for line in std::io::stdin().lock().lines() {
         let line = line.expect("read stdin");
@@ -46,13 +48,14 @@ fn main() {
 }
 
 fn pack(source: &Path, destination: &str, frame: usize, out: &Path) -> (String, Format, usize) {
-    let original = std::fs::read(source).unwrap_or_else(|e| panic!("read {source:?}: {e}"));
+    let original =
+        std::fs::read(source).unwrap_or_else(|e| panic!("read {}: {e}", source.display()));
     let (format, extension) = match source.extension().and_then(|e| e.to_str()) {
         Some("wav") => (Format::Wav, "wav"),
         _ => (Format::Flac, "wt2048"),
     };
-    let (samples, rate) =
-        decode(format, frame, &original).unwrap_or_else(|e| panic!("decode {source:?}: {e:?}"));
+    let (samples, rate) = decode(format, frame, &original)
+        .unwrap_or_else(|e| panic!("decode {}: {e:?}", source.display()));
     let whole = &samples[..samples.len() / frame * frame];
 
     let delta = sixteen_bit(whole).and_then(|ints| {
@@ -60,7 +63,10 @@ fn pack(source: &Path, destination: &str, frame: usize, out: &Path) -> (String, 
         let (back, back_rate) = decode(Format::FlacDelta, frame, &packed).ok()?;
         let same = back_rate.to_bits() == rate.to_bits()
             && back.len() == whole.len()
-            && back.iter().zip(whole).all(|(a, b)| a.to_bits() == b.to_bits());
+            && back
+                .iter()
+                .zip(whole)
+                .all(|(a, b)| a.to_bits() == b.to_bits());
         same.then_some(packed)
     });
 
@@ -73,7 +79,7 @@ fn pack(source: &Path, destination: &str, frame: usize, out: &Path) -> (String, 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).expect("make the bank's folder");
     }
-    std::fs::write(&path, &bytes).unwrap_or_else(|e| panic!("write {path:?}: {e}"));
+    std::fs::write(&path, &bytes).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
     (file, format, bytes.len())
 }
 
@@ -93,7 +99,13 @@ fn encode_delta(samples: &[i32], frame: usize, rate: f64) -> Vec<u8> {
     let mut deltas: Vec<i32> = samples
         .iter()
         .enumerate()
-        .map(|(i, s)| if i < frame { *s } else { s - samples[i - frame] })
+        .map(|(i, s)| {
+            if i < frame {
+                *s
+            } else {
+                s - samples[i - frame]
+            }
+        })
         .collect();
     let real = deltas.len();
     deltas.resize(real.div_ceil(BLOCK) * BLOCK, 0);

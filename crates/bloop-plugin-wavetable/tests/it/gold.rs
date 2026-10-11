@@ -193,12 +193,51 @@ fn hand_tables(plugin: &mut WavetablePlugin, rate: f64) {
 
 fn retimed(event: NoteEvent, at: u32) -> NoteEvent {
     match event {
-        NoteEvent::NoteOn { channel, note, velocity, .. } => NoteEvent::NoteOn { time: at, channel, note, velocity },
-        NoteEvent::NoteOff { channel, note, .. } => NoteEvent::NoteOff { time: at, channel, note },
-        NoteEvent::Aftertouch { channel, note, pressure, .. } => NoteEvent::Aftertouch { time: at, channel, note, pressure },
-        NoteEvent::PitchBend { channel, value, .. } => NoteEvent::PitchBend { time: at, channel, value },
-        NoteEvent::CC { channel, cc, value, .. } => NoteEvent::CC { time: at, channel, cc, value },
-        NoteEvent::Choke { channel, note, .. } => NoteEvent::Choke { time: at, channel, note },
+        NoteEvent::NoteOn {
+            channel,
+            note,
+            velocity,
+            ..
+        } => NoteEvent::NoteOn {
+            time: at,
+            channel,
+            note,
+            velocity,
+        },
+        NoteEvent::NoteOff { channel, note, .. } => NoteEvent::NoteOff {
+            time: at,
+            channel,
+            note,
+        },
+        NoteEvent::Aftertouch {
+            channel,
+            note,
+            pressure,
+            ..
+        } => NoteEvent::Aftertouch {
+            time: at,
+            channel,
+            note,
+            pressure,
+        },
+        NoteEvent::PitchBend { channel, value, .. } => NoteEvent::PitchBend {
+            time: at,
+            channel,
+            value,
+        },
+        NoteEvent::CC {
+            channel, cc, value, ..
+        } => NoteEvent::CC {
+            time: at,
+            channel,
+            cc,
+            value,
+        },
+        NoteEvent::Choke { channel, note, .. } => NoteEvent::Choke {
+            time: at,
+            channel,
+            note,
+        },
     }
 }
 
@@ -307,7 +346,9 @@ fn db(x: f64) -> String {
 }
 
 fn level(samples: &[f32]) -> String {
-    let peak = samples.iter().fold(0.0f64, |m, s| m.max(f64::from(s.abs())));
+    let peak = samples
+        .iter()
+        .fold(0.0f64, |m, s| m.max(f64::from(s.abs())));
     let rms = if samples.is_empty() {
         0.0
     } else {
@@ -330,7 +371,11 @@ fn fnv(signal: &Signal) -> u64 {
 fn summary(played: &[(&'static str, Signal)]) -> String {
     let mut out = String::new();
     for (label, signal) in played {
-        let nan = signal.left.iter().chain(&signal.right).any(|s| !s.is_finite());
+        let nan = signal
+            .left
+            .iter()
+            .chain(&signal.right)
+            .any(|s| !s.is_finite());
         let _ = writeln!(
             out,
             "{label}: L {} | R {}{} #{:016x}",
@@ -377,10 +422,15 @@ fn assert_summary(expect: &Expect, actual: &str) {
 fn compare(program: &Program, rust: &[(&'static str, Signal)], cpp: &[Signal]) {
     assert_eq!(rust.len(), cpp.len(), "passage count");
     for ((label, ours), theirs) in rust.iter().zip(cpp) {
-        for (channel, a, b) in [("L", &ours.left, &theirs.left), ("R", &ours.right, &theirs.right)] {
+        for (channel, a, b) in [
+            ("L", &ours.left, &theirs.left),
+            ("R", &ours.right, &theirs.right),
+        ] {
             assert_eq!(a.len(), b.len(), "{label} {channel}: length");
             if let Some(i) = (0..a.len()).find(|&i| a[i].to_bits() != b[i].to_bits()) {
-                let differing = (0..a.len()).filter(|&i| a[i].to_bits() != b[i].to_bits()).count();
+                let differing = (0..a.len())
+                    .filter(|&i| a[i].to_bits() != b[i].to_bits())
+                    .count();
                 let worst = (0..a.len())
                     .map(|i| (f64::from(a[i]) - f64::from(b[i])).abs())
                     .fold(0.0, f64::max);
@@ -401,14 +451,20 @@ fn compare(program: &Program, rust: &[(&'static str, Signal)], cpp: &[Signal]) {
 fn compare_within(program: &Program, rust: &[(&'static str, Signal)], cpp: &[Signal], within: f64) {
     assert_eq!(rust.len(), cpp.len(), "passage count");
     for ((label, ours), theirs) in rust.iter().zip(cpp) {
-        for (channel, a, b) in [("L", &ours.left, &theirs.left), ("R", &ours.right, &theirs.right)] {
+        for (channel, a, b) in [
+            ("L", &ours.left, &theirs.left),
+            ("R", &ours.right, &theirs.right),
+        ] {
             assert_eq!(a.len(), b.len(), "{label} {channel}: length");
             let worst = a
                 .iter()
                 .zip(b.iter())
                 .map(|(x, y)| (f64::from(*x) - f64::from(*y)).abs())
                 .fold(0.0, f64::max);
-            assert!(worst <= within, "{label} {channel}: strays by {worst:e}\n{program:?}");
+            assert!(
+                worst <= within,
+                "{label} {channel}: strays by {worst:e}\n{program:?}"
+            );
         }
     }
 }
@@ -463,7 +519,11 @@ mod cpp {
             .args(["rev-parse", "--short=12", "HEAD"])
             .output()
             .expect("run git to read a vendor revision");
-        assert!(out.status.success(), "git rev-parse failed in {}", path.display());
+        assert!(
+            out.status.success(),
+            "git rev-parse failed in {}",
+            path.display()
+        );
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
@@ -477,7 +537,13 @@ mod cpp {
         std::fs::read_dir(dir)
             .expect("read a harness directory")
             .filter_map(Result::ok)
-            .map(|e| if e.path().is_dir() { newest(&e.path()) } else { mtime(&e.path()) })
+            .map(|e| {
+                if e.path().is_dir() {
+                    newest(&e.path())
+                } else {
+                    mtime(&e.path())
+                }
+            })
             .max()
             .unwrap_or(SystemTime::UNIX_EPOCH)
     }
@@ -517,9 +583,10 @@ mod cpp {
     /// the real one is all GUI.
     fn copy_sources(from: &Path, to: &Path) {
         std::fs::create_dir_all(to.join("FX")).expect("create the source copy");
-        for entry in std::fs::read_dir(from).expect("read Wavetable's sources").chain(
-            std::fs::read_dir(from.join("FX")).expect("read Wavetable's effects"),
-        ) {
+        for entry in std::fs::read_dir(from)
+            .expect("read Wavetable's sources")
+            .chain(std::fs::read_dir(from.join("FX")).expect("read Wavetable's effects"))
+        {
             let path = entry.expect("a source entry").path();
             if path.extension().is_some_and(|e| e == "cpp" || e == "h") {
                 let rel = path.strip_prefix(from).expect("a source under the tree");
@@ -547,12 +614,17 @@ mod cpp {
             revision(&wavetable)
         ));
         let sources = out.join("wt");
-        copy_sources(&wavetable.join("plugin").join(["Sou", "rce"].concat()), &sources);
+        copy_sources(
+            &wavetable.join("plugin").join(["Sou", "rce"].concat()),
+            &sources,
+        );
         let harness_changed = newest(&harness);
         let config_changed = mtime(&harness.join("config.h"));
 
-        let mut units: Vec<(PathBuf, bool)> =
-            JUCE_UNITS.iter().map(|u| (harness.join(u), false)).collect();
+        let mut units: Vec<(PathBuf, bool)> = JUCE_UNITS
+            .iter()
+            .map(|u| (harness.join(u), false))
+            .collect();
         units.push((harness.join("gin.cpp"), true));
         units.push((harness.join("main.cpp"), true));
         for unit in WAVETABLE_UNITS {
@@ -594,7 +666,9 @@ mod cpp {
                 .arg(source)
                 .arg("-o")
                 .arg(&object);
-            let child = cmd.spawn().expect("run g++ (the gold tests need it installed)");
+            let child = cmd
+                .spawn()
+                .expect("run g++ (the gold tests need it installed)");
             (object, Some(child))
         };
 
@@ -610,7 +684,11 @@ mod cpp {
         for (source, object, child) in built {
             if let Some(mut child) = child {
                 let status = child.wait().expect("wait for g++");
-                assert!(status.success(), "compiling {} for the gold harness failed", source.display());
+                assert!(
+                    status.success(),
+                    "compiling {} for the gold harness failed",
+                    source.display()
+                );
             }
             objects.push(object);
         }
@@ -685,7 +763,10 @@ mod cpp {
     /// The tables a plugin set as `plugin` is would play, to the original.
     fn send_tables(input: &mut Vec<u8>, plugin: &mut WavetablePlugin, rate: f64) {
         hand_tables(plugin, rate);
-        let tables = plugin.tables().expect("tables were just handed over").clone();
+        let tables = plugin
+            .tables()
+            .expect("tables were just handed over")
+            .clone();
         let indices = plugin.table_indices();
         for (osc, index) in indices.into_iter().enumerate() {
             let table = tables
@@ -844,8 +925,8 @@ mod cpp {
                     .join("plugin/Resources/WavetablesFLAC")
                     .join(entry.bank)
                     .join(format!("{}.wt2048", entry.name));
-                let original = std::fs::read(&file)
-                    .unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
+                let original =
+                    std::fs::read(&file).unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
                 ("flac", original)
             }
             bank::Format::FlacDelta => {
@@ -855,13 +936,16 @@ mod cpp {
             }
         };
         let mut input = Vec::new();
-        let _ = writeln!(input, "wtload {format} {} {rate:?} {}", entry.frame, bytes.len());
+        let _ = writeln!(
+            input,
+            "wtload {format} {} {rate:?} {}",
+            entry.frame,
+            bytes.len()
+        );
         input.extend_from_slice(&bytes);
         input.push(b'\n');
         let output = harness(input);
-        let mut words = output
-            .chunks_exact(4)
-            .map(|b| [b[0], b[1], b[2], b[3]]);
+        let mut words = output.chunks_exact(4).map(|b| [b[0], b[1], b[2], b[3]]);
         let mut next_u32 = || u32::from_le_bytes(words.next().expect("more output")) as usize;
         let frames = next_u32();
         let mut out = Vec::new();
@@ -870,7 +954,11 @@ mod cpp {
             let len = next_u32();
             let mut frame = Vec::new();
             for _ in 0..copies {
-                frame.push((0..len).map(|_| f32::from_bits(next_u32() as u32)).collect());
+                frame.push(
+                    (0..len)
+                        .map(|_| f32::from_bits(next_u32() as u32))
+                        .collect(),
+                );
             }
             out.push(frame);
         }
@@ -944,10 +1032,13 @@ fn table_builds_match_the_original() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn init_plays_a_note() {
-    check(&Program::new().note(60, 100, 0.5, 0.5), &expect![[r#"
+    check(
+        &Program::new().note(60, 100, 0.5, 0.5),
+        &expect![[r#"
         held: L peak -19.5 rms -25.9 | R peak -19.5 rms -25.9 #b16fb171aed34269
         released: L peak -21.7 rms -42.5 | R peak -21.7 rms -42.5 #e5fa50bd6ef941a5
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -1032,7 +1123,9 @@ fn every_filter_type_under_its_envelope() {
     for kind in 0..8 {
         program = program.set("flttype", kind as f32).note(52, 100, 0.25, 0.1);
     }
-    check(&program, &expect![[r#"
+    check(
+        &program,
+        &expect![[r#"
         held: L peak -11.5 rms -22.6 | R peak -11.5 rms -22.6 #d768c6dc8f9e6b2d
         released: L peak -14.2 rms -32.8 | R peak -14.2 rms -32.8 #f75b56507f08f1d9
         held: L peak -12.2 rms -22.7 | R peak -12.2 rms -22.7 #3e53d4c207ded6dd
@@ -1049,7 +1142,8 @@ fn every_filter_type_under_its_envelope() {
         released: L peak -16.7 rms -32.5 | R peak -16.7 rms -32.5 #060a58b79536d49d
         held: L peak -13.8 rms -22.8 | R peak -13.8 rms -22.8 #217f6a5048bfa561
         released: L peak -18.3 rms -32.9 | R peak -18.3 rms -32.9 #89fcd9f68bd8afd9
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -1206,7 +1300,9 @@ fn each_effect_alone() {
             .set("distMode", mode as f32)
             .note(48, 120, 0.2, 0.1);
     }
-    check(&program, &expect![[r#"
+    check(
+        &program,
+        &expect![[r#"
         held: L peak -22.2 rms -29.0 | R peak -24.7 rms -32.9 #dfbae7ddc6ccfda6
         released: L peak -23.7 rms -41.8 | R peak -31.1 rms -49.9 #77f4f921c91134fe
         held: L peak -12.5 rms -19.0 | R peak -12.5 rms -19.0 #8fdb0eb688a4e921
@@ -1221,7 +1317,8 @@ fn each_effect_alone() {
         released: L peak -4.8 rms -18.9 | R peak -4.8 rms -18.9 #02de42d9b66f5114
         held: L peak -1.4 rms -11.0 | R peak -1.4 rms -11.0 #799760475d5cc56c
         released: L peak -1.4 rms -12.2 | R peak -1.4 rms -12.2 #f587b0df9f342712
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -1258,9 +1355,12 @@ fn more_notes_than_voices_steal() {
     for (i, note) in [48, 52, 55, 59, 62, 65].into_iter().enumerate() {
         program = program.on(i as u32 * 50, note, 100);
     }
-    check(&program.play("six notes on four voices", 0.4), &expect![[r#"
+    check(
+        &program.play("six notes on four voices", 0.4),
+        &expect![[r#"
         six notes on four voices: L peak -8.7 rms -19.8 | R peak -8.7 rms -19.8 #60b39995c02dafc5
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
@@ -1268,14 +1368,22 @@ fn more_notes_than_voices_steal() {
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn other_rates_and_odd_blocks() {
     for (rate, block, expect) in [
-        (44100.0, 37, expect![[r#"
+        (
+            44100.0,
+            37,
+            expect![[r#"
             held: L peak -9.6 rms -15.6 | R peak -9.6 rms -15.6 #038f368ed6e9278d
             released: L peak -11.5 rms -30.0 | R peak -11.5 rms -30.0 #7231834ac13f5205
-        "#]]),
-        (96000.0, 1000, expect![[r#"
+        "#]],
+        ),
+        (
+            96000.0,
+            1000,
+            expect![[r#"
             held: L peak -9.6 rms -15.5 | R peak -9.6 rms -15.5 #35d2c2beeece9739
             released: L peak -11.7 rms -30.0 | R peak -11.7 rms -30.0 #82f0b4112fa58a19
-        "#]]),
+        "#]],
+        ),
     ] {
         check(
             &Program::new()
@@ -1312,7 +1420,10 @@ const NOT_BIT_EXACT: [&str; 5] = [
 #[cfg(not(target_arch = "wasm32"))]
 fn factory_presets(author: &str, half: usize, expect: &Expect) {
     let mut report = String::new();
-    let all: Vec<_> = presets::PRESETS.iter().filter(|p| p.author == author).collect();
+    let all: Vec<_> = presets::PRESETS
+        .iter()
+        .filter(|p| p.author == author)
+        .collect();
     let (first, second) = all.split_at(all.len() / 2);
     for preset in [first, second][half] {
         let program = Program::new()
@@ -1342,7 +1453,10 @@ fn factory_presets(author: &str, half: usize, expect: &Expect) {
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_doubletap_first_half() {
-    factory_presets("DoubleTap", 0, &expect![[r#"
+    factory_presets(
+        "DoubleTap",
+        0,
+        &expect![[r#"
         DT Bwaing:
         chord: L peak -10.0 rms -19.7 | R peak -8.3 rms -18.4 #77947951b25caad0
         released: L peak -33.6 rms -55.4 | R peak -24.1 rms -46.4 #2265ca47d2958760
@@ -1415,14 +1529,18 @@ fn factory_presets_by_doubletap_first_half() {
         chord: L peak -21.8 rms -43.0 | R peak -30.1 rms -45.2 #fe9841b0729a808a
         released: L peak -30.2 rms -51.6 | R peak -34.5 rms -53.3 #d6e8b660408e0dac
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_doubletap_second_half() {
-    factory_presets("DoubleTap", 1, &expect![[r#"
+    factory_presets(
+        "DoubleTap",
+        1,
+        &expect![[r#"
         DT Pad 2:
         chord: L peak -8.7 rms -20.4 | R peak -8.6 rms -19.1 #0a75539ff800ac30
         released: L peak -11.0 rms -22.3 | R peak -10.5 rms -22.2 #47dd0fd133b9c85c
@@ -1499,14 +1617,18 @@ fn factory_presets_by_doubletap_second_half() {
         chord: L peak -9.1 rms -19.1 | R peak -7.0 rms -16.9 #b2950199f2dcb3b3
         released: L peak -8.1 rms -19.2 | R peak -8.6 rms -19.8 #12a4b0f8464c301e
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_flamedragonz_first_half() {
-    factory_presets("Flamedragonz", 0, &expect![[r#"
+    factory_presets(
+        "Flamedragonz",
+        0,
+        &expect![[r#"
         ARP Bass Pulse I:
         chord: L peak -0.6 rms -9.3 | R peak -0.1 rms -8.5 #acde3bb026ad56ee
         released: L peak -15.6 rms -42.0 | R peak -9.8 rms -35.2 #e1745948b92140d6
@@ -1611,14 +1733,18 @@ fn factory_presets_by_flamedragonz_first_half() {
         chord: L peak -0.5 rms -11.0 | R peak -1.5 rms -11.6 #9a0c025c537d6a21
         released: L peak -10.1 rms -24.4 | R peak -12.8 rms -24.5 #41964657e8da3046
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_flamedragonz_second_half() {
-    factory_presets("Flamedragonz", 1, &expect![[r#"
+    factory_presets(
+        "Flamedragonz",
+        1,
+        &expect![[r#"
         FX Filter Growl I:
         chord: L peak 1.5 rms -3.4 | R peak 2.3 rms -3.4 #30be25deaa6fd595
         released: L peak -6.0 rms -22.5 | R peak -4.7 rms -21.2 #0fae654290164152
@@ -1723,14 +1849,18 @@ fn factory_presets_by_flamedragonz_second_half() {
         chord: L peak -5.8 rms -18.0 | R peak -7.3 rms -18.2 #3cd06e48a823599c
         released: L peak -10.4 rms -23.5 | R peak -8.2 rms -23.2 #be8c2bff54254b19
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_havensteps_first_half() {
-    factory_presets("HavenSteps", 0, &expect![[r#"
+    factory_presets(
+        "HavenSteps",
+        0,
+        &expect![[r#"
         8bit dream:
         chord: L peak -10.5 rms -22.2 | R peak -10.5 rms -22.2 #542c3ca247f3cec9
         released: L peak -10.1 rms -22.6 | R peak -10.1 rms -22.6 #11d9ebdc87693795
@@ -1831,14 +1961,18 @@ fn factory_presets_by_havensteps_first_half() {
         chord: L peak -12.1 rms -27.9 | R peak -12.1 rms -27.9 #e8641f6b5edfa64f
         released: L peak -5.1 rms -20.5 | R peak -5.1 rms -20.5 #1696a5aa14e677f3
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_havensteps_second_half() {
-    factory_presets("HavenSteps", 1, &expect![[r#"
+    factory_presets(
+        "HavenSteps",
+        1,
+        &expect![[r#"
         Lazzzer:
         chord: L peak -0.2 rms -17.8 | R peak -0.2 rms -17.8 #3ff4f93d4b41d0c9
         released: L peak -135.5 rms -166.1 | R peak -135.5 rms -166.1 #e28a25f8ef4e13c5
@@ -1939,14 +2073,18 @@ fn factory_presets_by_havensteps_second_half() {
         chord: L peak 2.3 rms -7.1 | R peak 5.2 rms -4.3 #9e2d1811848f7f81
         released: L peak -0.7 rms -14.8 | R peak 3.4 rms -12.1 #1dc86c1698a6111a
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_iv_first_half() {
-    factory_presets("IV", 0, &expect![[r#"
+    factory_presets(
+        "IV",
+        0,
+        &expect![[r#"
         IV's Cyber Lead (MW):
         chord: L peak -5.4 rms -15.7 | R peak -6.1 rms -15.9 #22f5d7ce622c8b94
         released: L peak -7.9 rms -25.1 | R peak -9.5 rms -26.5 #1b976e47e225851c
@@ -1963,14 +2101,18 @@ fn factory_presets_by_iv_first_half() {
         chord: L peak -16.1 rms -27.5 | R peak -17.9 rms -29.4 #bd149e2cd2b4311f
         released: L peak -19.3 rms -34.8 | R peak -22.2 rms -34.0 #2151ee77ba990a4f
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_iv_second_half() {
-    factory_presets("IV", 1, &expect![[r#"
+    factory_presets(
+        "IV",
+        1,
+        &expect![[r#"
         IV's Organ Basic:
         chord: L peak -8.3 rms -19.8 | R peak -9.0 rms -20.7 #2eef7ad8bb7ee6d8
         released: L peak -13.4 rms -37.7 | R peak -13.9 rms -38.6 #11a425cc4c3441ac
@@ -1991,14 +2133,18 @@ fn factory_presets_by_iv_second_half() {
         chord: L peak -3.0 rms -11.3 | R peak -3.2 rms -11.3 #d9ae202c310fa4a3
         released: L peak -6.3 rms -16.9 | R peak -6.3 rms -16.9 #e3ef68f3a890ef9c
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_madmcman_first_half() {
-    factory_presets("MadMcMan", 0, &expect![[r#"
+    factory_presets(
+        "MadMcMan",
+        0,
+        &expect![[r#"
         Angel Voice:
         chord: L peak -2.3 rms -15.6 | R peak 2.0 rms -7.4 #41e08213d44554c6
         released: L peak -7.4 rms -22.2 | R peak 0.2 rms -19.7 #c8cf43d0161cf3a7
@@ -2035,14 +2181,18 @@ fn factory_presets_by_madmcman_first_half() {
         chord: L peak -4.9 rms -9.0 | R peak -4.9 rms -9.0 #6c8f53878455376d
         released: L peak -6.2 rms -19.0 | R peak -6.2 rms -19.0 #ad3f452af5897909
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_madmcman_second_half() {
-    factory_presets("MadMcMan", 1, &expect![[r#"
+    factory_presets(
+        "MadMcMan",
+        1,
+        &expect![[r#"
         Mice:
         chord: L peak -1.5 rms -29.4 | R peak -1.9 rms -29.0 #97853045ee407e5e
         released: L peak -22.0 rms -37.5 | R peak -25.2 rms -41.8 #61063abbe9b87478
@@ -2083,14 +2233,18 @@ fn factory_presets_by_madmcman_second_half() {
         chord: L peak -2.1 rms -14.9 | R peak -2.6 rms -14.7 #7e01a7454a0258b1
         released: L peak -8.1 rms -25.6 | R peak -9.6 rms -29.0 #60255855292dc5ab
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_murti_first_half() {
-    factory_presets("murti", 0, &expect![[r#"
+    factory_presets(
+        "murti",
+        0,
+        &expect![[r#"
         5th Wheel:
         chord: L peak -3.1 rms -14.4 | R peak -2.8 rms -13.8 #0633e9178308fe52
         released: L peak -33.7 rms -50.9 | R peak -33.6 rms -52.5 #5aa8695bd5306c51
@@ -2191,14 +2345,18 @@ fn factory_presets_by_murti_first_half() {
         chord: L peak 0.0 rms -8.4 | R peak 0.0 rms -8.4 #78c43b06e8262705
         released: L peak -2.7 rms -25.4 | R peak -2.7 rms -25.4 #665e182c632286a5
 
-    "#]]);
+    "#]],
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 #[ignore = "heavy: cargo test -p bloop-plugin-wavetable -- --include-ignored"]
 fn factory_presets_by_murti_second_half() {
-    factory_presets("murti", 1, &expect![[r#"
+    factory_presets(
+        "murti",
+        1,
+        &expect![[r#"
         Munch Growl:
         chord: L peak 1.1 rms -10.3 | R peak 0.8 rms -9.8 #8e71c720c555751e
         released: L peak -4.0 rms -26.5 | R peak -2.5 rms -24.3 #abd4f7013d00f3d1
@@ -2299,5 +2457,6 @@ fn factory_presets_by_murti_second_half() {
         chord: L peak -3.2 rms -14.4 | R peak -2.4 rms -14.3 #1c8d6a9f6dbfec13
         released: L peak -5.9 rms -19.6 | R peak -3.8 rms -18.2 #a8b4737a1f560202
 
-    "#]]);
+    "#]],
+    );
 }

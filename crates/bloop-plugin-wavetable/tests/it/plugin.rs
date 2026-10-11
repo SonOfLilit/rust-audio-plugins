@@ -286,7 +286,9 @@ fn the_catalogue_and_the_presets() {
         bank::names()[usize::from(presets::INIT_TABLES[0])],
         bank::names()[usize::from(presets::INIT_TABLES[1])]
     );
-    check(&text, &expect![[r#"
+    check(
+        &text,
+        &expect![[r#"
         Adventure Kid   65 tables,  3 as frame deltas,  0 WAV,  65 on the web
         Analog          42 tables, 13 as frame deltas,  0 WAV,  11 on the web
         Distorted       16 tables, 10 as frame deltas,  0 WAV,   8 on the web
@@ -303,7 +305,8 @@ fn the_catalogue_and_the_presets() {
         murti           50 presets,  19 on the web
         without a TYPE: []
         Init plays "AKWP bw_saw" and "AKWP bw_squ"
-    "#]]);
+    "#]],
+    );
 }
 
 /// Every table this build carries decodes, to whole frames of samples a
@@ -325,7 +328,11 @@ fn every_table_decodes() {
         );
         // A float WAV a preset carried may go past full scale; 16-bit
         // samples cannot.
-        let limit = if entry.format == bank::Format::Wav { f32::MAX } else { 1.0 };
+        let limit = if entry.format == bank::Format::Wav {
+            f32::MAX
+        } else {
+            1.0
+        };
         assert!(
             samples.iter().all(|s| s.is_finite() && s.abs() <= limit),
             "{}: a sample out of range",
@@ -338,11 +345,13 @@ fn every_table_decodes() {
         last.1 += samples.len() / entry.frame;
         last.2 += 1;
     }
-    let text: String = frames
-        .iter()
-        .map(|(bank, f, t)| format!("{bank}: {f} frames in {t} tables\n"))
-        .collect();
-    check(&text, &expect![[r#"
+    let mut text = String::new();
+    for (bank, f, t) in &frames {
+        let _ = writeln!(text, "{bank}: {f} frames in {t} tables");
+    }
+    check(
+        &text,
+        &expect![[r#"
         Adventure Kid: 4358 frames in 65 tables
         Analog: 10395 frames in 42 tables
         Distorted: 2865 frames in 16 tables
@@ -351,7 +360,8 @@ fn every_table_decodes() {
         Hyper: 1387 frames in 7 tables
         Neu KatalYst: 12800 frames in 50 tables
         Presets: 1187 frames in 11 tables
-    "#]]);
+    "#]],
+    );
 }
 
 #[test]
