@@ -1,0 +1,47 @@
+[package]
+name = "bloop-plugin-airwindows-cpp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Every Airwindows plug-in of the LinuxVST collection, compiled from Chris
+# Johnson's C++ as it is (vendor/airwindows, the revision
+# bloop-plugin-airwindows ports from) against a stand-in for the VST2 base
+# class of bloop's own (cpp/audioeffectx.h), and driven through a small C
+# ABI (cpp/api.cpp). build.rs compiles them and lists them. MIT, like the
+# originals; LICENSE is theirs.
+#
+# Not on wasm32: there is no C++ toolchain for it here, so the crate builds
+# there with no plug-ins in it.
+
+[dependencies]
+bloop-plugin-api = { workspace = true }
+
+[build-dependencies]
+cc = { version = "1.2.56", features = ["parallel"] }
+
+[dev-dependencies]
+bloop-events = { workspace = true }
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
+unimplemented = "deny"
+allow_attributes = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+await_holding_lock = "deny"
+large_futures = "deny"
+exit = "deny"
+mem_forget = "deny"
+module_name_repetitions = "allow"
+similar_names = "allow"
+# The plug-ins' names (ToTape8, kCathedral5…) are names, not code.
+doc_markdown = "allow"
