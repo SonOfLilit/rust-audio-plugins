@@ -2,9 +2,10 @@
 name = "bloop-events"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
-bloop-core = { workspace = true }
+bloop-note = { workspace = true }
 # The pad curve (`feel`): the same number on every target.
 libm = "0.2"
 

@@ -39,7 +39,7 @@ libm = "0.2"
 roxmltree = "0.21.1"
 
 [dev-dependencies]
-bloop-core = { workspace = true }
+bloop-note = { workspace = true }
 expect-test = { workspace = true }
 wasm-bindgen-test = { workspace = true }
 flacenc = { version = "0.5.1", default-features = false }

@@ -1,0 +1,38 @@
+[submodule "vendor/just-a-sample"]
+	path = vendor/just-a-sample
+	url = https://github.com/BOBONA/Just-a-Sample.git
+[submodule "vendor/slplugins"]
+	path = vendor/slplugins
+	update = none
+	shallow = true
+	url = https://github.com/FigBug/slPlugins.git
+[submodule "vendor/gin"]
+	path = vendor/gin
+	update = none
+	shallow = true
+	url = https://github.com/FigBug/Gin.git
+[submodule "vendor/juce"]
+	path = vendor/juce
+	update = none
+	shallow = true
+	url = https://github.com/juce-framework/JUCE.git
+[submodule "vendor/bungee"]
+	path = vendor/bungee
+	url = https://github.com/bungee-audio-stretch/bungee.git
+	update = none
+	shallow = true
+[submodule "vendor/wavetable"]
+	path = vendor/wavetable
+	url = https://github.com/FigBug/Wavetable.git
+	update = none
+	shallow = true
+[submodule "vendor/nam"]
+	path = vendor/nam
+	url = https://github.com/sdatkinson/NeuralAmpModelerCore.git
+	update = none
+	shallow = true
+[submodule "vendor/airwindows"]
+	path = vendor/airwindows
+	url = https://github.com/airwindows/airwindows.git
+	update = none
+	shallow = true

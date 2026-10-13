@@ -2,9 +2,9 @@
 name = "bloop-plugin-api"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
-bloop-core = { workspace = true }
 bloop-events = { workspace = true }
 # The meters' decibels, the same on every target.
 libm = "0.2"

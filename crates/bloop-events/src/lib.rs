@@ -8,7 +8,7 @@ extern crate alloc;
 pub mod feel;
 pub mod midi;
 
-use bloop_core::Note;
+use bloop_note::Note;
 
 /// The controller number of the modulation wheel, MIDI's CC 1: a
 /// [`NoteEvent::CC`] with it carries the wheel, 0 at rest to 1 all the way

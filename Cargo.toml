@@ -1,0 +1,95 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/bloop-note",
+    "crates/bloop-events",
+    "crates/bloop-plugin-api",
+    "crates/bloop-sampler-engine",
+    "crates/bloop-stretch",
+    "crates/bloop-plugin-dexed",
+    "crates/bloop-plugin-socalabs",
+    "crates/bloop-plugin-wavetable",
+    "crates/bloop-plugin-nam",
+    "crates/bloop-plugin-airwindows",
+    "crates/bloop-plugin-airwindows-cpp",
+]
+
+# bloop checks this repository out as a submodule and lists these crates as
+# members of its own workspace, which takes precedence: there its
+# [workspace.dependencies] and profiles apply, and these are used only when
+# the repository is built on its own. Keep the two in step.
+[workspace.dependencies]
+bloop-note = { path = "crates/bloop-note" }
+bloop-events = { path = "crates/bloop-events" }
+bloop-plugin-api = { path = "crates/bloop-plugin-api" }
+bloop-sampler-engine = { path = "crates/bloop-sampler-engine" }
+bloop-stretch = { path = "crates/bloop-stretch" }
+bloop-plugin-dexed = { path = "crates/bloop-plugin-dexed" }
+bloop-plugin-socalabs = { path = "crates/bloop-plugin-socalabs" }
+bloop-plugin-wavetable = { path = "crates/bloop-plugin-wavetable" }
+bloop-plugin-nam = { path = "crates/bloop-plugin-nam" }
+bloop-plugin-airwindows = { path = "crates/bloop-plugin-airwindows" }
+bloop-plugin-airwindows-cpp = { path = "crates/bloop-plugin-airwindows-cpp" }
+
+expect-test = "1.4"
+symphonia = { version = "0.6", default-features = false, features = ["wav", "aiff", "pcm", "flac", "mp3", "ogg", "vorbis"] }
+wasm-bindgen-test = "0.3"
+
+# DSP at full optimisation in dev builds, and at opt-level 2 in tests: the
+# tests render seconds of audio, which unoptimised is 10-30x slower.
+[profile.dev.package.bloop-plugin-dexed]
+opt-level = 3
+[profile.dev.package.bloop-plugin-socalabs]
+opt-level = 3
+[profile.dev.package.bloop-stretch]
+opt-level = 3
+[profile.dev.package.bloop-plugin-nam]
+opt-level = 3
+[profile.dev.package.bloop-plugin-airwindows]
+opt-level = 3
+[profile.dev.package.bloop-events]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
+
+[profile.dev.build-override]
+opt-level = 2
+[profile.test.build-override]
+opt-level = 2
+
+[profile.test.package.bloop-note]
+opt-level = 2
+[profile.test.package.bloop-events]
+opt-level = 2
+[profile.test.package.bloop-plugin-api]
+opt-level = 2
+[profile.test.package.bloop-sampler-engine]
+opt-level = 2
+[profile.test.package.bloop-stretch]
+opt-level = 2
+[profile.test.package.bloop-plugin-dexed]
+opt-level = 2
+[profile.test.package.bloop-plugin-socalabs]
+opt-level = 2
+[profile.test.package.bloop-plugin-wavetable]
+opt-level = 2
+[profile.test.package.bloop-plugin-nam]
+opt-level = 2
+[profile.test.package.bloop-plugin-airwindows]
+opt-level = 2
+[profile.test.package.rustfft]
+opt-level = 2
+[profile.test.package.libm]
+opt-level = 2
+[profile.test.package.symphonia-bundle-flac]
+opt-level = 2
+[profile.test.package.symphonia-core]
+opt-level = 2
+[profile.test.package.symphonia-format-riff]
+opt-level = 2
+[profile.test.package.symphonia-codec-pcm]
+opt-level = 2
+[profile.test.package.flacenc]
+opt-level = 2
+[profile.test.package.rusty_mp3]
+opt-level = 2

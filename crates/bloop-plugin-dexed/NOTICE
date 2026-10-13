@@ -1,0 +1,19 @@
+bloop-plugin-dexed: a Rust port of MSFA (music-synthesizer-for-android),
+Raph Levien's 6-operator FM engine, as Dexed maintains it in Source/msfa.
+Licensed under the Apache License, Version 2.0 (LICENSE).
+
+Copyright 2012-2013 Google Inc.
+Copyright 2016-2025 Pascal Gauthier and the Dexed contributors
+Copyright 2026 Aur Saraf (the port)
+
+Ported from:
+  https://github.com/asb2m10/dexed/tree/2e182b3db85c09083ab13c8b9b00565ce7d9ff85/Source/msfa
+  https://github.com/google/music-synthesizer-for-android/tree/f67d41d313b7dc85f6fb99e79e515cc9d208cfff
+    (the packed-voice unpacker)
+
+Each ported module's header carries the attribution of the file it ports.
+
+The built-in presets (assets/) are the eight Yamaha DX7 factory ROM
+cartridges (ROM1A-ROM4B), from the original-cartridge collection at
+yamahablackboxes.com, plus the three Finetales curated banks and a drum kit
+assembled from the Dexed cartridge collection.

@@ -18,7 +18,7 @@ use std::fmt::Write as _;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 
-use bloop_core::Note;
+use bloop_note::Note;
 use bloop_events::{Expression, NoteEvent, NoteId};
 use bloop_plugin_wavetable::{mpe, Event};
 use expect_test::{expect, Expect};

@@ -12,7 +12,7 @@ license = "Apache-2.0"
 # (see `every_notice_cites_its_pinned_revision` in bloop-synths).
 
 [dependencies]
-bloop-core = { workspace = true }
+bloop-note = { workspace = true }
 bloop-events = { workspace = true }
 bloop-plugin-api = { workspace = true }
 

@@ -1,0 +1,30 @@
+# `unwrap()` is acceptable in tests (CLAUDE.md "Code style"); the deny in the
+# lints block is about library code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+# Proper nouns clippy would otherwise want in backticks.
+doc-valid-idents = [
+    "SocaLabs",
+    "SimpleVerb",
+    "StereoEnhancer",
+    "StereoProcessor",
+    "BitCrusher",
+    "GraphicEQ",
+    "PlateReverb",
+    "SoftClipper",
+    "TransientShaper",
+    "WaveNet",
+    "WaveNets",
+    "NeuralAmpModelerCore",
+    "NeuralAmpModelerPlugin",
+    "AudioDSPTools",
+    "Console7Channel",
+    "Console7Buss",
+    "ToTape8",
+    "Density2",
+    "Galactic3",
+    "Baxandall2",
+    "..",
+]

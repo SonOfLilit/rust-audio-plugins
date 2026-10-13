@@ -53,7 +53,7 @@ import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CRATE = os.path.dirname(HERE)
-WORKSPACE = os.path.dirname(os.path.dirname(os.path.dirname(CRATE)))
+WORKSPACE = os.path.dirname(os.path.dirname(CRATE))
 DEFAULT_VENDOR = os.path.join(WORKSPACE, "vendor", "wavetable")
 
 # Where the tables presets carry are filed in the catalogue.

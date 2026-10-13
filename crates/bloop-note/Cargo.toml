@@ -1,0 +1,10 @@
+[package]
+name = "bloop-note"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "A MIDI note number, the one type the event and plug-in crates share with the host"
+
+[dev-dependencies]
+expect-test = { workspace = true }
+wasm-bindgen-test = { workspace = true }

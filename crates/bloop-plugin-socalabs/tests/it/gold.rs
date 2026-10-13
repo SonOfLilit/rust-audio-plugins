@@ -535,7 +535,7 @@ mod cpp {
     }
 
     fn vendor(name: &str) -> PathBuf {
-        let path = root().join("../../../vendor").join(name);
+        let path = root().join("../../vendor").join(name);
         assert!(
             path.join(".git").exists(),
             "vendor/{name} is not checked out. The gold tests compile the originals from it:\n  \

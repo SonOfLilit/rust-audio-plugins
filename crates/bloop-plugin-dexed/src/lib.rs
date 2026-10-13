@@ -808,7 +808,7 @@ mod tests {
         Ev::Note(NoteEvent::NoteOn {
             time: 0,
             channel: 0,
-            note: bloop_core::Note::new(note),
+            note: bloop_note::Note::new(note),
             velocity,
             id: bloop_events::NoteId::NONE,
         })
@@ -818,7 +818,7 @@ mod tests {
         Ev::Note(NoteEvent::NoteOff {
             time: 0,
             channel: 0,
-            note: bloop_core::Note::new(note),
+            note: bloop_note::Note::new(note),
             id: bloop_events::NoteId::NONE,
         })
     }
@@ -1399,7 +1399,7 @@ mod tests {
         buf.push(NoteEvent::NoteOn {
             time: 70,
             channel: 0,
-            note: bloop_core::Note::new(69),
+            note: bloop_note::Note::new(69),
             velocity: 1.0,
             id: bloop_events::NoteId::NONE,
         });
@@ -1521,7 +1521,7 @@ mod tests {
             ev.push(NoteEvent::NoteOn {
                 time: 0,
                 channel: 0,
-                note: bloop_core::Note::new(69),
+                note: bloop_note::Note::new(69),
                 velocity: 1.0,
                 id: bloop_events::NoteId::NONE,
             });
@@ -2160,7 +2160,7 @@ mod watch_tests {
         for block in 0..=last {
             let mut events = EventBuffer::new();
             for &(_, key) in keys.iter().filter(|(at, _)| *at == block) {
-                let note = bloop_core::Note::new;
+                let note = bloop_note::Note::new;
                 let (time, n, velocity) = match key {
                     Key::On(n, velocity) => (0, n, velocity),
                     Key::Late(n) => (100, n, 1.0),

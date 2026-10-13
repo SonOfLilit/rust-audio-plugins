@@ -536,7 +536,7 @@ mod cpp {
         if let Some(path) = std::env::var_os("AIRWINDOWS_SRC") {
             return PathBuf::from(path);
         }
-        let path = root().join("../../../vendor/airwindows");
+        let path = root().join("../../vendor/airwindows");
         assert!(
             path.join("plugins/LinuxVST/src").exists(),
             "vendor/airwindows is not checked out. The gold tests compile the originals from it:\n  \

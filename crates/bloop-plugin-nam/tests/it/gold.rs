@@ -358,7 +358,7 @@ mod original {
     }
 
     fn vendor() -> PathBuf {
-        let path = root().join("../../../vendor/nam");
+        let path = root().join("../../vendor/nam");
         assert!(
             path.join("NAM").exists() && path.join("Dependencies/eigen/Eigen").exists(),
             "vendor/nam and its Eigen are not checked out. The gold tests compile the original from them:\n  \

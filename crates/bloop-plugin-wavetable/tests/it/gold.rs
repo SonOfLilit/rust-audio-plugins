@@ -24,7 +24,7 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 
-use bloop_core::Note;
+use bloop_note::Note;
 use bloop_events::{EventBuffer, Expression, NoteEvent, NoteId};
 use bloop_plugin_api::{Plugin, ProcessContext};
 use bloop_plugin_wavetable::{bank, modmatrix, params, presets, WavetablePlugin, PARAM_PRESET};
@@ -587,7 +587,7 @@ mod cpp {
     /// whose submodules are not checked out, the one `BLOOP_GOLD_VENDOR`
     /// names.
     fn vendor(name: &str) -> PathBuf {
-        let own = root().join("../../../vendor").join(name);
+        let own = root().join("../../vendor").join(name);
         let path = match std::env::var_os("BLOOP_GOLD_VENDOR") {
             Some(dir) if !own.join("modules").exists() && !own.join("plugin").exists() => {
                 PathBuf::from(dir).join(name)
