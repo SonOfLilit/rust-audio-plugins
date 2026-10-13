@@ -16,8 +16,8 @@ use std::cell::Cell;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use bloop_note::Note;
 use bloop_events::{EventBuffer, NoteEvent};
+use bloop_note::Note;
 use bloop_plugin_api::{Plugin, ProcessContext};
 use bloop_plugin_wavetable::{
     bank, param_info, params, presets, WavetablePlugin, PARAM_PRESET, VOICE_SLOTS,

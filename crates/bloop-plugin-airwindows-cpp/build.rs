@@ -70,10 +70,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let root = std::env::var_os("BLOOP_AIRWINDOWS_SRC").map_or_else(
-        || manifest.join("../../vendor/airwindows"),
-        PathBuf::from,
-    );
+    let root = std::env::var_os("BLOOP_AIRWINDOWS_SRC")
+        .map_or_else(|| manifest.join("../../vendor/airwindows"), PathBuf::from);
     let src = root.join("plugins/LinuxVST/src");
     if !src.is_dir() {
         return Err(format!(

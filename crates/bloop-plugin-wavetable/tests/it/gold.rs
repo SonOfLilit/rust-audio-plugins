@@ -24,8 +24,8 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 
-use bloop_note::Note;
 use bloop_events::{EventBuffer, Expression, NoteEvent, NoteId};
+use bloop_note::Note;
 use bloop_plugin_api::{Plugin, ProcessContext};
 use bloop_plugin_wavetable::{bank, modmatrix, params, presets, WavetablePlugin, PARAM_PRESET};
 use expect_test::{expect, Expect};

@@ -14,8 +14,8 @@
 #![expect(clippy::print_stdout, reason = "a bench says what it measured")]
 #![expect(clippy::expect_used, reason = "a bench with a bad argument has no one to tell but its user")]
 
-use bloop_note::Note;
 use bloop_events::{EventBuffer, NoteEvent};
+use bloop_note::Note;
 use bloop_plugin_api::{Plugin, ProcessContext};
 use bloop_plugin_wavetable::{bank, presets, WavetablePlugin, PARAM_PRESET};
 use std::time::Instant;
