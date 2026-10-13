@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if !src.is_dir() {
         return Err(format!(
             "the Airwindows sources are not at {}: check out the submodule with \
-             `git -c submodule.vendor/airwindows.update=checkout submodule update --init --depth 1 vendor/airwindows`, \
+             `git submodule update --init vendor/airwindows`, \
              or point BLOOP_AIRWINDOWS_SRC at a checkout of github.com/airwindows/airwindows",
             src.display()
         )

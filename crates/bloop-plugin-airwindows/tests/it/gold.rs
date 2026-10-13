@@ -18,7 +18,7 @@
 //! The sources come from the `vendor/airwindows` submodule:
 //!
 //! ```sh
-//! git -c submodule.vendor/airwindows.update=checkout submodule update --init vendor/airwindows
+//! git submodule update --init vendor/airwindows
 //! ```
 //!
 //! or, to use a checkout elsewhere, from `AIRWINDOWS_SRC=<path to the
@@ -540,7 +540,7 @@ mod cpp {
         assert!(
             path.join("plugins/LinuxVST/src").exists(),
             "vendor/airwindows is not checked out. The gold tests compile the originals from it:\n  \
-             git -c submodule.vendor/airwindows.update=checkout submodule update --init vendor/airwindows\n\
+             git submodule update --init vendor/airwindows\n\
              (or point AIRWINDOWS_SRC at an airwindows checkout)"
         );
         path

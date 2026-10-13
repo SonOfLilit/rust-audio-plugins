@@ -34,5 +34,4 @@
 [submodule "vendor/airwindows"]
 	path = vendor/airwindows
 	url = https://github.com/airwindows/airwindows.git
-	update = none
 	shallow = true

@@ -29,14 +29,13 @@ The `bloop-` names are kept so the crates keep their names in bloop.
 ```sh
 git clone https://github.com/SonOfLilit/rust-audio-plugins.git
 cd rust-audio-plugins
-git submodule update --init                    # vendor/just-a-sample: the sampler's gold tests always run
-git -c submodule.vendor/airwindows.update=checkout submodule update --init --depth 1 vendor/airwindows
+git submodule update --init --recursive        # vendor/just-a-sample and vendor/airwindows
 cargo test --workspace
 ```
 
 `bloop-plugin-airwindows-cpp` compiles the Airwindows C++ in its build
-script, so it needs `vendor/airwindows`, or `BLOOP_AIRWINDOWS_SRC` pointing
-at a checkout of it. On wasm32 it builds with no plug-ins in it.
+script, so it needs `vendor/airwindows` (checked out with the rest), or
+`BLOOP_AIRWINDOWS_SRC` pointing at a checkout of it. On wasm32 it builds with no plug-ins in it.
 
 Tests over about 1.5 s are `#[ignore = "heavy: …"]`; run them with
 `cargo test -p <crate> -- --include-ignored`.
@@ -44,8 +43,9 @@ Tests over about 1.5 s are `#[ignore = "heavy: …"]`; run them with
 ## Gold tests
 
 Each port is checked against the original it ports, compiled from the
-submodule under `vendor/`, at the revision the crate cites. All but
-Just-a-Sample are `update = none`: fetch only those you need.
+submodule under `vendor/`, at the revision the crate cites. Just-a-Sample
+and Airwindows come with a plain `git submodule update --init`, since a
+build needs them; the rest are `update = none`: fetch only those you need.
 
 | crate | run | needs |
 |-------|-----|-------|
